@@ -8,6 +8,7 @@ export interface Settings {
 export interface ActivityFilters {
   startDate?: string;
   endDate?: string;
+  category?: string;
   sportType?: string;
   minDistance?: number;
   maxDistance?: number;
@@ -18,6 +19,7 @@ export interface ActivitySummary {
   id: number;
   sourcePath: string;
   activityStart: string;
+  category: string;
   sportType: string;
   durationSeconds: number;
   distanceM: number;

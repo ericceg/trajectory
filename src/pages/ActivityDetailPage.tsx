@@ -116,7 +116,7 @@ export function ActivityDetailPage() {
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-muted">Activity Detail</p>
-          <h2 className="mt-2 text-3xl font-semibold text-foreground">{detail.summary.sportType}</h2>
+          <h2 className="mt-2 text-3xl font-semibold text-foreground">{detail.summary.category}</h2>
           <p className="mt-1 text-sm text-muted">{formatDateTime(detail.summary.activityStart)}</p>
         </div>
         <Link

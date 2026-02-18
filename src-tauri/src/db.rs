@@ -38,6 +38,7 @@ pub fn init_db(db_path: &Path) -> Result<()> {
       source_mtime INTEGER NOT NULL,
       source_size INTEGER NOT NULL,
       activity_start TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'Other',
       sport_type TEXT NOT NULL,
       duration_seconds REAL NOT NULL,
       distance_m REAL NOT NULL,
@@ -71,6 +72,47 @@ pub fn init_db(db_path: &Path) -> Result<()> {
     );
 
     CREATE INDEX IF NOT EXISTS idx_samples_activity_id ON activity_samples(activity_id);
+    "#,
+    )?;
+
+    ensure_activity_category_column(&conn)?;
+
+    Ok(())
+}
+
+fn ensure_activity_category_column(conn: &Connection) -> Result<()> {
+    let has_category = conn
+        .query_row(
+            "SELECT 1 FROM pragma_table_info('activities') WHERE name = 'category' LIMIT 1",
+            [],
+            |_| Ok(()),
+        )
+        .optional()?
+        .is_some();
+
+    if !has_category {
+        conn.execute(
+            "ALTER TABLE activities ADD COLUMN category TEXT NOT NULL DEFAULT 'Other'",
+            [],
+        )?;
+    }
+
+    conn.execute_batch(
+        r#"
+    UPDATE activities
+    SET category = CASE
+      WHEN lower(sport_type) LIKE '%run%' OR lower(sport_type) LIKE '%jog%' THEN 'Running'
+      WHEN lower(sport_type) LIKE '%bik%' OR lower(sport_type) LIKE '%cycl%' OR lower(sport_type) LIKE '%ride%' OR lower(sport_type) LIKE '%spin%' THEN 'Biking'
+      WHEN lower(sport_type) LIKE '%hike%' THEN 'Hiking'
+      WHEN lower(sport_type) LIKE '%walk%' THEN 'Walking'
+      WHEN lower(sport_type) LIKE '%swim%' THEN 'Swimming'
+      WHEN lower(sport_type) LIKE '%row%' THEN 'Rowing'
+      WHEN lower(sport_type) LIKE '%strength%' OR lower(sport_type) LIKE '%gym%' THEN 'Strength'
+      WHEN lower(sport_type) LIKE '%yoga%' OR lower(sport_type) LIKE '%pilates%' THEN 'Mobility'
+      ELSE COALESCE(NULLIF(category, ''), 'Other')
+    END;
+
+    CREATE INDEX IF NOT EXISTS idx_activities_category ON activities(category);
     "#,
     )?;
 
@@ -123,6 +165,7 @@ pub fn upsert_activity(
       source_mtime,
       source_size,
       activity_start,
+      category,
       sport_type,
       duration_seconds,
       distance_m,
@@ -135,11 +178,12 @@ pub fn upsert_activity(
       track_json,
       original_sample_count,
       updated_at
-    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, CURRENT_TIMESTAMP)
+    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, CURRENT_TIMESTAMP)
     ON CONFLICT(source_path) DO UPDATE SET
       source_mtime = excluded.source_mtime,
       source_size = excluded.source_size,
       activity_start = excluded.activity_start,
+      category = excluded.category,
       sport_type = excluded.sport_type,
       duration_seconds = excluded.duration_seconds,
       distance_m = excluded.distance_m,
@@ -158,6 +202,7 @@ pub fn upsert_activity(
             source_mtime,
             source_size,
             &parsed.start_time,
+            &parsed.category,
             &parsed.sport_type,
             parsed.duration_seconds,
             parsed.distance_m,
@@ -230,15 +275,16 @@ fn map_summary_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ActivitySummary>
         id: row.get(0)?,
         source_path: row.get(1)?,
         activity_start: row.get(2)?,
-        sport_type: row.get(3)?,
-        duration_seconds: row.get(4)?,
-        distance_m: row.get(5)?,
-        elevation_gain_m: row.get(6)?,
-        avg_speed_mps: row.get(7)?,
-        max_speed_mps: row.get(8)?,
-        avg_hr: row.get(9)?,
-        max_hr: row.get(10)?,
-        has_gps: row.get::<_, i64>(11)? == 1,
+        category: row.get(3)?,
+        sport_type: row.get(4)?,
+        duration_seconds: row.get(5)?,
+        distance_m: row.get(6)?,
+        elevation_gain_m: row.get(7)?,
+        avg_speed_mps: row.get(8)?,
+        max_speed_mps: row.get(9)?,
+        avg_hr: row.get(10)?,
+        max_hr: row.get(11)?,
+        has_gps: row.get::<_, i64>(12)? == 1,
     })
 }
 
@@ -252,6 +298,7 @@ pub fn list_activities(
       id,
       source_path,
       activity_start,
+      category,
       sport_type,
       duration_seconds,
       distance_m,
@@ -264,10 +311,11 @@ pub fn list_activities(
     FROM activities
     WHERE (?1 IS NULL OR date(activity_start) >= date(?1))
       AND (?2 IS NULL OR date(activity_start) <= date(?2))
-      AND (?3 IS NULL OR sport_type = ?3)
-      AND (?4 IS NULL OR distance_m >= ?4)
-      AND (?5 IS NULL OR distance_m <= ?5)
-      AND (?6 IS NULL OR date(activity_start) = date(?6))
+      AND (?3 IS NULL OR category = ?3)
+      AND (?4 IS NULL OR sport_type = ?4)
+      AND (?5 IS NULL OR distance_m >= ?5)
+      AND (?6 IS NULL OR distance_m <= ?6)
+      AND (?7 IS NULL OR date(activity_start) = date(?7))
     ORDER BY activity_start DESC
     "#,
     )?;
@@ -276,6 +324,7 @@ pub fn list_activities(
         params![
             filters.start_date.as_deref(),
             filters.end_date.as_deref(),
+            filters.category.as_deref(),
             filters.sport_type.as_deref(),
             filters.min_distance,
             filters.max_distance,
@@ -299,6 +348,7 @@ pub fn get_activity(conn: &Connection, id: i64) -> Result<ActivityDetail> {
       id,
       source_path,
       activity_start,
+      category,
       sport_type,
       duration_seconds,
       distance_m,
@@ -322,18 +372,19 @@ pub fn get_activity(conn: &Connection, id: i64) -> Result<ActivityDetail> {
                     id: row.get(0)?,
                     source_path: row.get(1)?,
                     activity_start: row.get(2)?,
-                    sport_type: row.get(3)?,
-                    duration_seconds: row.get(4)?,
-                    distance_m: row.get(5)?,
-                    elevation_gain_m: row.get(6)?,
-                    avg_speed_mps: row.get(7)?,
-                    max_speed_mps: row.get(8)?,
-                    avg_hr: row.get(9)?,
-                    max_hr: row.get(10)?,
-                    has_gps: row.get::<_, i64>(11)? == 1,
+                    category: row.get(3)?,
+                    sport_type: row.get(4)?,
+                    duration_seconds: row.get(5)?,
+                    distance_m: row.get(6)?,
+                    elevation_gain_m: row.get(7)?,
+                    avg_speed_mps: row.get(8)?,
+                    max_speed_mps: row.get(9)?,
+                    avg_hr: row.get(10)?,
+                    max_hr: row.get(11)?,
+                    has_gps: row.get::<_, i64>(12)? == 1,
                 },
-                row.get(12)?,
                 row.get(13)?,
+                row.get(14)?,
             ))
         })
         .optional()?

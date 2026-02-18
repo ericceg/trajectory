@@ -20,20 +20,27 @@ import {
 import type { ActivityFilters, ActivitySummary } from '@/types';
 
 const columnHelper = createColumnHelper<ActivitySummary>();
+const CATEGORY_OPTIONS = [
+  'Running',
+  'Biking',
+  'Strength',
+  'Walking',
+  'Hiking',
+  'Swimming',
+  'Rowing',
+  'Mobility',
+  'Other'
+];
 
 export function ActivitiesPage() {
   const navigate = useNavigate();
 
   const [filters, setFilters] = useState<{
-    startDate: string;
-    endDate: string;
-    sportType: string;
+    category: string;
     minDistanceKm: string;
     maxDistanceKm: string;
   }>({
-    startDate: '',
-    endDate: '',
-    sportType: '',
+    category: '',
     minDistanceKm: '',
     maxDistanceKm: ''
   });
@@ -49,8 +56,8 @@ export function ActivitiesPage() {
         header: 'Date/Time',
         cell: (info) => formatDateTime(info.getValue())
       }),
-      columnHelper.accessor('sportType', {
-        header: 'Sport'
+      columnHelper.accessor('category', {
+        header: 'Category'
       }),
       columnHelper.accessor('distanceM', {
         header: 'Distance',
@@ -94,9 +101,7 @@ export function ActivitiesPage() {
 
   const loadActivities = async () => {
     const query: ActivityFilters = {
-      startDate: filters.startDate || undefined,
-      endDate: filters.endDate || undefined,
-      sportType: filters.sportType || undefined,
+      category: filters.category || undefined,
       minDistance: filters.minDistanceKm ? Number(filters.minDistanceKm) * 1000 : undefined,
       maxDistance: filters.maxDistanceKm ? Number(filters.maxDistanceKm) * 1000 : undefined
     };
@@ -116,7 +121,7 @@ export function ActivitiesPage() {
 
   useEffect(() => {
     void loadActivities();
-  }, []);
+  }, [filters]);
 
   return (
     <div className="space-y-6">
@@ -126,26 +131,19 @@ export function ActivitiesPage() {
       </header>
 
       <section className="rounded-xl border border-border bg-panel p-4 shadow-card">
-        <div className="grid gap-3 md:grid-cols-5">
-          <input
-            type="date"
-            value={filters.startDate}
-            onChange={(event) => setFilters((prev) => ({ ...prev, startDate: event.target.value }))}
+        <div className="grid gap-3 md:grid-cols-3">
+          <select
+            value={filters.category}
+            onChange={(event) => setFilters((prev) => ({ ...prev, category: event.target.value }))}
             className="rounded-md border border-border bg-bg px-3 py-2 text-sm"
-          />
-          <input
-            type="date"
-            value={filters.endDate}
-            onChange={(event) => setFilters((prev) => ({ ...prev, endDate: event.target.value }))}
-            className="rounded-md border border-border bg-bg px-3 py-2 text-sm"
-          />
-          <input
-            type="text"
-            placeholder="Sport type"
-            value={filters.sportType}
-            onChange={(event) => setFilters((prev) => ({ ...prev, sportType: event.target.value }))}
-            className="rounded-md border border-border bg-bg px-3 py-2 text-sm"
-          />
+          >
+            <option value="">All categories</option>
+            {CATEGORY_OPTIONS.map((category) => (
+              <option key={category} value={category}>
+                {category}
+              </option>
+            ))}
+          </select>
           <input
             type="number"
             min="0"
@@ -169,14 +167,6 @@ export function ActivitiesPage() {
             className="rounded-md border border-border bg-bg px-3 py-2 text-sm"
           />
         </div>
-
-        <button
-          type="button"
-          onClick={() => void loadActivities()}
-          className="mt-3 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-white"
-        >
-          Apply Filters
-        </button>
       </section>
 
       {error ? <p className="rounded-lg bg-accent/20 p-3 text-sm text-accent">{error}</p> : null}

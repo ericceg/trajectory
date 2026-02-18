@@ -177,7 +177,7 @@ export function DashboardPage() {
                 to={`/activities/${activity.id}`}
                 className="block rounded-md border border-border bg-bg/40 p-3 hover:border-accent/50"
               >
-                <p className="text-foreground">{activity.sportType}</p>
+                <p className="text-foreground">{activity.category}</p>
                 <p>{formatDateTime(activity.activityStart)}</p>
                 <p>
                   {formatDistanceKm(activity.distanceM)} · {formatDuration(activity.durationSeconds)}
@@ -197,7 +197,7 @@ export function DashboardPage() {
                 to={`/activities/${activity.id}`}
                 className="block rounded-md border border-border bg-bg/40 p-3 hover:border-accent/50"
               >
-                <p className="text-foreground">{activity.sportType}</p>
+                <p className="text-foreground">{activity.category}</p>
                 <p>{formatDateTime(activity.activityStart)}</p>
                 <p>
                   {formatDistanceKm(activity.distanceM)} · {formatDuration(activity.durationSeconds)}

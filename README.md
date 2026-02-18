@@ -13,6 +13,9 @@ Prototype (actively evolving).
 - Import an existing folder of `.tcx` files (optionally recursive)
 - Incremental rescans using file path + mtime + size
 - Background parsing with progress events
+- Workout category derivation (`Running`, `Biking`, `Strength`, etc.) from TCX sport + notes
+- Single visible workout category in UI (used for filtering)
+- Activities filters auto-apply on change (no Apply button)
 - Light mode by default with optional dark mode toggle in Settings
 - Dashboard with calendar, weekly rollups, and year-to-date totals
 - Filterable/sortable activities table
@@ -49,7 +52,7 @@ npm run tauri dev
 3. Open **Settings** and click **Rescan**.
 4. Explore:
    - **Dashboard** for calendar + weekly/year summaries
-   - **Activities** for filtering/sorting workouts
+   - **Activities** for filtering/sorting workouts (category + distance filters auto-apply)
    - **Activity Detail** for metrics/map/charts
    - **Statistics** for aggregate trends and histograms
 
@@ -94,6 +97,12 @@ Implemented commands:
 - `list_activities(filters)`
 - `get_activity(id)`
 - `get_stats(range)`
+
+`list_activities(filters)` supports:
+- `startDate`, `endDate`
+- `category` (normalized workout category)
+- `minDistance`, `maxDistance`
+- `day`
 
 Progress events:
 

@@ -34,6 +34,53 @@ fn parse_f64(value: &str) -> Option<f64> {
     value.parse::<f64>().ok()
 }
 
+fn contains_any(haystack: &str, needles: &[&str]) -> bool {
+    needles.iter().any(|needle| haystack.contains(needle))
+}
+
+fn derive_activity_category(sport_type: &str, notes: Option<&str>) -> String {
+    let sport = sport_type.trim().to_ascii_lowercase();
+    let notes = notes.unwrap_or("").trim().to_ascii_lowercase();
+    let combined = format!("{sport} {notes}");
+
+    if contains_any(&combined, &["run", "jog", "treadmill"]) {
+        "Running".to_string()
+    } else if contains_any(
+        &combined,
+        &[
+            "biking", "bike", "bicycle", "cycling", "cycle", "ride", "spin",
+        ],
+    ) {
+        "Biking".to_string()
+    } else if contains_any(&combined, &["hike", "trail"]) {
+        "Hiking".to_string()
+    } else if contains_any(&combined, &["walk"]) {
+        "Walking".to_string()
+    } else if contains_any(&combined, &["swim"]) {
+        "Swimming".to_string()
+    } else if contains_any(&combined, &["row", "rowing", "erg"]) {
+        "Rowing".to_string()
+    } else if contains_any(
+        &combined,
+        &[
+            "strength",
+            "bodyweight",
+            "weight",
+            "lifting",
+            "gym",
+            "crossfit",
+            "hiit",
+            "workout",
+        ],
+    ) {
+        "Strength".to_string()
+    } else if contains_any(&combined, &["yoga", "pilates", "mobility", "stretch"]) {
+        "Mobility".to_string()
+    } else {
+        "Other".to_string()
+    }
+}
+
 fn haversine_m(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
     let r = 6_371_000.0_f64;
     let lat1r = lat1.to_radians();
@@ -78,6 +125,7 @@ pub fn parse_tcx_file(path: &Path) -> Result<ParsedActivity> {
     let mut current_tag = String::new();
 
     let mut sport_type = String::from("Other");
+    let mut notes: Option<String> = None;
     let mut activity_start: Option<DateTime<Utc>> = None;
 
     let mut in_trackpoint = false;
@@ -154,6 +202,7 @@ pub fn parse_tcx_file(path: &Path) -> Result<ParsedActivity> {
                 } else {
                     match current_tag.as_str() {
                         "Id" if activity_start.is_none() => activity_start = parse_time(&value),
+                        "Notes" if notes.is_none() => notes = Some(value.clone()),
                         "TotalTimeSeconds" if in_lap => {
                             if let Some(v) = parse_f64(&value) {
                                 lap_duration_total += v;
@@ -360,9 +409,11 @@ pub fn parse_tcx_file(path: &Path) -> Result<ParsedActivity> {
 
     let sampled_track = downsample(&raw_track, MAX_UI_POINTS);
     let sampled_samples = downsample(&raw_samples, MAX_UI_POINTS);
+    let category = derive_activity_category(&sport_type, notes.as_deref());
 
     Ok(ParsedActivity {
         start_time: start_time.to_rfc3339(),
+        category,
         sport_type,
         duration_seconds: duration_seconds.max(0.0),
         distance_m: distance_m.max(0.0),

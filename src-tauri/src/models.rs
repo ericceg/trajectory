@@ -25,6 +25,7 @@ impl Default for Settings {
 pub struct ActivityFilters {
     pub start_date: Option<String>,
     pub end_date: Option<String>,
+    pub category: Option<String>,
     pub sport_type: Option<String>,
     pub min_distance: Option<f64>,
     pub max_distance: Option<f64>,
@@ -36,6 +37,7 @@ impl Default for ActivityFilters {
         Self {
             start_date: None,
             end_date: None,
+            category: None,
             sport_type: None,
             min_distance: None,
             max_distance: None,
@@ -50,6 +52,7 @@ pub struct ActivitySummary {
     pub id: i64,
     pub source_path: String,
     pub activity_start: String,
+    pub category: String,
     pub sport_type: String,
     pub duration_seconds: f64,
     pub distance_m: f64,
@@ -137,6 +140,7 @@ pub struct ScanDoneEvent {
 #[derive(Debug, Clone)]
 pub struct ParsedActivity {
     pub start_time: String,
+    pub category: String,
     pub sport_type: String,
     pub duration_seconds: f64,
     pub distance_m: f64,
