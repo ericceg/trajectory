@@ -122,7 +122,7 @@ export function ActivitiesPage() {
     <div className="space-y-6">
       <header>
         <p className="text-xs uppercase tracking-[0.2em] text-muted">Activities</p>
-        <h2 className="mt-2 text-3xl font-semibold text-white">All Workouts</h2>
+        <h2 className="mt-2 text-3xl font-semibold text-foreground">All Workouts</h2>
       </header>
 
       <section className="rounded-xl border border-border bg-panel p-4 shadow-card">
@@ -173,7 +173,7 @@ export function ActivitiesPage() {
         <button
           type="button"
           onClick={() => void loadActivities()}
-          className="mt-3 rounded-md bg-accent px-4 py-2 text-sm font-semibold"
+          className="mt-3 rounded-md bg-accent px-4 py-2 text-sm font-semibold text-white"
         >
           Apply Filters
         </button>

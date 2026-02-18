@@ -3,9 +3,28 @@
 @tailwind utilities;
 
 :root {
-  color: #ffffff;
-  background-color: #0e1012;
+  --color-bg: 246 248 251;
+  --color-panel: 255 255 255;
+  --color-muted: 93 102 116;
+  --color-accent: 252 76 2;
+  --color-border: 220 226 234;
+  --color-foreground: 23 32 45;
+  --app-glow-a: rgba(252, 76, 2, 0.08);
+  --app-glow-b: rgba(252, 76, 2, 0.04);
+  --app-bg-solid: #f6f8fb;
   font-family: 'Avenir Next', 'Montserrat', 'Segoe UI', sans-serif;
+}
+
+:root[data-theme='dark'] {
+  --color-bg: 14 16 18;
+  --color-panel: 23 26 31;
+  --color-muted: 158 164 174;
+  --color-accent: 252 76 2;
+  --color-border: 38 43 51;
+  --color-foreground: 248 250 252;
+  --app-glow-a: rgba(252, 76, 2, 0.14);
+  --app-glow-b: rgba(252, 76, 2, 0.08);
+  --app-bg-solid: #0e1012;
 }
 
 * {
@@ -15,10 +34,11 @@
 body {
   margin: 0;
   min-height: 100vh;
+  color: rgb(var(--color-foreground));
   background:
-    radial-gradient(circle at 10% 20%, rgba(252, 76, 2, 0.14), transparent 40%),
-    radial-gradient(circle at 80% 0%, rgba(252, 76, 2, 0.08), transparent 45%),
-    #0e1012;
+    radial-gradient(circle at 10% 20%, var(--app-glow-a), transparent 40%),
+    radial-gradient(circle at 80% 0%, var(--app-glow-b), transparent 45%),
+    var(--app-bg-solid);
 }
 
 a {
@@ -27,5 +47,5 @@ a {
 }
 
 .leaflet-container {
-  background: #0f1218;
+  background: rgb(var(--color-bg));
 }

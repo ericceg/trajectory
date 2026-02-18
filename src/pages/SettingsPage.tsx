@@ -11,6 +11,7 @@ export function SettingsPage() {
   const scanDone = useAppStore((state) => state.scanDone);
   const updateImportFolder = useAppStore((state) => state.updateImportFolder);
   const setScanRecursive = useAppStore((state) => state.setScanRecursive);
+  const updateDarkMode = useAppStore((state) => state.updateDarkMode);
   const runScan = useAppStore((state) => state.runScan);
 
   const [error, setError] = useState<string | null>(null);
@@ -42,13 +43,13 @@ export function SettingsPage() {
     <div className="space-y-6">
       <header>
         <p className="text-xs uppercase tracking-[0.2em] text-muted">Settings</p>
-        <h2 className="mt-2 text-3xl font-semibold text-white">Import Configuration</h2>
+        <h2 className="mt-2 text-3xl font-semibold text-foreground">Import Configuration</h2>
       </header>
 
       {error ? <p className="rounded-lg bg-accent/20 p-3 text-sm text-accent">{error}</p> : null}
 
       <section className="rounded-xl border border-border bg-panel p-5 shadow-card">
-        <h3 className="text-lg font-semibold text-white">Import Folder</h3>
+        <h3 className="text-lg font-semibold text-foreground">Import Folder</h3>
         <p className="mt-2 text-sm text-muted">
           Current folder: {settings?.importFolderPath ?? 'Not set'}
         </p>
@@ -57,7 +58,7 @@ export function SettingsPage() {
           <button
             type="button"
             onClick={() => void handleChooseFolder()}
-            className="rounded-md bg-accent px-4 py-2 text-sm font-semibold"
+            className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-white"
           >
             Choose Folder
           </button>
@@ -70,6 +71,16 @@ export function SettingsPage() {
               className="h-4 w-4 rounded border-border bg-bg"
             />
             Scan recursively
+          </label>
+
+          <label className="flex items-center gap-2 text-sm text-muted">
+            <input
+              type="checkbox"
+              checked={settings?.darkMode ?? false}
+              onChange={(event) => void updateDarkMode(event.target.checked)}
+              className="h-4 w-4 rounded border-border bg-bg"
+            />
+            Dark mode
           </label>
 
           <button
@@ -91,7 +102,7 @@ export function SettingsPage() {
 
       {scanDone?.errors.length ? (
         <section className="rounded-xl border border-border bg-panel p-4 shadow-card">
-          <h3 className="text-lg font-semibold text-white">Scan Errors</h3>
+          <h3 className="text-lg font-semibold text-foreground">Scan Errors</h3>
           <ul className="mt-3 space-y-2 text-xs text-accent">
             {scanDone.errors.map((entry) => (
               <li key={entry} className="rounded-md border border-accent/30 bg-accent/10 p-2">

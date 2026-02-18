@@ -17,6 +17,9 @@ export const getSettings = () => invoke<Settings>('get_settings');
 export const setImportFolder = (path: string, recursive: boolean) =>
   invoke<Settings>('set_import_folder', { path, recursive });
 
+export const setDarkMode = (darkMode: boolean) =>
+  invoke<Settings>('set_dark_mode', { darkMode });
+
 export const scanImportFolder = () => invoke<ScanDoneEvent>('scan_import_folder');
 
 export const listActivities = (filters?: ActivityFilters) =>

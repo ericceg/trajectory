@@ -89,7 +89,7 @@ export function StatisticsPage() {
     <div className="space-y-6">
       <header>
         <p className="text-xs uppercase tracking-[0.2em] text-muted">Statistics</p>
-        <h2 className="mt-2 text-3xl font-semibold text-white">Aggregate Analysis</h2>
+        <h2 className="mt-2 text-3xl font-semibold text-foreground">Aggregate Analysis</h2>
       </header>
 
       <div className="flex flex-wrap gap-2">
@@ -122,7 +122,7 @@ export function StatisticsPage() {
 
       <div className="grid gap-6 xl:grid-cols-2">
         <section className="rounded-xl border border-border bg-panel p-4 shadow-card">
-          <h3 className="text-lg font-semibold text-white">Workout Duration Histogram</h3>
+          <h3 className="text-lg font-semibold text-foreground">Workout Duration Histogram</h3>
           <div className="mt-3 h-72">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={durationHistogramData}>
@@ -137,7 +137,7 @@ export function StatisticsPage() {
         </section>
 
         <section className="rounded-xl border border-border bg-panel p-4 shadow-card">
-          <h3 className="text-lg font-semibold text-white">Distance Histogram</h3>
+          <h3 className="text-lg font-semibold text-foreground">Distance Histogram</h3>
           <div className="mt-3 h-72">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={distanceHistogramData}>
@@ -153,7 +153,7 @@ export function StatisticsPage() {
       </div>
 
       <section className="rounded-xl border border-border bg-panel p-4 shadow-card">
-        <h3 className="text-lg font-semibold text-white">Weekly / Monthly Distance Trend</h3>
+        <h3 className="text-lg font-semibold text-foreground">Weekly / Monthly Distance Trend</h3>
         <div className="mt-3 h-80">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart data={trendData}>

@@ -13,6 +13,7 @@ Prototype (actively evolving).
 - Import an existing folder of `.tcx` files (optionally recursive)
 - Incremental rescans using file path + mtime + size
 - Background parsing with progress events
+- Light mode by default with optional dark mode toggle in Settings
 - Dashboard with calendar, weekly rollups, and year-to-date totals
 - Filterable/sortable activities table
 - Activity detail with metrics, route map, and charts
@@ -88,6 +89,7 @@ Implemented commands:
 
 - `get_settings()`
 - `set_import_folder(path, recursive)`
+- `set_dark_mode(dark_mode)`
 - `scan_import_folder()`
 - `list_activities(filters)`
 - `get_activity(id)`
@@ -105,4 +107,3 @@ Progress events:
 - User accounts/login
 - Editing TCX files
 - Mobile app
-

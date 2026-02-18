@@ -80,6 +80,15 @@ async fn set_import_folder(
 }
 
 #[tauri::command]
+async fn set_dark_mode(dark_mode: bool, state: State<'_, AppState>) -> Result<Settings, String> {
+    let mut settings =
+        settings::load_settings(&state.settings_path).map_err(|err| err.to_string())?;
+    settings.dark_mode = dark_mode;
+    settings::save_settings(&state.settings_path, &settings).map_err(|err| err.to_string())?;
+    Ok(settings)
+}
+
+#[tauri::command]
 async fn scan_import_folder(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -145,6 +154,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             get_settings,
             set_import_folder,
+            set_dark_mode,
             scan_import_folder,
             list_activities,
             get_activity,

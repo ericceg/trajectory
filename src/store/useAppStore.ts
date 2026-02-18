@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import {
   getSettings,
   scanImportFolder,
+  setDarkMode,
   setImportFolder,
   onScanDone,
   onScanProgress
@@ -18,6 +19,7 @@ interface AppState {
   init: () => Promise<void>;
   updateImportFolder: (path: string, recursive: boolean) => Promise<void>;
   setScanRecursive: (recursive: boolean) => Promise<void>;
+  updateDarkMode: (darkMode: boolean) => Promise<void>;
   runScan: () => Promise<void>;
 }
 
@@ -57,6 +59,10 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     const settings = await setImportFolder(current.importFolderPath, recursive);
     set({ settings, scanDone: null });
+  },
+  updateDarkMode: async (darkMode) => {
+    const settings = await setDarkMode(darkMode);
+    set({ settings });
   },
   runScan: async () => {
     set({ scanning: true, scanDone: null });

@@ -2,6 +2,7 @@ export interface Settings {
   importFolderPath: string | null;
   scanRecursive: boolean;
   lastScanTimestamp: string | null;
+  darkMode: boolean;
 }
 
 export interface ActivityFilters {

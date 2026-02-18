@@ -47,15 +47,15 @@ export function MonthCalendar({
       <div className="mb-4 flex items-center justify-between">
         <button
           type="button"
-          className="rounded-md border border-border px-3 py-1 text-sm text-muted hover:text-white"
+          className="rounded-md border border-border px-3 py-1 text-sm text-muted hover:text-foreground"
           onClick={() => onMonthChange(subMonths(month, 1))}
         >
           Prev
         </button>
-        <h3 className="text-lg font-semibold text-white">{format(month, 'MMMM yyyy')}</h3>
+        <h3 className="text-lg font-semibold text-foreground">{format(month, 'MMMM yyyy')}</h3>
         <button
           type="button"
-          className="rounded-md border border-border px-3 py-1 text-sm text-muted hover:text-white"
+          className="rounded-md border border-border px-3 py-1 text-sm text-muted hover:text-foreground"
           onClick={() => onMonthChange(addMonths(month, 1))}
         >
           Next
@@ -86,7 +86,7 @@ export function MonthCalendar({
                   : count > 0
                     ? 'border-accent/40 bg-accent/10'
                     : 'border-border bg-bg/40 hover:bg-white/5'
-              } ${inCurrentMonth ? 'text-white' : 'text-muted/40'}`}
+              } ${inCurrentMonth ? 'text-foreground' : 'text-muted/40'}`}
             >
               <span className="block text-sm font-medium">{format(day, 'd')}</span>
               {count > 0 ? <span className="mt-1 block text-xs text-muted">{count} act.</span> : null}

@@ -4,11 +4,12 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        bg: '#0E1012',
-        panel: '#171A1F',
-        muted: '#9EA4AE',
-        accent: '#FC4C02',
-        border: '#262B33'
+        bg: 'rgb(var(--color-bg) / <alpha-value>)',
+        panel: 'rgb(var(--color-panel) / <alpha-value>)',
+        muted: 'rgb(var(--color-muted) / <alpha-value>)',
+        accent: 'rgb(var(--color-accent) / <alpha-value>)',
+        border: 'rgb(var(--color-border) / <alpha-value>)',
+        foreground: 'rgb(var(--color-foreground) / <alpha-value>)'
       },
       boxShadow: {
         card: '0 10px 30px rgba(0, 0, 0, 0.25)'

@@ -116,12 +116,12 @@ export function ActivityDetailPage() {
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-xs uppercase tracking-[0.2em] text-muted">Activity Detail</p>
-          <h2 className="mt-2 text-3xl font-semibold text-white">{detail.summary.sportType}</h2>
+          <h2 className="mt-2 text-3xl font-semibold text-foreground">{detail.summary.sportType}</h2>
           <p className="mt-1 text-sm text-muted">{formatDateTime(detail.summary.activityStart)}</p>
         </div>
         <Link
           to="/activities"
-          className="rounded-md border border-border px-3 py-2 text-sm text-muted hover:text-white"
+          className="rounded-md border border-border px-3 py-2 text-sm text-muted hover:text-foreground"
         >
           Back to Activities
         </Link>
@@ -145,7 +145,7 @@ export function ActivityDetailPage() {
 
       <section className="overflow-hidden rounded-xl border border-border bg-panel shadow-card">
         <div className="border-b border-border px-4 py-3">
-          <h3 className="text-lg font-semibold text-white">Route</h3>
+          <h3 className="text-lg font-semibold text-foreground">Route</h3>
         </div>
         <div className="h-80">
           {positions.length === 0 ? (
@@ -167,7 +167,7 @@ export function ActivityDetailPage() {
 
       <div className="grid gap-6 xl:grid-cols-3">
         <section className="rounded-xl border border-border bg-panel p-4 shadow-card">
-          <h3 className="text-lg font-semibold text-white">Speed vs Time</h3>
+          <h3 className="text-lg font-semibold text-foreground">Speed vs Time</h3>
           <div className="mt-3 h-64">
             {speedData.length === 0 ? (
               <p className="text-sm text-muted">No speed samples available.</p>
@@ -186,7 +186,7 @@ export function ActivityDetailPage() {
         </section>
 
         <section className="rounded-xl border border-border bg-panel p-4 shadow-card">
-          <h3 className="text-lg font-semibold text-white">Heart Rate vs Time</h3>
+          <h3 className="text-lg font-semibold text-foreground">Heart Rate vs Time</h3>
           <div className="mt-3 h-64">
             {heartRateData.length === 0 ? (
               <p className="text-sm text-muted">No heart rate data available.</p>
@@ -205,7 +205,7 @@ export function ActivityDetailPage() {
         </section>
 
         <section className="rounded-xl border border-border bg-panel p-4 shadow-card">
-          <h3 className="text-lg font-semibold text-white">Elevation</h3>
+          <h3 className="text-lg font-semibold text-foreground">Elevation</h3>
           <div className="mt-3 h-64">
             {elevationData.length === 0 ? (
               <p className="text-sm text-muted">No elevation data available.</p>

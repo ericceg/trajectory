@@ -109,7 +109,7 @@ export function DashboardPage() {
     <div className="space-y-6">
       <header>
         <p className="text-xs uppercase tracking-[0.2em] text-muted">Dashboard</p>
-        <h2 className="mt-2 text-3xl font-semibold text-white">Training Overview</h2>
+        <h2 className="mt-2 text-3xl font-semibold text-foreground">Training Overview</h2>
       </header>
 
       {error ? <p className="rounded-lg bg-accent/20 p-3 text-sm text-accent">{error}</p> : null}
@@ -148,14 +148,14 @@ export function DashboardPage() {
         <div className="space-y-4">
           <ScanStatusCard scanning={scanning} progress={scanProgress} done={scanDone} />
           <section className="rounded-xl border border-border bg-panel p-4 shadow-card">
-            <h3 className="text-lg font-semibold text-white">Weekly Rollups</h3>
+            <h3 className="text-lg font-semibold text-foreground">Weekly Rollups</h3>
             <div className="mt-3 space-y-2 text-sm text-muted">
               {weeklyRollups.slice(0, 6).map((rollup) => (
                 <div key={rollup.weekStart} className="rounded-md border border-border bg-bg/40 p-3">
                   <p className="text-xs uppercase tracking-[0.12em]">
                     Week of {rollup.weekStart}
                   </p>
-                  <p className="mt-1 text-white">{formatDistanceKm(rollup.distance)}</p>
+                  <p className="mt-1 text-foreground">{formatDistanceKm(rollup.distance)}</p>
                   <p>{formatDuration(rollup.duration)}</p>
                 </div>
               ))}
@@ -167,7 +167,7 @@ export function DashboardPage() {
 
       <div className="grid gap-6 xl:grid-cols-2">
         <section className="rounded-xl border border-border bg-panel p-4 shadow-card">
-          <h3 className="text-lg font-semibold text-white">
+          <h3 className="text-lg font-semibold text-foreground">
             {selectedDay ? `Activities on ${selectedDay}` : 'Select a day in calendar'}
           </h3>
           <div className="mt-3 space-y-2 text-sm text-muted">
@@ -177,7 +177,7 @@ export function DashboardPage() {
                 to={`/activities/${activity.id}`}
                 className="block rounded-md border border-border bg-bg/40 p-3 hover:border-accent/50"
               >
-                <p className="text-white">{activity.sportType}</p>
+                <p className="text-foreground">{activity.sportType}</p>
                 <p>{formatDateTime(activity.activityStart)}</p>
                 <p>
                   {formatDistanceKm(activity.distanceM)} · {formatDuration(activity.durationSeconds)}
@@ -189,7 +189,7 @@ export function DashboardPage() {
         </section>
 
         <section className="rounded-xl border border-border bg-panel p-4 shadow-card">
-          <h3 className="text-lg font-semibold text-white">Recent Activities</h3>
+          <h3 className="text-lg font-semibold text-foreground">Recent Activities</h3>
           <div className="mt-3 space-y-2 text-sm text-muted">
             {recentActivities.map((activity) => (
               <Link
@@ -197,7 +197,7 @@ export function DashboardPage() {
                 to={`/activities/${activity.id}`}
                 className="block rounded-md border border-border bg-bg/40 p-3 hover:border-accent/50"
               >
-                <p className="text-white">{activity.sportType}</p>
+                <p className="text-foreground">{activity.sportType}</p>
                 <p>{formatDateTime(activity.activityStart)}</p>
                 <p>
                   {formatDistanceKm(activity.distanceM)} · {formatDuration(activity.durationSeconds)}

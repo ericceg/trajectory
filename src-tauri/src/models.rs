@@ -1,11 +1,12 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", default)]
 pub struct Settings {
     pub import_folder_path: Option<String>,
     pub scan_recursive: bool,
     pub last_scan_timestamp: Option<String>,
+    pub dark_mode: bool,
 }
 
 impl Default for Settings {
@@ -14,6 +15,7 @@ impl Default for Settings {
             import_folder_path: None,
             scan_recursive: true,
             last_scan_timestamp: None,
+            dark_mode: false,
         }
     }
 }

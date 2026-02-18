@@ -12,7 +12,7 @@ export function ScanStatusCard({ scanning, progress, done }: ScanStatusCardProps
     return (
       <section className="rounded-xl border border-border bg-panel p-4 shadow-card">
         <p className="text-xs uppercase tracking-[0.18em] text-muted">Scan In Progress</p>
-        <p className="mt-2 text-lg font-semibold text-white">
+        <p className="mt-2 text-lg font-semibold text-foreground">
           {progress.parsed} / {progress.total} ({percent}%)
         </p>
         <p className="mt-1 truncate text-sm text-muted">{progress.current_file}</p>
@@ -24,7 +24,7 @@ export function ScanStatusCard({ scanning, progress, done }: ScanStatusCardProps
     return (
       <section className="rounded-xl border border-border bg-panel p-4 shadow-card">
         <p className="text-xs uppercase tracking-[0.18em] text-muted">Last Scan</p>
-        <p className="mt-2 text-sm text-white">
+        <p className="mt-2 text-sm text-foreground">
           Added: {done.added} · Updated: {done.updated} · Skipped: {done.skipped}
         </p>
         {done.errors.length > 0 ? (

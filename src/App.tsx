@@ -12,7 +12,7 @@ import { OnboardingPage } from '@/pages/OnboardingPage';
 
 function AppLayout() {
   return (
-    <div className="flex min-h-screen bg-bg text-white">
+    <div className="flex min-h-screen bg-bg text-foreground">
       <Sidebar />
       <main className="flex-1 overflow-y-auto p-6">
         <Routes>
@@ -36,6 +36,10 @@ export default function App() {
   useEffect(() => {
     void init();
   }, [init]);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = settings?.darkMode ? 'dark' : 'light';
+  }, [settings?.darkMode]);
 
   if (loadingSettings) {
     return (
