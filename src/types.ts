@@ -1,0 +1,90 @@
+export interface Settings {
+  importFolderPath: string | null;
+  scanRecursive: boolean;
+  lastScanTimestamp: string | null;
+}
+
+export interface ActivityFilters {
+  startDate?: string;
+  endDate?: string;
+  sportType?: string;
+  minDistance?: number;
+  maxDistance?: number;
+  day?: string;
+}
+
+export interface ActivitySummary {
+  id: number;
+  sourcePath: string;
+  activityStart: string;
+  sportType: string;
+  durationSeconds: number;
+  distanceM: number;
+  elevationGainM: number;
+  avgSpeedMps: number | null;
+  maxSpeedMps: number | null;
+  avgHr: number | null;
+  maxHr: number | null;
+  hasGps: boolean;
+}
+
+export interface TrackPoint {
+  lat: number;
+  lon: number;
+}
+
+export interface ActivitySample {
+  elapsedSeconds: number;
+  distanceM: number | null;
+  speedMps: number | null;
+  heartRate: number | null;
+  altitudeM: number | null;
+  lat: number | null;
+  lon: number | null;
+  timestamp: string | null;
+}
+
+export interface ActivityDetail {
+  summary: ActivitySummary;
+  track: TrackPoint[];
+  samples: ActivitySample[];
+  originalSampleCount: number;
+}
+
+export interface HistogramBin {
+  start: number;
+  end: number;
+  count: number;
+}
+
+export interface TrendPoint {
+  label: string;
+  distanceM: number;
+}
+
+export interface StatsResponse {
+  range: string;
+  totalDistanceM: number;
+  totalTimeS: number;
+  totalElevationM: number;
+  activityCount: number;
+  durationHistogram: HistogramBin[];
+  distanceHistogram: HistogramBin[];
+  weeklyDistance: TrendPoint[];
+  monthlyDistance: TrendPoint[];
+}
+
+export interface ScanProgressEvent {
+  parsed: number;
+  total: number;
+  current_file: string;
+}
+
+export interface ScanDoneEvent {
+  added: number;
+  updated: number;
+  skipped: number;
+  errors: string[];
+}
+
+export type StatsRange = 'week' | 'month' | 'year' | 'all';

@@ -1,0 +1,524 @@
+use std::{collections::HashMap, path::Path};
+
+use anyhow::{anyhow, Context, Result};
+use chrono::{Datelike, Duration, TimeZone, Utc};
+use rusqlite::{params, Connection, OptionalExtension};
+
+use crate::models::{
+    ActivityDetail, ActivityFilters, ActivitySample, ActivitySummary, HistogramBin, ParsedActivity,
+    SourceFileMeta, StatsResponse, TrackPoint, TrendPoint,
+};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UpsertResult {
+    Added,
+    Updated,
+}
+
+pub fn open_connection(db_path: &Path) -> Result<Connection> {
+    Connection::open(db_path)
+        .with_context(|| format!("failed opening sqlite database {}", db_path.display()))
+}
+
+pub fn init_db(db_path: &Path) -> Result<()> {
+    if let Some(parent) = db_path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("failed creating db directory {}", parent.display()))?;
+    }
+
+    let conn = open_connection(db_path)?;
+    conn.execute_batch(
+        r#"
+    PRAGMA journal_mode=WAL;
+    PRAGMA foreign_keys=ON;
+
+    CREATE TABLE IF NOT EXISTS activities (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source_path TEXT NOT NULL UNIQUE,
+      source_mtime INTEGER NOT NULL,
+      source_size INTEGER NOT NULL,
+      activity_start TEXT NOT NULL,
+      sport_type TEXT NOT NULL,
+      duration_seconds REAL NOT NULL,
+      distance_m REAL NOT NULL,
+      elevation_gain_m REAL NOT NULL,
+      avg_speed_mps REAL,
+      max_speed_mps REAL,
+      avg_hr REAL,
+      max_hr REAL,
+      has_gps INTEGER NOT NULL,
+      track_json TEXT NOT NULL,
+      original_sample_count INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_activities_start ON activities(activity_start);
+    CREATE INDEX IF NOT EXISTS idx_activities_sport ON activities(sport_type);
+
+    CREATE TABLE IF NOT EXISTS activity_samples (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      activity_id INTEGER NOT NULL,
+      elapsed_seconds REAL NOT NULL,
+      distance_m REAL,
+      speed_mps REAL,
+      heart_rate REAL,
+      altitude_m REAL,
+      lat REAL,
+      lon REAL,
+      sample_time TEXT,
+      FOREIGN KEY(activity_id) REFERENCES activities(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_samples_activity_id ON activity_samples(activity_id);
+    "#,
+    )?;
+
+    Ok(())
+}
+
+pub fn source_file_meta_map(conn: &Connection) -> Result<HashMap<String, SourceFileMeta>> {
+    let mut stmt = conn.prepare("SELECT source_path, source_mtime, source_size FROM activities")?;
+
+    let mut map = HashMap::new();
+    let rows = stmt.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            SourceFileMeta {
+                source_mtime: row.get(1)?,
+                source_size: row.get(2)?,
+            },
+        ))
+    })?;
+
+    for row in rows {
+        let (path, meta) = row?;
+        map.insert(path, meta);
+    }
+
+    Ok(map)
+}
+
+pub fn upsert_activity(
+    conn: &mut Connection,
+    source_path: &str,
+    source_mtime: i64,
+    source_size: i64,
+    parsed: &ParsedActivity,
+) -> Result<UpsertResult> {
+    let existing_id: Option<i64> = conn
+        .query_row(
+            "SELECT id FROM activities WHERE source_path = ?1",
+            params![source_path],
+            |row| row.get(0),
+        )
+        .optional()?;
+
+    let track_json = serde_json::to_string(&parsed.track)?;
+
+    conn.execute(
+        r#"
+    INSERT INTO activities (
+      source_path,
+      source_mtime,
+      source_size,
+      activity_start,
+      sport_type,
+      duration_seconds,
+      distance_m,
+      elevation_gain_m,
+      avg_speed_mps,
+      max_speed_mps,
+      avg_hr,
+      max_hr,
+      has_gps,
+      track_json,
+      original_sample_count,
+      updated_at
+    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, CURRENT_TIMESTAMP)
+    ON CONFLICT(source_path) DO UPDATE SET
+      source_mtime = excluded.source_mtime,
+      source_size = excluded.source_size,
+      activity_start = excluded.activity_start,
+      sport_type = excluded.sport_type,
+      duration_seconds = excluded.duration_seconds,
+      distance_m = excluded.distance_m,
+      elevation_gain_m = excluded.elevation_gain_m,
+      avg_speed_mps = excluded.avg_speed_mps,
+      max_speed_mps = excluded.max_speed_mps,
+      avg_hr = excluded.avg_hr,
+      max_hr = excluded.max_hr,
+      has_gps = excluded.has_gps,
+      track_json = excluded.track_json,
+      original_sample_count = excluded.original_sample_count,
+      updated_at = CURRENT_TIMESTAMP
+    "#,
+        params![
+            source_path,
+            source_mtime,
+            source_size,
+            &parsed.start_time,
+            &parsed.sport_type,
+            parsed.duration_seconds,
+            parsed.distance_m,
+            parsed.elevation_gain_m,
+            parsed.avg_speed_mps,
+            parsed.max_speed_mps,
+            parsed.avg_hr,
+            parsed.max_hr,
+            if parsed.has_gps { 1 } else { 0 },
+            track_json,
+            parsed.original_sample_count as i64,
+        ],
+    )?;
+
+    let activity_id: i64 = conn.query_row(
+        "SELECT id FROM activities WHERE source_path = ?1",
+        params![source_path],
+        |row| row.get(0),
+    )?;
+
+    let transaction = conn.transaction()?;
+    transaction.execute(
+        "DELETE FROM activity_samples WHERE activity_id = ?1",
+        params![activity_id],
+    )?;
+
+    {
+        let mut insert_stmt = transaction.prepare(
+            r#"
+      INSERT INTO activity_samples (
+        activity_id,
+        elapsed_seconds,
+        distance_m,
+        speed_mps,
+        heart_rate,
+        altitude_m,
+        lat,
+        lon,
+        sample_time
+      ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+      "#,
+        )?;
+
+        for sample in &parsed.samples {
+            insert_stmt.execute(params![
+                activity_id,
+                sample.elapsed_seconds,
+                sample.distance_m,
+                sample.speed_mps,
+                sample.heart_rate,
+                sample.altitude_m,
+                sample.lat,
+                sample.lon,
+                sample.timestamp,
+            ])?;
+        }
+    }
+
+    transaction.commit()?;
+
+    Ok(if existing_id.is_some() {
+        UpsertResult::Updated
+    } else {
+        UpsertResult::Added
+    })
+}
+
+fn map_summary_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ActivitySummary> {
+    Ok(ActivitySummary {
+        id: row.get(0)?,
+        source_path: row.get(1)?,
+        activity_start: row.get(2)?,
+        sport_type: row.get(3)?,
+        duration_seconds: row.get(4)?,
+        distance_m: row.get(5)?,
+        elevation_gain_m: row.get(6)?,
+        avg_speed_mps: row.get(7)?,
+        max_speed_mps: row.get(8)?,
+        avg_hr: row.get(9)?,
+        max_hr: row.get(10)?,
+        has_gps: row.get::<_, i64>(11)? == 1,
+    })
+}
+
+pub fn list_activities(
+    conn: &Connection,
+    filters: &ActivityFilters,
+) -> Result<Vec<ActivitySummary>> {
+    let mut stmt = conn.prepare(
+        r#"
+    SELECT
+      id,
+      source_path,
+      activity_start,
+      sport_type,
+      duration_seconds,
+      distance_m,
+      elevation_gain_m,
+      avg_speed_mps,
+      max_speed_mps,
+      avg_hr,
+      max_hr,
+      has_gps
+    FROM activities
+    WHERE (?1 IS NULL OR date(activity_start) >= date(?1))
+      AND (?2 IS NULL OR date(activity_start) <= date(?2))
+      AND (?3 IS NULL OR sport_type = ?3)
+      AND (?4 IS NULL OR distance_m >= ?4)
+      AND (?5 IS NULL OR distance_m <= ?5)
+      AND (?6 IS NULL OR date(activity_start) = date(?6))
+    ORDER BY activity_start DESC
+    "#,
+    )?;
+
+    let rows = stmt.query_map(
+        params![
+            filters.start_date.as_deref(),
+            filters.end_date.as_deref(),
+            filters.sport_type.as_deref(),
+            filters.min_distance,
+            filters.max_distance,
+            filters.day.as_deref(),
+        ],
+        map_summary_row,
+    )?;
+
+    let mut activities = Vec::new();
+    for row in rows {
+        activities.push(row?);
+    }
+
+    Ok(activities)
+}
+
+pub fn get_activity(conn: &Connection, id: i64) -> Result<ActivityDetail> {
+    let mut stmt = conn.prepare(
+        r#"
+    SELECT
+      id,
+      source_path,
+      activity_start,
+      sport_type,
+      duration_seconds,
+      distance_m,
+      elevation_gain_m,
+      avg_speed_mps,
+      max_speed_mps,
+      avg_hr,
+      max_hr,
+      has_gps,
+      track_json,
+      original_sample_count
+    FROM activities
+    WHERE id = ?1
+    "#,
+    )?;
+
+    let (summary, track_json, original_sample_count): (ActivitySummary, String, i64) = stmt
+        .query_row(params![id], |row| {
+            Ok((
+                ActivitySummary {
+                    id: row.get(0)?,
+                    source_path: row.get(1)?,
+                    activity_start: row.get(2)?,
+                    sport_type: row.get(3)?,
+                    duration_seconds: row.get(4)?,
+                    distance_m: row.get(5)?,
+                    elevation_gain_m: row.get(6)?,
+                    avg_speed_mps: row.get(7)?,
+                    max_speed_mps: row.get(8)?,
+                    avg_hr: row.get(9)?,
+                    max_hr: row.get(10)?,
+                    has_gps: row.get::<_, i64>(11)? == 1,
+                },
+                row.get(12)?,
+                row.get(13)?,
+            ))
+        })
+        .optional()?
+        .ok_or_else(|| anyhow!("activity {} not found", id))?;
+
+    let track: Vec<TrackPoint> = serde_json::from_str(&track_json).unwrap_or_default();
+
+    let mut sample_stmt = conn.prepare(
+        r#"
+    SELECT elapsed_seconds, distance_m, speed_mps, heart_rate, altitude_m, lat, lon, sample_time
+    FROM activity_samples
+    WHERE activity_id = ?1
+    ORDER BY elapsed_seconds ASC
+    "#,
+    )?;
+
+    let sample_rows = sample_stmt.query_map(params![id], |row| {
+        Ok(ActivitySample {
+            elapsed_seconds: row.get(0)?,
+            distance_m: row.get(1)?,
+            speed_mps: row.get(2)?,
+            heart_rate: row.get(3)?,
+            altitude_m: row.get(4)?,
+            lat: row.get(5)?,
+            lon: row.get(6)?,
+            timestamp: row.get(7)?,
+        })
+    })?;
+
+    let mut samples = Vec::new();
+    for sample in sample_rows {
+        samples.push(sample?);
+    }
+
+    Ok(ActivityDetail {
+        summary,
+        track,
+        samples,
+        original_sample_count: original_sample_count as usize,
+    })
+}
+
+fn histogram(values: &[f64], bins: usize) -> Vec<HistogramBin> {
+    if values.is_empty() || bins == 0 {
+        return Vec::new();
+    }
+
+    let min = values.iter().copied().reduce(f64::min).unwrap_or(0.0);
+    let max = values.iter().copied().reduce(f64::max).unwrap_or(0.0);
+
+    if (max - min).abs() < f64::EPSILON {
+        return vec![HistogramBin {
+            start: min,
+            end: min + 1.0,
+            count: values.len(),
+        }];
+    }
+
+    let width = (max - min) / bins as f64;
+    let mut counts = vec![0usize; bins];
+
+    for value in values {
+        let mut index = ((value - min) / width).floor() as usize;
+        if index >= bins {
+            index = bins - 1;
+        }
+        counts[index] += 1;
+    }
+
+    counts
+        .into_iter()
+        .enumerate()
+        .map(|(idx, count)| HistogramBin {
+            start: min + width * idx as f64,
+            end: min + width * (idx as f64 + 1.0),
+            count,
+        })
+        .collect()
+}
+
+fn range_start_iso(range: &str) -> Option<String> {
+    let now = Utc::now();
+
+    let date = match range {
+        "week" => Some(now - Duration::days(6)),
+        "month" => Utc
+            .with_ymd_and_hms(now.year(), now.month(), 1, 0, 0, 0)
+            .single(),
+        "year" => Utc.with_ymd_and_hms(now.year(), 1, 1, 0, 0, 0).single(),
+        "all" => None,
+        _ => None,
+    };
+
+    date.map(|date| date.to_rfc3339())
+}
+
+fn distance_trends(conn: &Connection, group_fmt: &str, start_iso: &str) -> Result<Vec<TrendPoint>> {
+    let mut stmt = conn.prepare(
+        r#"
+    SELECT strftime(?1, activity_start) AS bucket, COALESCE(SUM(distance_m), 0)
+    FROM activities
+    WHERE activity_start >= ?2
+    GROUP BY bucket
+    ORDER BY bucket ASC
+    "#,
+    )?;
+
+    let rows = stmt.query_map(params![group_fmt, start_iso], |row| {
+        Ok(TrendPoint {
+            label: row.get::<_, String>(0)?,
+            distance_m: row.get(1)?,
+        })
+    })?;
+
+    let mut result = Vec::new();
+    for row in rows {
+        result.push(row?);
+    }
+
+    Ok(result)
+}
+
+pub fn get_stats(conn: &Connection, range: &str) -> Result<StatsResponse> {
+    let range = range.to_lowercase();
+    let now = Utc::now();
+    let start_iso = range_start_iso(&range);
+    let start_filter = start_iso.as_deref();
+
+    let mut summary_stmt = conn.prepare(
+        r#"
+    SELECT
+      COALESCE(SUM(distance_m), 0),
+      COALESCE(SUM(duration_seconds), 0),
+      COALESCE(SUM(elevation_gain_m), 0),
+      COUNT(*)
+    FROM activities
+    WHERE (?1 IS NULL OR activity_start >= ?1)
+    "#,
+    )?;
+
+    let (total_distance_m, total_time_s, total_elevation_m, activity_count): (f64, f64, f64, i64) =
+        summary_stmt.query_row(params![start_filter], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+        })?;
+
+    let mut value_stmt = conn.prepare(
+        r#"
+    SELECT duration_seconds, distance_m
+    FROM activities
+    WHERE (?1 IS NULL OR activity_start >= ?1)
+    "#,
+    )?;
+
+    let value_rows = value_stmt.query_map(params![start_filter], |row| {
+        Ok((row.get::<_, f64>(0)?, row.get::<_, f64>(1)?))
+    })?;
+
+    let mut durations = Vec::new();
+    let mut distances = Vec::new();
+
+    for row in value_rows {
+        let (duration, distance) = row?;
+        durations.push(duration);
+        distances.push(distance);
+    }
+
+    let weekly_start = start_iso
+        .clone()
+        .unwrap_or_else(|| (now - Duration::weeks(24)).to_rfc3339());
+    let monthly_start = start_iso
+        .clone()
+        .unwrap_or_else(|| (now - Duration::days(730)).to_rfc3339());
+
+    let weekly_distance = distance_trends(conn, "%Y-W%W", &weekly_start)?;
+    let monthly_distance = distance_trends(conn, "%Y-%m", &monthly_start)?;
+
+    Ok(StatsResponse {
+        range,
+        total_distance_m,
+        total_time_s,
+        total_elevation_m,
+        activity_count: activity_count as usize,
+        duration_histogram: histogram(&durations, 10),
+        distance_histogram: histogram(&distances, 10),
+        weekly_distance,
+        monthly_distance,
+    })
+}

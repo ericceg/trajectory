@@ -1,0 +1,155 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
+mod db;
+mod models;
+mod parser;
+mod scanner;
+mod settings;
+
+use std::{fs, path::PathBuf};
+
+use anyhow::{Context, Result};
+use models::{
+    ActivityDetail, ActivityFilters, ActivitySummary, ScanDoneEvent, Settings, StatsResponse,
+};
+use tauri::{AppHandle, Manager, State};
+
+#[derive(Debug, Clone)]
+struct AppState {
+    db_path: PathBuf,
+    settings_path: PathBuf,
+}
+
+fn init_state(app: &AppHandle) -> Result<AppState> {
+    let data_dir = app
+        .path()
+        .app_data_dir()
+        .context("failed resolving app data directory")?;
+    fs::create_dir_all(&data_dir)
+        .with_context(|| format!("failed creating app data dir {}", data_dir.display()))?;
+
+    let config_dir = app
+        .path()
+        .app_config_dir()
+        .context("failed resolving app config directory")?;
+    fs::create_dir_all(&config_dir)
+        .with_context(|| format!("failed creating app config dir {}", config_dir.display()))?;
+
+    let db_path = data_dir.join("activities.sqlite");
+    db::init_db(&db_path)?;
+
+    let settings_path = config_dir.join("settings.json");
+    if !settings_path.exists() {
+        settings::save_settings(&settings_path, &Settings::default())?;
+    }
+
+    Ok(AppState {
+        db_path,
+        settings_path,
+    })
+}
+
+#[tauri::command]
+async fn get_settings(state: State<'_, AppState>) -> Result<Settings, String> {
+    settings::load_settings(&state.settings_path).map_err(|err| err.to_string())
+}
+
+#[tauri::command]
+async fn set_import_folder(
+    path: String,
+    recursive: bool,
+    state: State<'_, AppState>,
+) -> Result<Settings, String> {
+    let canonical = fs::canonicalize(&path)
+        .map_err(|err| format!("invalid import folder path {path}: {err}"))?;
+
+    if !canonical.is_dir() {
+        return Err(format!(
+            "import folder is not a directory: {}",
+            canonical.display()
+        ));
+    }
+
+    let mut settings =
+        settings::load_settings(&state.settings_path).map_err(|err| err.to_string())?;
+    settings.import_folder_path = Some(canonical.to_string_lossy().to_string());
+    settings.scan_recursive = recursive;
+    settings::save_settings(&state.settings_path, &settings).map_err(|err| err.to_string())?;
+
+    Ok(settings)
+}
+
+#[tauri::command]
+async fn scan_import_folder(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<ScanDoneEvent, String> {
+    let db_path = state.db_path.clone();
+    let settings_path = state.settings_path.clone();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        scanner::scan_import_folder(&app, &db_path, &settings_path).map_err(|err| err.to_string())
+    })
+    .await
+    .map_err(|err| err.to_string())?
+}
+
+#[tauri::command]
+async fn list_activities(
+    filters: Option<ActivityFilters>,
+    state: State<'_, AppState>,
+) -> Result<Vec<ActivitySummary>, String> {
+    let db_path = state.db_path.clone();
+    let filters = filters.unwrap_or_default();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let conn = db::open_connection(&db_path).map_err(|err| err.to_string())?;
+        db::list_activities(&conn, &filters).map_err(|err| err.to_string())
+    })
+    .await
+    .map_err(|err| err.to_string())?
+}
+
+#[tauri::command]
+async fn get_activity(id: i64, state: State<'_, AppState>) -> Result<ActivityDetail, String> {
+    let db_path = state.db_path.clone();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let conn = db::open_connection(&db_path).map_err(|err| err.to_string())?;
+        db::get_activity(&conn, id).map_err(|err| err.to_string())
+    })
+    .await
+    .map_err(|err| err.to_string())?
+}
+
+#[tauri::command]
+async fn get_stats(range: String, state: State<'_, AppState>) -> Result<StatsResponse, String> {
+    let db_path = state.db_path.clone();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let conn = db::open_connection(&db_path).map_err(|err| err.to_string())?;
+        db::get_stats(&conn, &range).map_err(|err| err.to_string())
+    })
+    .await
+    .map_err(|err| err.to_string())?
+}
+
+fn main() {
+    tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            let state = init_state(app.handle())?;
+            app.manage(state);
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            get_settings,
+            set_import_folder,
+            scan_import_folder,
+            list_activities,
+            get_activity,
+            get_stats
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}
