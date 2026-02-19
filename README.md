@@ -52,9 +52,11 @@ npm run tauri dev
 
 1. Launch Trajectory.
 2. On first launch, select an existing import folder containing `.tcx` files.
-3. Open **Settings** and click **Rescan**.
-   - Use **Clear Cache + Full Rescan** when you want to wipe cached activities and re-import everything.
-4. Explore:
+3. After selecting a folder (and on every app startup), Trajectory automatically runs a background scan.
+4. Open **Settings** any time to run:
+   - **Rescan** for a normal incremental pass.
+   - **Clear Cache + Full Rescan** when you want to wipe cached activities and re-import everything.
+5. Explore:
    - **Dashboard** for yearly calendar overview, month drill-down, and clickable activity entries
    - Use dashboard arrows to move between years/months and click metric cards to switch bar mode (hours/km/activities)
    - **Activities** for filtering/sorting workouts (category + distance filters auto-apply)

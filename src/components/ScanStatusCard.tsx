@@ -39,7 +39,9 @@ export function ScanStatusCard({ scanning, progress, done }: ScanStatusCardProps
   return (
     <section className="rounded-xl border border-border bg-panel p-4 shadow-card">
       <p className="text-xs uppercase tracking-[0.18em] text-muted">Scan</p>
-      <p className="mt-2 text-sm text-muted">Run a scan from Settings to index activities.</p>
+      <p className="mt-2 text-sm text-muted">
+        Trajectory scans automatically on startup. You can also run a manual rescan from Settings.
+      </p>
     </section>
   );
 }

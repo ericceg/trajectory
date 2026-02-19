@@ -10,6 +10,8 @@ import { StatisticsPage } from '@/pages/StatisticsPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { OnboardingPage } from '@/pages/OnboardingPage';
 
+let startupScanTriggered = false;
+
 function AppLayout() {
   return (
     <div className="flex min-h-screen bg-bg text-foreground">
@@ -32,6 +34,8 @@ export default function App() {
   const init = useAppStore((state) => state.init);
   const settings = useAppStore((state) => state.settings);
   const loadingSettings = useAppStore((state) => state.loadingSettings);
+  const runScan = useAppStore((state) => state.runScan);
+  const scanning = useAppStore((state) => state.scanning);
 
   useEffect(() => {
     void init();
@@ -40,6 +44,17 @@ export default function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = settings?.darkMode ? 'dark' : 'light';
   }, [settings?.darkMode]);
+
+  useEffect(() => {
+    if (loadingSettings || !settings?.importFolderPath || startupScanTriggered || scanning) {
+      return;
+    }
+
+    startupScanTriggered = true;
+    void runScan().catch((error) => {
+      console.error('Automatic startup scan failed', error);
+    });
+  }, [loadingSettings, runScan, scanning, settings?.importFolderPath]);
 
   if (loadingSettings) {
     return (
