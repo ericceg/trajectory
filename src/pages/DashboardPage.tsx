@@ -419,12 +419,6 @@ export function DashboardPage() {
     mode === 'month' && hoveredBarIndex != null
       ? format(new Date(selectedYear, selectedMonthIndex, hoveredBarIndex + 1), 'yyyy-MM-dd')
       : null;
-  const hoveredDayActivities = hoveredDayKey ? activityMap.get(hoveredDayKey) ?? [] : [];
-  const highlightedActivity = useMemo(
-    () => selectPrimaryActivity(hoveredDayActivities, barMetric),
-    [hoveredDayActivities, barMetric]
-  );
-  const highlightedActivityId = highlightedActivity?.id ?? null;
 
   const monthGridDays = useMemo(() => {
     const monthStart = startOfMonth(selectedMonthDate);
@@ -710,16 +704,7 @@ export function DashboardPage() {
                 const dayActivities = inCurrentMonth ? activityMap.get(dayKey) ?? [] : [];
                 const hoveredDay = inCurrentMonth && hoveredDayKey === dayKey;
                 const popClass = hoverPulseTick % 2 === 0 ? 'calendar-pop-a' : 'calendar-pop-b';
-                const selectedActivity =
-                  hoveredDay && highlightedActivityId != null
-                    ? dayActivities.find((activity) => activity.id === highlightedActivityId) ?? null
-                    : null;
-                const visibleActivities = selectedActivity
-                  ? [selectedActivity, ...dayActivities.filter((activity) => activity.id !== selectedActivity.id)].slice(
-                      0,
-                      3
-                    )
-                  : dayActivities.slice(0, 3);
+                const visibleActivities = dayActivities.slice(0, 3);
                 const hiddenCount = Math.max(0, dayActivities.length - visibleActivities.length);
 
                 return (
@@ -750,7 +735,6 @@ export function DashboardPage() {
 
                     <div className="mt-2 space-y-1">
                       {visibleActivities.map((activity) => {
-                        const highlighted = activity.id === highlightedActivityId && hoveredDay;
                         return (
                           <Link
                             key={activity.id}
@@ -759,11 +743,9 @@ export function DashboardPage() {
                               activity.distanceM
                             )} · ${formatDuration(activity.durationSeconds)}`}
                             className={`block truncate rounded px-1.5 py-0.5 text-[11px] transition-colors ${
-                              highlighted
+                              hoveredDay
                                 ? `${popClass} bg-accent text-white shadow-[0_10px_18px_-14px_rgba(252,76,2,0.95)]`
-                                : hoveredDay
-                                  ? 'bg-accent/20 text-accent'
-                                  : 'bg-accent/10 text-accent hover:bg-accent/20'
+                                : 'bg-accent/10 text-accent hover:bg-accent/20'
                             }`}
                           >
                             {activity.category}

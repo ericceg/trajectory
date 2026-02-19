@@ -62,7 +62,7 @@ npm run tauri dev
 5. Explore:
    - **Dashboard** for yearly calendar overview, month drill-down, and clickable activity entries
    - Use dashboard arrows to move between years/months and click metric cards to switch bar mode (hours/km/activities)
-   - In month view, hover a daily bar to see a quick popover and auto-highlight the corresponding workout day/card
+   - In month view, hover a daily bar to see a quick popover and auto-highlight the corresponding workout day and all visible workout cards
    - In year view, hover a weekly bar to preview that week and auto-highlight all matching days in that week across month/day mini-bars
    - **Activities** for filtering/sorting workouts (category + distance filters auto-apply)
    - **Activity Detail** for metrics/map/charts
