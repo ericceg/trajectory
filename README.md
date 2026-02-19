@@ -75,6 +75,14 @@ Expected macOS artifacts are generated under `src-tauri/target/release/bundle/`,
 - `.app`
 - `.dmg`
 
+## App Icons
+
+For this macOS-first prototype, keep exactly one icon file in `src-tauri/icons/`:
+
+- `icon.png` (used for app/runtime icon and bundle icon source)
+
+If you replace the icon, keep it as a single square PNG in that same path.
+
 ## Release Process
 
 A GitHub Actions workflow builds and publishes macOS artifacts on version tags (`v*`).

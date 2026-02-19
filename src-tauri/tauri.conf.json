@@ -28,6 +28,9 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "icon": [
+      "icons/icon.png"
+    ],
     "createUpdaterArtifacts": false,
     "macOS": {
       "minimumSystemVersion": "12.0"
