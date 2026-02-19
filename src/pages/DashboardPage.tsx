@@ -112,12 +112,18 @@ const selectPrimaryActivity = (activities: ActivitySummary[], metric: CalendarBa
   );
 };
 
+const weekLabel = (weekStart: Date) => {
+  const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 });
+  return `${format(weekStart, 'MMM d')} - ${format(weekEnd, 'MMM d')}`;
+};
+
 const SparkBars = ({
   values,
   ariaLabel,
   tone = 'strong',
   interactive = false,
   activeIndex = null,
+  activeIndices,
   pulseTick = 0,
   onActiveIndexChange,
   renderActivePopover
@@ -127,6 +133,7 @@ const SparkBars = ({
   tone?: 'strong' | 'muted';
   interactive?: boolean;
   activeIndex?: number | null;
+  activeIndices?: number[];
   pulseTick?: number;
   onActiveIndexChange?: (index: number | null) => void;
   renderActivePopover?: (index: number) => ReactNode;
@@ -135,6 +142,7 @@ const SparkBars = ({
   const barClass = tone === 'strong' ? 'bg-accent' : 'bg-foreground/70';
   const activePopClass = pulseTick % 2 === 0 ? 'calendar-pop-a' : 'calendar-pop-b';
   const popoverLeft = activeIndex == null || values.length === 0 ? '0%' : `${((activeIndex + 0.5) / values.length) * 100}%`;
+  const activeIndicesSet = useMemo(() => new Set(activeIndices ?? []), [activeIndices]);
 
   return (
     <div
@@ -147,7 +155,7 @@ const SparkBars = ({
         {values.map((value, index) => {
           const ratio = maxValue > 0 ? value / maxValue : 0;
           const height = value > 0 ? Math.max(ratio * 100, 10) : 6;
-          const active = interactive && activeIndex === index;
+          const active = activeIndex === index || activeIndicesSet.has(index);
           const sharedClass = `min-w-[2px] flex-1 rounded-sm transition-all duration-200 ${barClass} ${
             value > 0 ? 'opacity-100' : 'opacity-20'
           } ${active ? `${activePopClass} -translate-y-0.5 scale-x-[1.06] shadow-[0_10px_18px_-12px_rgba(252,76,2,0.95)]` : ''}`;
@@ -280,6 +288,7 @@ export function DashboardPage() {
       activitiesByDay: new Map<string, ActivitySummary[]>()
     }));
     const weeklyTotals = new Map<string, AggregateTotals>();
+    const weeklyActivities = new Map<string, ActivitySummary[]>();
     const yearTotals = createTotals();
 
     for (const activity of yearActivities) {
@@ -304,6 +313,10 @@ export function DashboardPage() {
       const weekTotals = weeklyTotals.get(weekKey) ?? createTotals();
       addToTotals(weekTotals, activity);
       weeklyTotals.set(weekKey, weekTotals);
+
+      const weekActivities = weeklyActivities.get(weekKey) ?? [];
+      weekActivities.push(activity);
+      weeklyActivities.set(weekKey, weekActivities);
     }
 
     for (const monthBucket of monthBuckets) {
@@ -315,7 +328,14 @@ export function DashboardPage() {
       }
     }
 
-    return { monthBuckets, weeklyTotals, yearTotals };
+    for (const [weekKey, weekActivities] of weeklyActivities.entries()) {
+      weeklyActivities.set(
+        weekKey,
+        weekActivities.sort((a, b) => a.activityStart.localeCompare(b.activityStart))
+      );
+    }
+
+    return { monthBuckets, weeklyTotals, weeklyActivities, yearTotals };
   }, [yearActivities]);
 
   const monthSummaries = useMemo(
@@ -342,22 +362,26 @@ export function DashboardPage() {
     [barMetric, calendarData.monthBuckets, selectedYear]
   );
 
-  const yearBarValues = useMemo(() => {
+  const yearWeekStarts = useMemo(() => {
     const yearStart = startOfYear(new Date(selectedYear, 0, 1));
     const yearEnd = new Date(selectedYear, 11, 31);
-    const weekStarts = eachWeekOfInterval(
+    return eachWeekOfInterval(
       {
         start: startOfWeek(yearStart, { weekStartsOn: 1 }),
         end: endOfWeek(yearEnd, { weekStartsOn: 1 })
       },
       { weekStartsOn: 1 }
     );
+  }, [selectedYear]);
 
-    return weekStarts.map((weekStart) => {
-      const weekKey = format(weekStart, 'yyyy-MM-dd');
-      return metricValue(calendarData.weeklyTotals.get(weekKey) ?? ZERO_TOTALS, barMetric);
-    });
-  }, [barMetric, calendarData.weeklyTotals, selectedYear]);
+  const yearBarValues = useMemo(
+    () =>
+      yearWeekStarts.map((weekStart) => {
+        const weekKey = format(weekStart, 'yyyy-MM-dd');
+        return metricValue(calendarData.weeklyTotals.get(weekKey) ?? ZERO_TOTALS, barMetric);
+      }),
+    [barMetric, calendarData.weeklyTotals, yearWeekStarts]
+  );
 
   const selectedMonthBucket = calendarData.monthBuckets[selectedMonthIndex];
   const selectedMonthTotals = selectedMonthBucket?.totals ?? ZERO_TOTALS;
@@ -366,6 +390,31 @@ export function DashboardPage() {
   const activeBars = mode === 'year' ? yearBarValues : selectedMonthBars;
   const activityMap = selectedMonthBucket?.activitiesByDay ?? new Map<string, ActivitySummary[]>();
   const seriesLabel = mode === 'year' ? `${activeBars.length} weeks` : `${activeBars.length} days`;
+  const hoveredWeekStart = mode === 'year' && hoveredBarIndex != null ? yearWeekStarts[hoveredBarIndex] ?? null : null;
+  const hoveredWeekDaysByMonth = useMemo(() => {
+    if (mode !== 'year' || !hoveredWeekStart) {
+      return new Map<number, number[]>();
+    }
+
+    const weekDays = eachDayOfInterval({
+      start: hoveredWeekStart,
+      end: endOfWeek(hoveredWeekStart, { weekStartsOn: 1 })
+    });
+    const indicesByMonth = new Map<number, number[]>();
+
+    for (const day of weekDays) {
+      if (day.getFullYear() !== selectedYear) {
+        continue;
+      }
+      const monthIndex = day.getMonth();
+      const dayIndex = day.getDate() - 1;
+      const existing = indicesByMonth.get(monthIndex) ?? [];
+      existing.push(dayIndex);
+      indicesByMonth.set(monthIndex, existing);
+    }
+
+    return indicesByMonth;
+  }, [hoveredWeekStart, mode, selectedYear]);
   const hoveredDayKey =
     mode === 'month' && hoveredBarIndex != null
       ? format(new Date(selectedYear, selectedMonthIndex, hoveredBarIndex + 1), 'yyyy-MM-dd')
@@ -490,13 +539,10 @@ export function DashboardPage() {
                   ariaLabel={`Calendar bars for ${
                     mode === 'year' ? `${selectedYear}` : format(selectedMonthDate, 'MMMM yyyy')
                   }`}
-                  interactive={mode === 'month'}
-                  activeIndex={mode === 'month' ? hoveredBarIndex : null}
+                  interactive
+                  activeIndex={hoveredBarIndex}
                   pulseTick={hoverPulseTick}
                   onActiveIndexChange={(index) => {
-                    if (mode !== 'month') {
-                      return;
-                    }
                     if (index == null) {
                       setHoveredBarIndex(null);
                       return;
@@ -505,14 +551,40 @@ export function DashboardPage() {
                     setHoverPulseTick((tick) => tick + 1);
                   }}
                   renderActivePopover={(index) => {
-                    if (mode !== 'month') {
-                      return null;
+                    const hoverValue = activeBars[index] ?? 0;
+
+                    if (mode === 'year') {
+                      const weekStart = yearWeekStarts[index];
+                      if (!weekStart) {
+                        return null;
+                      }
+                      const weekKey = format(weekStart, 'yyyy-MM-dd');
+                      const weekActivities = calendarData.weeklyActivities.get(weekKey) ?? [];
+                      const topActivity = selectPrimaryActivity(weekActivities, barMetric);
+
+                      return (
+                        <>
+                          <p className="text-[10px] uppercase tracking-[0.14em] text-muted">
+                            Week · {weekLabel(weekStart)}
+                          </p>
+                          <p className="mt-1 text-sm font-semibold text-foreground">
+                            {formatCalendarMetricWithUnit(barMetric, hoverValue)}
+                          </p>
+                          {topActivity ? (
+                            <p className="mt-1 text-[11px] text-muted">
+                              {topActivity.category} · {formatDateTime(topActivity.activityStart)}
+                            </p>
+                          ) : (
+                            <p className="mt-1 text-[11px] text-muted">No workouts</p>
+                          )}
+                        </>
+                      );
                     }
+
                     const hoverDate = new Date(selectedYear, selectedMonthIndex, index + 1);
                     const hoverKey = format(hoverDate, 'yyyy-MM-dd');
                     const hoverActivities = activityMap.get(hoverKey) ?? [];
                     const topActivity = selectPrimaryActivity(hoverActivities, barMetric);
-                    const hoverValue = activeBars[index] ?? 0;
 
                     return (
                       <>
@@ -578,6 +650,9 @@ export function DashboardPage() {
                 barMetric,
                 metricValue(monthSummary.totals, barMetric)
               );
+              const hoveredWeekIndices = hoveredWeekDaysByMonth.get(monthSummary.monthIndex) ?? [];
+              const yearHoveredMonth = mode === 'year' && hoveredWeekIndices.length > 0;
+              const yearPopClass = hoverPulseTick % 2 === 0 ? 'calendar-pop-a' : 'calendar-pop-b';
 
               return (
                 <button
@@ -587,7 +662,11 @@ export function DashboardPage() {
                     setSelectedMonthIndex(monthSummary.monthIndex);
                     setMode('month');
                   }}
-                  className="rounded-lg border border-border bg-bg/30 p-3 text-left transition hover:border-accent/40 hover:bg-accent/5"
+                  className={`rounded-lg border border-border bg-bg/30 p-3 text-left transition hover:border-accent/40 hover:bg-accent/5 ${
+                    yearHoveredMonth
+                      ? `relative z-10 -translate-y-0.5 border-accent bg-accent/10 shadow-[0_14px_26px_-20px_rgba(252,76,2,0.9)] ${yearPopClass}`
+                      : ''
+                  }`}
                 >
                   <div className="flex items-start justify-between">
                     <p className="text-base font-semibold uppercase text-foreground">{monthLabel}</p>
@@ -604,6 +683,8 @@ export function DashboardPage() {
                       values={monthSummary.dayValues}
                       ariaLabel={`${monthLabel} daily bars`}
                       tone="muted"
+                      activeIndices={yearHoveredMonth ? hoveredWeekIndices : undefined}
+                      pulseTick={hoverPulseTick}
                     />
                   </div>
                 </button>
