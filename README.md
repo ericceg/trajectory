@@ -77,13 +77,32 @@ Expected macOS artifacts are generated under `src-tauri/target/release/bundle/`,
 
 A GitHub Actions workflow builds and publishes macOS artifacts on version tags (`v*`).
 
-1. Update version in:
-   - `package.json`
-   - `src-tauri/tauri.conf.json`
-2. Create and push a matching tag: `vX.Y.Z`
-3. The workflow uploads build artifacts to GitHub Releases
-
 Workflow file: `.github/workflows/release.yml`
+
+Release guardrails:
+- The pushed tag version must match all of:
+  - `package.json`
+  - `src-tauri/tauri.conf.json`
+  - `src-tauri/Cargo.toml`
+- The workflow must successfully generate both:
+  - `.app` bundle
+  - `.dmg` installer
+
+### First release (`v0.1.0`)
+
+Versions are already set to `0.1.0`, so the first release can be created with:
+
+```bash
+git checkout main
+git pull --ff-only
+git tag -a v0.1.0 -m "Trajectory v0.1.0"
+git push origin main
+git push origin v0.1.0
+```
+
+After pushing the tag:
+1. Open GitHub Actions and confirm the `Release` workflow for `v0.1.0` is green.
+2. Open the GitHub Release `v0.1.0` and confirm release assets include the macOS installer (`.dmg`).
 
 ## Architecture
 

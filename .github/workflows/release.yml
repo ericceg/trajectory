@@ -25,15 +25,16 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install frontend deps
-        run: npm install
+        run: npm ci
 
       - name: Verify tag/version alignment
         run: |
           TAG_VERSION="${GITHUB_REF_NAME#v}"
           APP_VERSION=$(node -p "require('./package.json').version")
           TAURI_VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
-          if [ "$TAG_VERSION" != "$APP_VERSION" ] || [ "$TAG_VERSION" != "$TAURI_VERSION" ]; then
-            echo "Tag ($TAG_VERSION), package.json ($APP_VERSION), and tauri.conf.json ($TAURI_VERSION) must match"
+          CARGO_VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' src-tauri/Cargo.toml | head -n 1)
+          if [ "$TAG_VERSION" != "$APP_VERSION" ] || [ "$TAG_VERSION" != "$TAURI_VERSION" ] || [ "$TAG_VERSION" != "$CARGO_VERSION" ]; then
+            echo "Tag ($TAG_VERSION), package.json ($APP_VERSION), tauri.conf.json ($TAURI_VERSION), and Cargo.toml ($CARGO_VERSION) must match"
             exit 1
           fi
 
@@ -48,3 +49,23 @@ jobs:
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: false
+          args: --bundles app,dmg
+
+      - name: Verify bundled artifacts exist
+        run: |
+          shopt -s nullglob
+          app_bundles=(src-tauri/target/release/bundle/macos/*.app)
+          dmg_bundles=(src-tauri/target/release/bundle/dmg/*.dmg)
+
+          if [ ${#app_bundles[@]} -eq 0 ]; then
+            echo "No .app bundle was generated."
+            exit 1
+          fi
+
+          if [ ${#dmg_bundles[@]} -eq 0 ]; then
+            echo "No .dmg installer was generated."
+            exit 1
+          fi
+
+          echo "App bundle: ${app_bundles[0]}"
+          echo "DMG installer: ${dmg_bundles[0]}"
