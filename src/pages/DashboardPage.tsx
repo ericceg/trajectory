@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   addMonths,
@@ -76,33 +76,114 @@ const formatCalendarMetric = (metric: CalendarBarMetric, value: number) => {
   }
 };
 
+const formatCalendarMetricWithUnit = (metric: CalendarBarMetric, value: number) => {
+  switch (metric) {
+    case 'durationHours':
+      return `${value.toFixed(1)} h`;
+    case 'distanceKm':
+      return `${value.toFixed(1)} km`;
+    case 'activities':
+      return `${Math.round(value)} act`;
+    default:
+      return `${value}`;
+  }
+};
+
+const activityScoreForMetric = (activity: ActivitySummary, metric: CalendarBarMetric) => {
+  switch (metric) {
+    case 'durationHours':
+      return activity.durationSeconds;
+    case 'distanceKm':
+      return activity.distanceM;
+    case 'activities':
+      return activity.durationSeconds;
+    default:
+      return 0;
+  }
+};
+
+const selectPrimaryActivity = (activities: ActivitySummary[], metric: CalendarBarMetric) => {
+  if (!activities.length) {
+    return null;
+  }
+
+  return activities.reduce((best, current) =>
+    activityScoreForMetric(current, metric) > activityScoreForMetric(best, metric) ? current : best
+  );
+};
+
 const SparkBars = ({
   values,
   ariaLabel,
-  tone = 'strong'
+  tone = 'strong',
+  interactive = false,
+  activeIndex = null,
+  pulseTick = 0,
+  onActiveIndexChange,
+  renderActivePopover
 }: {
   values: number[];
   ariaLabel: string;
   tone?: 'strong' | 'muted';
+  interactive?: boolean;
+  activeIndex?: number | null;
+  pulseTick?: number;
+  onActiveIndexChange?: (index: number | null) => void;
+  renderActivePopover?: (index: number) => ReactNode;
 }) => {
   const maxValue = values.reduce((max, value) => Math.max(max, value), 0);
   const barClass = tone === 'strong' ? 'bg-accent' : 'bg-foreground/70';
+  const activePopClass = pulseTick % 2 === 0 ? 'calendar-pop-a' : 'calendar-pop-b';
+  const popoverLeft = activeIndex == null || values.length === 0 ? '0%' : `${((activeIndex + 0.5) / values.length) * 100}%`;
 
   return (
-    <div className="flex h-12 items-end gap-px" role="img" aria-label={ariaLabel}>
-      {values.map((value, index) => {
-        const ratio = maxValue > 0 ? value / maxValue : 0;
-        const height = value > 0 ? Math.max(ratio * 100, 10) : 6;
-        return (
-          <span
-            key={`${ariaLabel}-${index}`}
-            className={`min-w-[2px] flex-1 rounded-sm transition-all ${barClass} ${
-              value > 0 ? 'opacity-100' : 'opacity-20'
-            }`}
-            style={{ height: `${height}%` }}
-          />
-        );
-      })}
+    <div
+      className="relative"
+      onMouseLeave={() => onActiveIndexChange?.(null)}
+      role={interactive ? 'group' : 'img'}
+      aria-label={ariaLabel}
+    >
+      <div className="flex h-12 items-end gap-px">
+        {values.map((value, index) => {
+          const ratio = maxValue > 0 ? value / maxValue : 0;
+          const height = value > 0 ? Math.max(ratio * 100, 10) : 6;
+          const active = interactive && activeIndex === index;
+          const sharedClass = `min-w-[2px] flex-1 rounded-sm transition-all duration-200 ${barClass} ${
+            value > 0 ? 'opacity-100' : 'opacity-20'
+          } ${active ? `${activePopClass} -translate-y-0.5 scale-x-[1.06] shadow-[0_10px_18px_-12px_rgba(252,76,2,0.95)]` : ''}`;
+
+          if (interactive) {
+            return (
+              <button
+                key={`${ariaLabel}-${index}`}
+                type="button"
+                onMouseEnter={() => onActiveIndexChange?.(index)}
+                onFocus={() => onActiveIndexChange?.(index)}
+                onBlur={() => onActiveIndexChange?.(null)}
+                className={`${sharedClass} appearance-none cursor-pointer border-0 p-0 focus-visible:outline-none`}
+                style={{ height: `${height}%` }}
+                aria-label={`${ariaLabel} bar ${index + 1}`}
+              />
+            );
+          }
+
+          return (
+            <span
+              key={`${ariaLabel}-${index}`}
+              className={sharedClass}
+              style={{ height: `${height}%` }}
+            />
+          );
+        })}
+      </div>
+      {interactive && activeIndex != null && renderActivePopover ? (
+        <div
+          className="pointer-events-none absolute -top-2 z-20 -translate-x-1/2 -translate-y-full"
+          style={{ left: popoverLeft }}
+        >
+          <div className={`calendar-hover-popover ${activePopClass}`}>{renderActivePopover(activeIndex)}</div>
+        </div>
+      ) : null}
     </div>
   );
 };
@@ -114,6 +195,8 @@ export function DashboardPage() {
   const [selectedYear, setSelectedYear] = useState(() => new Date().getFullYear());
   const [selectedMonthIndex, setSelectedMonthIndex] = useState(() => new Date().getMonth());
   const [barMetric, setBarMetric] = useState<CalendarBarMetric>('durationHours');
+  const [hoveredBarIndex, setHoveredBarIndex] = useState<number | null>(null);
+  const [hoverPulseTick, setHoverPulseTick] = useState(0);
 
   const [yearActivities, setYearActivities] = useState<ActivitySummary[]>([]);
   const [calendarLoading, setCalendarLoading] = useState(false);
@@ -127,6 +210,10 @@ export function DashboardPage() {
     () => new Date(selectedYear, selectedMonthIndex, 1),
     [selectedYear, selectedMonthIndex]
   );
+
+  useEffect(() => {
+    setHoveredBarIndex(null);
+  }, [mode, selectedYear, selectedMonthIndex, barMetric]);
 
   useEffect(() => {
     let cancelled = false;
@@ -279,6 +366,16 @@ export function DashboardPage() {
   const activeBars = mode === 'year' ? yearBarValues : selectedMonthBars;
   const activityMap = selectedMonthBucket?.activitiesByDay ?? new Map<string, ActivitySummary[]>();
   const seriesLabel = mode === 'year' ? `${activeBars.length} weeks` : `${activeBars.length} days`;
+  const hoveredDayKey =
+    mode === 'month' && hoveredBarIndex != null
+      ? format(new Date(selectedYear, selectedMonthIndex, hoveredBarIndex + 1), 'yyyy-MM-dd')
+      : null;
+  const hoveredDayActivities = hoveredDayKey ? activityMap.get(hoveredDayKey) ?? [] : [];
+  const highlightedActivity = useMemo(
+    () => selectPrimaryActivity(hoveredDayActivities, barMetric),
+    [hoveredDayActivities, barMetric]
+  );
+  const highlightedActivityId = highlightedActivity?.id ?? null;
 
   const monthGridDays = useMemo(() => {
     const monthStart = startOfMonth(selectedMonthDate);
@@ -393,6 +490,49 @@ export function DashboardPage() {
                   ariaLabel={`Calendar bars for ${
                     mode === 'year' ? `${selectedYear}` : format(selectedMonthDate, 'MMMM yyyy')
                   }`}
+                  interactive={mode === 'month'}
+                  activeIndex={mode === 'month' ? hoveredBarIndex : null}
+                  pulseTick={hoverPulseTick}
+                  onActiveIndexChange={(index) => {
+                    if (mode !== 'month') {
+                      return;
+                    }
+                    if (index == null) {
+                      setHoveredBarIndex(null);
+                      return;
+                    }
+                    setHoveredBarIndex(index);
+                    setHoverPulseTick((tick) => tick + 1);
+                  }}
+                  renderActivePopover={(index) => {
+                    if (mode !== 'month') {
+                      return null;
+                    }
+                    const hoverDate = new Date(selectedYear, selectedMonthIndex, index + 1);
+                    const hoverKey = format(hoverDate, 'yyyy-MM-dd');
+                    const hoverActivities = activityMap.get(hoverKey) ?? [];
+                    const topActivity = selectPrimaryActivity(hoverActivities, barMetric);
+                    const hoverValue = activeBars[index] ?? 0;
+
+                    return (
+                      <>
+                        <p className="text-[10px] uppercase tracking-[0.14em] text-muted">
+                          {format(hoverDate, 'EEE, MMM d')}
+                        </p>
+                        <p className="mt-1 text-sm font-semibold text-foreground">
+                          {formatCalendarMetricWithUnit(barMetric, hoverValue)}
+                        </p>
+                        {topActivity ? (
+                          <p className="mt-1 text-[11px] text-muted">
+                            {topActivity.category} · {formatDuration(topActivity.durationSeconds)} ·{' '}
+                            {formatDistanceKm(topActivity.distanceM)}
+                          </p>
+                        ) : (
+                          <p className="mt-1 text-[11px] text-muted">No workouts</p>
+                        )}
+                      </>
+                    );
+                  }}
                 />
               </div>
               <p className="whitespace-nowrap text-[10px] uppercase tracking-[0.16em] text-muted">
@@ -487,12 +627,29 @@ export function DashboardPage() {
                 const inCurrentMonth = isSameMonth(day, selectedMonthDate);
                 const dayKey = format(day, 'yyyy-MM-dd');
                 const dayActivities = inCurrentMonth ? activityMap.get(dayKey) ?? [] : [];
+                const hoveredDay = inCurrentMonth && hoveredDayKey === dayKey;
+                const popClass = hoverPulseTick % 2 === 0 ? 'calendar-pop-a' : 'calendar-pop-b';
+                const selectedActivity =
+                  hoveredDay && highlightedActivityId != null
+                    ? dayActivities.find((activity) => activity.id === highlightedActivityId) ?? null
+                    : null;
+                const visibleActivities = selectedActivity
+                  ? [selectedActivity, ...dayActivities.filter((activity) => activity.id !== selectedActivity.id)].slice(
+                      0,
+                      3
+                    )
+                  : dayActivities.slice(0, 3);
+                const hiddenCount = Math.max(0, dayActivities.length - visibleActivities.length);
 
                 return (
                   <div
                     key={dayKey}
-                    className={`min-h-[140px] border-r border-t border-border p-2 text-xs last:border-r-0 ${
+                    className={`min-h-[140px] border-r border-t border-border p-2 text-xs transition-[background-color,box-shadow,transform] duration-200 last:border-r-0 ${
                       inCurrentMonth ? 'bg-bg/20' : 'bg-bg/10 text-muted/40'
+                    } ${
+                      hoveredDay
+                        ? `relative z-10 -translate-y-0.5 bg-accent/10 shadow-[0_12px_24px_-18px_rgba(252,76,2,0.95)] ${popClass}`
+                        : ''
                     }`}
                   >
                     <div className="flex items-center justify-between">
@@ -500,27 +657,40 @@ export function DashboardPage() {
                         {format(day, 'd')}
                       </span>
                       {dayActivities.length ? (
-                        <span className="rounded bg-accent/15 px-1.5 py-0.5 text-[10px] text-accent">
+                        <span
+                          className={`rounded px-1.5 py-0.5 text-[10px] ${
+                            hoveredDay ? 'bg-accent text-white' : 'bg-accent/15 text-accent'
+                          }`}
+                        >
                           {dayActivities.length}
                         </span>
                       ) : null}
                     </div>
 
                     <div className="mt-2 space-y-1">
-                      {dayActivities.slice(0, 3).map((activity) => (
-                        <Link
-                          key={activity.id}
-                          to={`/activities/${activity.id}`}
-                          title={`${formatDateTime(activity.activityStart)} · ${formatDistanceKm(
-                            activity.distanceM
-                          )} · ${formatDuration(activity.durationSeconds)}`}
-                          className="block truncate rounded bg-accent/10 px-1.5 py-0.5 text-[11px] text-accent hover:bg-accent/20"
-                        >
-                          {activity.category}
-                        </Link>
-                      ))}
-                      {dayActivities.length > 3 ? (
-                        <p className="text-[10px] text-muted">+{dayActivities.length - 3} more</p>
+                      {visibleActivities.map((activity) => {
+                        const highlighted = activity.id === highlightedActivityId && hoveredDay;
+                        return (
+                          <Link
+                            key={activity.id}
+                            to={`/activities/${activity.id}`}
+                            title={`${formatDateTime(activity.activityStart)} · ${formatDistanceKm(
+                              activity.distanceM
+                            )} · ${formatDuration(activity.durationSeconds)}`}
+                            className={`block truncate rounded px-1.5 py-0.5 text-[11px] transition-colors ${
+                              highlighted
+                                ? `${popClass} bg-accent text-white shadow-[0_10px_18px_-14px_rgba(252,76,2,0.95)]`
+                                : hoveredDay
+                                  ? 'bg-accent/20 text-accent'
+                                  : 'bg-accent/10 text-accent hover:bg-accent/20'
+                            }`}
+                          >
+                            {activity.category}
+                          </Link>
+                        );
+                      })}
+                      {hiddenCount > 0 ? (
+                        <p className="text-[10px] text-muted">+{hiddenCount} more</p>
                       ) : null}
                     </div>
                   </div>
