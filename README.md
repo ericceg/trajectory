@@ -12,12 +12,15 @@ Prototype (actively evolving).
 - Local-only app (Tauri + Rust + React)
 - Import an existing folder of `.tcx` files (optionally recursive)
 - Incremental rescans using file path + mtime + size
+- Normal rescans prune deleted files from the database cache
+- Optional "Clear Cache + Full Rescan" for a full rebuild from disk
 - Background parsing with progress events
 - Workout category derivation (`Running`, `Biking`, `Strength`, etc.) from TCX sport + notes
 - Single visible workout category in UI (used for filtering)
 - Activities filters auto-apply on change (no Apply button)
 - Light mode by default with optional dark mode toggle in Settings
-- Dashboard with calendar, weekly rollups, and year-to-date totals
+- Dashboard with a drill-down training calendar (year view -> month view -> activity links)
+- Calendar bars can switch between hours, kilometers, and activity count
 - Filterable/sortable activities table
 - Activity detail with metrics, route map, and charts
 - Statistics view with aggregate metrics, histograms, and trends
@@ -50,8 +53,10 @@ npm run tauri dev
 1. Launch Trajectory.
 2. On first launch, select an existing import folder containing `.tcx` files.
 3. Open **Settings** and click **Rescan**.
+   - Use **Clear Cache + Full Rescan** when you want to wipe cached activities and re-import everything.
 4. Explore:
-   - **Dashboard** for calendar + weekly/year summaries
+   - **Dashboard** for yearly calendar overview, month drill-down, and clickable activity entries
+   - Use dashboard arrows to move between years/months and click metric cards to switch bar mode (hours/km/activities)
    - **Activities** for filtering/sorting workouts (category + distance filters auto-apply)
    - **Activity Detail** for metrics/map/charts
    - **Statistics** for aggregate trends and histograms
@@ -99,7 +104,7 @@ Implemented commands:
 - `get_settings()`
 - `set_import_folder(path, recursive)`
 - `set_dark_mode(dark_mode)`
-- `scan_import_folder()`
+- `scan_import_folder(full_rescan?)`
 - `list_activities(filters)`
 - `get_activity(id)`
 - `get_stats(range)`

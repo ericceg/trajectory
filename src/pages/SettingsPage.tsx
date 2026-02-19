@@ -15,6 +15,7 @@ export function SettingsPage() {
   const runScan = useAppStore((state) => state.runScan);
 
   const [error, setError] = useState<string | null>(null);
+  const [confirmFullRescan, setConfirmFullRescan] = useState(false);
 
   const handleChooseFolder = async () => {
     const path = await open({ directory: true, multiple: false, title: 'Select Import Folder' });
@@ -31,9 +32,20 @@ export function SettingsPage() {
   };
 
   const handleRescan = async () => {
+    setConfirmFullRescan(false);
     setError(null);
     try {
       await runScan();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const handleConfirmFullRescan = async () => {
+    setError(null);
+    try {
+      await runScan(true);
+      setConfirmFullRescan(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -91,7 +103,46 @@ export function SettingsPage() {
           >
             {scanning ? 'Scanning...' : 'Rescan'}
           </button>
+
+          <button
+            type="button"
+            onClick={() => setConfirmFullRescan(true)}
+            disabled={!settings?.importFolderPath || scanning}
+            className="rounded-md border border-accent/50 bg-accent/10 px-4 py-2 text-sm font-medium text-accent disabled:opacity-50"
+          >
+            {scanning ? 'Scanning...' : 'Clear Cache + Full Rescan'}
+          </button>
         </div>
+
+        {confirmFullRescan ? (
+          <div className="mt-3 rounded-md border border-accent/30 bg-accent/10 p-3">
+            <p className="text-sm text-foreground">
+              This will clear all cached activities, then rebuild from files in your import folder.
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmFullRescan(false)}
+                className="rounded-md border border-border px-3 py-1.5 text-sm text-muted"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleConfirmFullRescan()}
+                disabled={scanning}
+                className="rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                Confirm Full Rescan
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        <p className="mt-3 text-xs text-muted">
+          Full rescan clears cached activities first, then re-imports every TCX file. Use this if
+          deleted or previously broken files are still visible.
+        </p>
 
         {settings?.lastScanTimestamp ? (
           <p className="mt-3 text-xs text-muted">Last scan: {settings.lastScanTimestamp}</p>

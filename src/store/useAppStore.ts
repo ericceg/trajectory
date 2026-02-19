@@ -20,7 +20,7 @@ interface AppState {
   updateImportFolder: (path: string, recursive: boolean) => Promise<void>;
   setScanRecursive: (recursive: boolean) => Promise<void>;
   updateDarkMode: (darkMode: boolean) => Promise<void>;
-  runScan: () => Promise<void>;
+  runScan: (fullRescan?: boolean) => Promise<void>;
 }
 
 let listenersInitialized = false;
@@ -64,10 +64,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     const settings = await setDarkMode(darkMode);
     set({ settings });
   },
-  runScan: async () => {
+  runScan: async (fullRescan = false) => {
     set({ scanning: true, scanDone: null });
     try {
-      const done = await scanImportFolder();
+      const done = await scanImportFolder(fullRescan);
       set({ scanDone: done, scanning: false, scanProgress: null });
       await get().init();
     } catch (error) {

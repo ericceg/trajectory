@@ -16,8 +16,17 @@ pub enum UpsertResult {
 }
 
 pub fn open_connection(db_path: &Path) -> Result<Connection> {
-    Connection::open(db_path)
-        .with_context(|| format!("failed opening sqlite database {}", db_path.display()))
+    let conn = Connection::open(db_path)
+        .with_context(|| format!("failed opening sqlite database {}", db_path.display()))?;
+
+    conn.execute_batch(
+        r#"
+    PRAGMA journal_mode=WAL;
+    PRAGMA foreign_keys=ON;
+    "#,
+    )?;
+
+    Ok(conn)
 }
 
 pub fn init_db(db_path: &Path) -> Result<()> {
@@ -139,6 +148,22 @@ pub fn source_file_meta_map(conn: &Connection) -> Result<HashMap<String, SourceF
     }
 
     Ok(map)
+}
+
+pub fn delete_activity_by_source_path(conn: &Connection, source_path: &str) -> Result<usize> {
+    let deleted = conn.execute(
+        "DELETE FROM activities WHERE source_path = ?1",
+        params![source_path],
+    )?;
+    Ok(deleted)
+}
+
+pub fn clear_activity_cache(conn: &mut Connection) -> Result<()> {
+    let transaction = conn.transaction()?;
+    transaction.execute("DELETE FROM activity_samples", [])?;
+    transaction.execute("DELETE FROM activities", [])?;
+    transaction.commit()?;
+    Ok(())
 }
 
 pub fn upsert_activity(

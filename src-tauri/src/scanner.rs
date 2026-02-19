@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     fs,
     path::{Path, PathBuf},
     time::UNIX_EPOCH,
@@ -71,6 +72,7 @@ pub fn scan_import_folder(
     app: &AppHandle,
     db_path: &Path,
     settings_path: &Path,
+    full_rescan: bool,
 ) -> Result<ScanDoneEvent> {
     let mut settings = settings::load_settings(settings_path)?;
 
@@ -80,21 +82,47 @@ pub fn scan_import_folder(
         .ok_or_else(|| anyhow!("no import folder selected"))?;
 
     let files = collect_activity_files(Path::new(&import_folder), settings.scan_recursive)?;
-    let total = files.len();
+    let scan_targets: Vec<(PathBuf, String)> = files
+        .into_iter()
+        .map(|original_path| {
+            let canonical_path =
+                fs::canonicalize(&original_path).unwrap_or_else(|_| original_path.clone());
+            let source_path = canonical_path.to_string_lossy().to_string();
+            (canonical_path, source_path)
+        })
+        .collect();
+    let discovered_paths: HashSet<String> = scan_targets
+        .iter()
+        .map(|(_, source_path)| source_path.clone())
+        .collect();
+    let total = scan_targets.len();
 
     let mut conn = db::open_connection(db_path)?;
-    let known_files = db::source_file_meta_map(&conn)?;
+    if full_rescan {
+        db::clear_activity_cache(&mut conn)?;
+    }
+
+    let mut known_files = db::source_file_meta_map(&conn)?;
+    if !full_rescan {
+        let stale_paths: Vec<String> = known_files
+            .keys()
+            .filter(|known_path| !discovered_paths.contains(*known_path))
+            .cloned()
+            .collect();
+
+        for stale_path in stale_paths {
+            db::delete_activity_by_source_path(&conn, &stale_path)?;
+        }
+
+        known_files = db::source_file_meta_map(&conn)?;
+    }
 
     let mut added = 0usize;
     let mut updated = 0usize;
     let mut skipped = 0usize;
     let mut errors: Vec<String> = Vec::new();
 
-    for (index, original_path) in files.iter().enumerate() {
-        let canonical_path =
-            fs::canonicalize(original_path).unwrap_or_else(|_| original_path.clone());
-        let source_path = canonical_path.to_string_lossy().to_string();
-
+    for (index, (canonical_path, source_path)) in scan_targets.into_iter().enumerate() {
         let metadata = match fs::metadata(&canonical_path) {
             Ok(meta) => meta,
             Err(err) => {
@@ -128,14 +156,14 @@ pub fn scan_import_folder(
             .map(|known| known.source_size == source_size && known.source_mtime == source_mtime)
             .unwrap_or(false);
 
-        if unchanged {
+        if unchanged && !full_rescan {
             skipped += 1;
             app.emit(
                 "scan:progress",
                 ScanProgressEvent {
                     parsed: index + 1,
                     total,
-                    current_file: source_path,
+                    current_file: source_path.clone(),
                 },
             )
             .ok();
@@ -157,7 +185,7 @@ pub fn scan_import_folder(
             ScanProgressEvent {
                 parsed: index + 1,
                 total,
-                current_file: source_path,
+                current_file: source_path.clone(),
             },
         )
         .ok();

@@ -91,13 +91,16 @@ async fn set_dark_mode(dark_mode: bool, state: State<'_, AppState>) -> Result<Se
 #[tauri::command]
 async fn scan_import_folder(
     app: AppHandle,
+    full_rescan: Option<bool>,
     state: State<'_, AppState>,
 ) -> Result<ScanDoneEvent, String> {
     let db_path = state.db_path.clone();
     let settings_path = state.settings_path.clone();
+    let full_rescan = full_rescan.unwrap_or(false);
 
     tauri::async_runtime::spawn_blocking(move || {
-        scanner::scan_import_folder(&app, &db_path, &settings_path).map_err(|err| err.to_string())
+        scanner::scan_import_folder(&app, &db_path, &settings_path, full_rescan)
+            .map_err(|err| err.to_string())
     })
     .await
     .map_err(|err| err.to_string())?

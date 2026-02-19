@@ -20,7 +20,8 @@ export const setImportFolder = (path: string, recursive: boolean) =>
 export const setDarkMode = (darkMode: boolean) =>
   invoke<Settings>('set_dark_mode', { darkMode });
 
-export const scanImportFolder = () => invoke<ScanDoneEvent>('scan_import_folder');
+export const scanImportFolder = (fullRescan = false) =>
+  invoke<ScanDoneEvent>('scan_import_folder', { fullRescan });
 
 export const listActivities = (filters?: ActivityFilters) =>
   invoke<ActivitySummary[]>('list_activities', { filters });
