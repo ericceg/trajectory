@@ -86,6 +86,12 @@ Workflow file: `.github/workflows/release.yml`
 - `src-tauri/src/`: Rust backend (TCX parser, scan pipeline, DB, commands)
 - `src-tauri/tauri.conf.json`: Tauri app/bundle configuration
 
+## Developer Documentation
+
+For a codebase-level walkthrough (module responsibilities, key functions, scan/data flow, DB model, and extension patterns), see:
+
+- `docs/DEVELOPER_GUIDE.md`
+
 ## Tauri Command API
 
 Implemented commands:
