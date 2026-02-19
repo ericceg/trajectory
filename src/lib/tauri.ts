@@ -32,6 +32,3 @@ export const getStats = (range: StatsRange) => invoke<StatsResponse>('get_stats'
 
 export const onScanProgress = (handler: (event: ScanProgressEvent) => void): Promise<UnlistenFn> =>
   listen<ScanProgressEvent>('scan:progress', (event) => handler(event.payload));
-
-export const onScanDone = (handler: (event: ScanDoneEvent) => void): Promise<UnlistenFn> =>
-  listen<ScanDoneEvent>('scan:done', (event) => handler(event.payload));

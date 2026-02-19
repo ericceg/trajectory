@@ -15,7 +15,7 @@ export function ScanStatusCard({ scanning, progress, done }: ScanStatusCardProps
         <p className="mt-2 text-lg font-semibold text-foreground">
           {progress.parsed} / {progress.total} ({percent}%)
         </p>
-        <p className="mt-1 truncate text-sm text-muted">{progress.current_file}</p>
+        <p className="mt-1 truncate text-sm text-muted">{progress.currentFile}</p>
       </section>
     );
   }

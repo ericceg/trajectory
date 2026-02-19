@@ -10,6 +10,7 @@ import {
 } from '@tanstack/react-table';
 
 import { listActivities } from '@/lib/tauri';
+import { useAppStore } from '@/store/useAppStore';
 import {
   formatDateTime,
   formatDistanceKm,
@@ -34,6 +35,9 @@ const CATEGORY_OPTIONS = [
 
 export function ActivitiesPage() {
   const navigate = useNavigate();
+  const settings = useAppStore((state) => state.settings);
+  const getCachedActivities = useAppStore((state) => state.getCachedActivities);
+  const setCachedActivities = useAppStore((state) => state.setCachedActivities);
 
   const [filters, setFilters] = useState<{
     category: string;
@@ -49,6 +53,25 @@ export function ActivitiesPage() {
   const [sorting, setSorting] = useState<SortingState>([{ id: 'activityStart', desc: true }]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const query = useMemo<ActivityFilters>(
+    () => ({
+      category: filters.category || undefined,
+      minDistance: filters.minDistanceKm ? Number(filters.minDistanceKm) * 1000 : undefined,
+      maxDistance: filters.maxDistanceKm ? Number(filters.maxDistanceKm) * 1000 : undefined
+    }),
+    [filters.category, filters.maxDistanceKm, filters.minDistanceKm]
+  );
+
+  const cacheKey = useMemo(
+    () =>
+      JSON.stringify({
+        query,
+        importFolderPath: settings?.importFolderPath ?? null,
+        lastScanTimestamp: settings?.lastScanTimestamp ?? null
+      }),
+    [query, settings?.importFolderPath, settings?.lastScanTimestamp]
+  );
 
   const columns = useMemo(
     () => [
@@ -99,29 +122,44 @@ export function ActivitiesPage() {
     getSortedRowModel: getSortedRowModel()
   });
 
-  const loadActivities = async () => {
-    const query: ActivityFilters = {
-      category: filters.category || undefined,
-      minDistance: filters.minDistanceKm ? Number(filters.minDistanceKm) * 1000 : undefined,
-      maxDistance: filters.maxDistanceKm ? Number(filters.maxDistanceKm) * 1000 : undefined
+  useEffect(() => {
+    const cached = getCachedActivities(cacheKey);
+    if (cached) {
+      setData(cached);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadActivities = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const activities = await listActivities(query);
+        if (cancelled) {
+          return;
+        }
+        setData(activities);
+        setCachedActivities(cacheKey, activities);
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : String(err));
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
     };
 
-    setLoading(true);
-    setError(null);
-
-    try {
-      const activities = await listActivities(query);
-      setData(activities);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
     void loadActivities();
-  }, [filters]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [cacheKey, getCachedActivities, query, setCachedActivities]);
 
   return (
     <div className="space-y-6">

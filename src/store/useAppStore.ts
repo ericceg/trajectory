@@ -5,10 +5,9 @@ import {
   scanImportFolder,
   setDarkMode,
   setImportFolder,
-  onScanDone,
   onScanProgress
 } from '@/lib/tauri';
-import type { ScanDoneEvent, ScanProgressEvent, Settings } from '@/types';
+import type { ActivitySummary, ScanDoneEvent, ScanProgressEvent, Settings } from '@/types';
 
 interface AppState {
   settings: Settings | null;
@@ -16,11 +15,15 @@ interface AppState {
   scanning: boolean;
   scanProgress: ScanProgressEvent | null;
   scanDone: ScanDoneEvent | null;
+  activitiesCache: Record<string, ActivitySummary[]>;
   init: () => Promise<void>;
   updateImportFolder: (path: string, recursive: boolean) => Promise<void>;
   setScanRecursive: (recursive: boolean) => Promise<void>;
   updateDarkMode: (darkMode: boolean) => Promise<void>;
   runScan: (fullRescan?: boolean) => Promise<void>;
+  getCachedActivities: (cacheKey: string) => ActivitySummary[] | null;
+  setCachedActivities: (cacheKey: string, activities: ActivitySummary[]) => void;
+  clearActivitiesCache: () => void;
 }
 
 let listenersInitialized = false;
@@ -31,15 +34,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   scanning: false,
   scanProgress: null,
   scanDone: null,
+  activitiesCache: {},
   init: async () => {
     if (!listenersInitialized) {
       listenersInitialized = true;
       void onScanProgress((progress) => {
-        set({ scanProgress: progress, scanning: progress.parsed < progress.total });
-      });
-      void onScanDone((done) => {
-        set({ scanDone: done, scanning: false, scanProgress: null });
-        void get().init();
+        set({ scanProgress: progress, scanning: true });
       });
     }
 
@@ -49,7 +49,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   updateImportFolder: async (path, recursive) => {
     const settings = await setImportFolder(path, recursive);
-    set({ settings, scanDone: null });
+    set({ settings, scanDone: null, activitiesCache: {} });
   },
   setScanRecursive: async (recursive) => {
     const current = get().settings;
@@ -58,7 +58,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     const settings = await setImportFolder(current.importFolderPath, recursive);
-    set({ settings, scanDone: null });
+    set({ settings, scanDone: null, activitiesCache: {} });
   },
   updateDarkMode: async (darkMode) => {
     const settings = await setDarkMode(darkMode);
@@ -68,8 +68,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ scanning: true, scanDone: null });
     try {
       const done = await scanImportFolder(fullRescan);
-      set({ scanDone: done, scanning: false, scanProgress: null });
-      await get().init();
+      const settings = await getSettings();
+      set({ scanDone: done, scanning: false, scanProgress: null, settings, activitiesCache: {} });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       set({
@@ -79,5 +79,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       });
       throw error;
     }
-  }
+  },
+  getCachedActivities: (cacheKey) => get().activitiesCache[cacheKey] ?? null,
+  setCachedActivities: (cacheKey, activities) =>
+    set((state) => ({
+      activitiesCache: {
+        ...state.activitiesCache,
+        [cacheKey]: activities
+      }
+    })),
+  clearActivitiesCache: () => set({ activitiesCache: {} })
 }));

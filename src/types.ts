@@ -80,7 +80,7 @@ export interface StatsResponse {
 export interface ScanProgressEvent {
   parsed: number;
   total: number;
-  current_file: string;
+  currentFile: string;
 }
 
 export interface ScanDoneEvent {

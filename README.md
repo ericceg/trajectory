@@ -15,6 +15,7 @@ Prototype (actively evolving).
 - Normal rescans prune deleted files from the database cache
 - Optional "Clear Cache + Full Rescan" for a full rebuild from disk
 - Background parsing with progress events
+- Route-level lazy loading for faster initial app startup
 - Workout category derivation (`Running`, `Biking`, `Strength`, etc.) from TCX sport + notes
 - Single visible workout category in UI (used for filtering)
 - Activities filters auto-apply on change (no Apply button)
@@ -22,6 +23,7 @@ Prototype (actively evolving).
 - Dashboard with a drill-down training calendar (year view -> month view -> activity links)
 - Calendar bars can switch between hours, kilometers, and activity count
 - Filterable/sortable activities table
+- In-memory activities list caching for snappy return navigation (no refetch unless filters/data change)
 - Activity detail with metrics, route map, and charts
 - Statistics view with aggregate metrics, histograms, and trends
 
@@ -167,7 +169,7 @@ Implemented commands:
 
 Progress events:
 
-- `scan:progress` `{ parsed, total, current_file }`
+- `scan:progress` `{ parsed, total, currentFile }`
 - `scan:done` `{ added, updated, skipped, errors }`
 
 ## Non-Goals (Current Prototype)

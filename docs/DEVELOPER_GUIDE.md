@@ -54,7 +54,7 @@ High-level data flow:
 4. Scan emits progress and completion events:
    - `scan:progress`
    - `scan:done`
-5. Zustand store (`src/store/useAppStore.ts`) listens for events and refreshes settings/state.
+5. Zustand store (`src/store/useAppStore.ts`) listens for progress events and refreshes settings after scan command completion.
 
 ## 4. Backend architecture (Rust)
 
@@ -286,10 +286,12 @@ Stats and analytics:
 
 - Calls `useAppStore().init()` on mount
 - Applies document theme via `data-theme` from `settings.darkMode`
+- Lazy-loads page routes with `React.lazy` + `Suspense` for route-level code splitting
 - Route gate behavior:
   - while settings load: loading screen
   - missing import folder: show `OnboardingPage`
   - otherwise: `HashRouter` + app layout
+- Triggers one automatic startup scan per selected import folder path
 - Main routes:
   - `/` dashboard
   - `/activities`
@@ -312,7 +314,6 @@ Command wrappers:
 Event subscriptions:
 
 - `onScanProgress(handler)` listens to `scan:progress`
-- `onScanDone(handler)` listens to `scan:done`
 
 This file is the only place that should know command/event string names.
 
@@ -328,7 +329,6 @@ Store actions:
 - `init()`
   - Registers scan event listeners once (`listenersInitialized`)
   - Pulls latest settings from backend
-  - On `scan:done`, refreshes settings again
 - `updateImportFolder(path, recursive)`
   - Persists import folder settings
 - `setScanRecursive(recursive)`
@@ -337,7 +337,8 @@ Store actions:
   - Persists theme preference
 - `runScan()`
   - Starts scan
-  - Updates progress/done state
+  - Updates progress/done state from command result + progress events
+  - Refreshes settings after successful scan
   - On failure, stores synthetic `scanDone` with error payload
 
 ### 5.4 Pages (`src/pages/`)
@@ -514,6 +515,5 @@ Add a new derived metric from TCX:
 
 - The parser currently requires at least one `<Trackpoint>`; files without trackpoints are rejected.
 - Scanner accepts `.txc` extension in addition to `.tcx`.
-- `scan:progress` event payload uses `current_file` (snake_case in TS type); command payload models use camelCase. Keep this in mind when adjusting event typing.
+- `scan:progress` event payload uses `currentFile` (camelCase), matching the rest of the command payload contracts.
 - There is currently no automated test suite in the repository.
-

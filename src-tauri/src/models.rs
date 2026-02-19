@@ -123,6 +123,7 @@ pub struct StatsResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ScanProgressEvent {
     pub parsed: usize,
     pub total: usize,
@@ -130,6 +131,7 @@ pub struct ScanProgressEvent {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ScanDoneEvent {
     pub added: usize,
     pub updated: usize,
