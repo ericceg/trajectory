@@ -87,6 +87,15 @@ Release guardrails:
 - The workflow must successfully generate both:
   - `.app` bundle
   - `.dmg` installer
+- The workflow requires macOS signing/notarization secrets so release builds are trusted by Gatekeeper.
+
+Required GitHub secrets for signed/notarized macOS releases:
+- `APPLE_CERTIFICATE` (base64-encoded `Developer ID Application` certificate `.p12`)
+- `APPLE_CERTIFICATE_PASSWORD`
+- `APPLE_ID`
+- `APPLE_PASSWORD` (app-specific password)
+- `APPLE_TEAM_ID`
+- Optional: `APPLE_SIGNING_IDENTITY` (if you need to force a specific identity)
 
 ### First release (`v0.1.0`)
 
@@ -103,6 +112,18 @@ git push origin v0.1.0
 After pushing the tag:
 1. Open GitHub Actions and confirm the `Release` workflow for `v0.1.0` is green.
 2. Open the GitHub Release `v0.1.0` and confirm release assets include the macOS installer (`.dmg`).
+
+### If macOS says "is damaged and can't be opened"
+
+That usually means the app was not signed/notarized (or notarization did not validate), not that the binary is corrupted.
+
+For a one-off local unblock while testing:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Trajectory.app
+```
+
+For shipped releases, fix the pipeline by configuring the signing/notarization secrets above.
 
 ## Architecture
 
