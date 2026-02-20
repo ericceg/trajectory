@@ -8,7 +8,7 @@ Trajectory is a local-first TCX activity analysis desktop app built with:
 
 - Tauri v2 shell
 - Rust backend (TCX parsing, indexing, SQLite queries)
-- React + TypeScript frontend (dashboard/list/detail/stats/settings UI)
+- React + TypeScript frontend (dashboard/list/detail/settings UI)
 
 The app has no server. All reads/writes happen locally:
 
@@ -40,7 +40,7 @@ Backend files:
 - `src-tauri/src/main.rs`: app bootstrap + Tauri command handlers
 - `src-tauri/src/parser.rs`: TCX XML parser + derived metric logic
 - `src-tauri/src/scanner.rs`: folder scan/index pipeline + progress events
-- `src-tauri/src/db.rs`: SQLite schema + upsert + list/detail/stats queries
+- `src-tauri/src/db.rs`: SQLite schema + upsert + list/detail queries
 - `src-tauri/src/settings.rs`: settings file load/save
 - `src-tauri/src/models.rs`: shared Rust DTOs for commands/events
 
@@ -90,8 +90,6 @@ Tauri command handlers:
   - DB query in `spawn_blocking`
 - `get_activity(id, state) -> ActivityDetail`
   - DB detail query in `spawn_blocking`
-- `get_stats(range, state) -> StatsResponse`
-  - DB aggregate query in `spawn_blocking`
 
 ### 4.2 `src-tauri/src/models.rs`
 
@@ -104,11 +102,9 @@ Important types:
 - `ActivityFilters`
   - Date range, category/sport, distance range, day exact match
 - `ActivitySummary`
-  - Row used by dashboard/list/stats summaries
+  - Row used by dashboard/list summaries
 - `ActivityDetail`
   - `summary + track + samples + original_sample_count`
-- `StatsResponse`
-  - Totals + histogram bins + weekly/monthly trend points
 - `ScanProgressEvent`, `ScanDoneEvent`
   - Event payloads for scanner UI updates
 - `ParsedActivity`
@@ -258,20 +254,6 @@ Activity list/detail:
   - Loads ordered sample rows
   - Returns assembled `ActivityDetail`
 
-Stats and analytics:
-
-- `histogram(values, bins) -> Vec<HistogramBin>`
-  - Creates equal-width bins
-  - Handles empty/single-value edge cases
-- `range_start_iso(range) -> Option<String>`
-  - Converts `week|month|year|all` into optional start timestamp
-- `distance_trends(conn, group_fmt, start_iso) -> Vec<TrendPoint>`
-  - Buckets by SQLite `strftime` format
-- `get_stats(conn, range) -> StatsResponse`
-  - Aggregates totals (distance/time/elevation/count)
-  - Builds duration and distance histograms
-  - Builds weekly and monthly trend lines
-
 ## 5. Frontend architecture (React + TypeScript)
 
 ### 5.1 Entry and routing
@@ -296,7 +278,6 @@ Stats and analytics:
   - `/` dashboard
   - `/activities`
   - `/activities/:id`
-  - `/statistics`
   - `/settings`
 
 ### 5.2 Backend bridge (`src/lib/tauri.ts`)
@@ -309,7 +290,6 @@ Command wrappers:
 - `scanImportFolder()`
 - `listActivities(filters?)`
 - `getActivity(id)`
-- `getStats(range)`
 
 Event subscriptions:
 
@@ -359,8 +339,7 @@ Store actions:
 `DashboardPage.tsx`:
 
 - Loads:
-  - weekly stats
-  - yearly stats
+  - weekly and yearly summary cards (aggregated from filtered `list_activities`)
   - recent activities
   - month activities for selected month
   - selected-day activities
@@ -390,16 +369,6 @@ Store actions:
   - elevation vs distance/time
 - Renders map (Leaflet polyline + auto-fit bounds)
 - Handles no-GPS and no-sample-data states
-
-`StatisticsPage.tsx`:
-
-- Range tabs: `week`, `month`, `year`, `all`
-- Loads aggregate stats for selected range
-- Builds:
-  - workout duration histogram data
-  - distance histogram data
-  - merged weekly/monthly trend data
-- Renders cards + bar charts + trend chart
 
 ### 5.5 Shared components (`src/components/`)
 

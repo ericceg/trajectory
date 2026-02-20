@@ -9,9 +9,7 @@ mod settings;
 use std::{fs, path::PathBuf};
 
 use anyhow::{Context, Result};
-use models::{
-    ActivityDetail, ActivityFilters, ActivitySummary, ScanDoneEvent, Settings, StatsResponse,
-};
+use models::{ActivityDetail, ActivityFilters, ActivitySummary, ScanDoneEvent, Settings};
 use tauri::{AppHandle, Manager, State};
 
 #[derive(Debug, Clone)]
@@ -134,18 +132,6 @@ async fn get_activity(id: i64, state: State<'_, AppState>) -> Result<ActivityDet
     .map_err(|err| err.to_string())?
 }
 
-#[tauri::command]
-async fn get_stats(range: String, state: State<'_, AppState>) -> Result<StatsResponse, String> {
-    let db_path = state.db_path.clone();
-
-    tauri::async_runtime::spawn_blocking(move || {
-        let conn = db::open_connection(&db_path).map_err(|err| err.to_string())?;
-        db::get_stats(&conn, &range).map_err(|err| err.to_string())
-    })
-    .await
-    .map_err(|err| err.to_string())?
-}
-
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -160,8 +146,7 @@ fn main() {
             set_dark_mode,
             scan_import_folder,
             list_activities,
-            get_activity,
-            get_stats
+            get_activity
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -9,16 +9,18 @@ import {
   format,
   isSameMonth,
   parseISO,
+  startOfToday,
   startOfMonth,
   startOfWeek,
-  startOfYear
+  startOfYear,
+  subDays
 } from 'date-fns';
 
-import { getStats, listActivities } from '@/lib/tauri';
+import { listActivities } from '@/lib/tauri';
 import { formatDateTime, formatDistanceKm, formatDuration } from '@/lib/format';
 import { MetricCard } from '@/components/MetricCard';
 import { useAppStore } from '@/store/useAppStore';
-import type { ActivitySummary, StatsResponse } from '@/types';
+import type { ActivitySummary } from '@/types';
 
 type CalendarMode = 'year' | 'month';
 type CalendarBarMetric = 'durationHours' | 'distanceKm' | 'activities';
@@ -33,6 +35,13 @@ interface MonthBucket {
   totals: AggregateTotals;
   dailyTotals: Map<string, AggregateTotals>;
   activitiesByDay: Map<string, ActivitySummary[]>;
+}
+
+interface SummaryTotals {
+  totalDistanceM: number;
+  totalTimeS: number;
+  totalElevationM: number;
+  activityCount: number;
 }
 
 const ZERO_TOTALS: AggregateTotals = {
@@ -60,6 +69,23 @@ const addToTotals = (target: AggregateTotals, activity: ActivitySummary) => {
   target.distanceKm += activity.distanceM / 1000;
   target.activities += 1;
 };
+
+const summarizeActivities = (activities: ActivitySummary[]): SummaryTotals =>
+  activities.reduce(
+    (totals, activity) => {
+      totals.totalDistanceM += activity.distanceM;
+      totals.totalTimeS += activity.durationSeconds;
+      totals.totalElevationM += activity.elevationGainM;
+      totals.activityCount += 1;
+      return totals;
+    },
+    {
+      totalDistanceM: 0,
+      totalTimeS: 0,
+      totalElevationM: 0,
+      activityCount: 0
+    }
+  );
 
 const metricValue = (totals: AggregateTotals, metric: CalendarBarMetric) => totals[metric];
 
@@ -210,9 +236,9 @@ export function DashboardPage() {
   const [calendarLoading, setCalendarLoading] = useState(false);
   const [calendarError, setCalendarError] = useState<string | null>(null);
 
-  const [weekStats, setWeekStats] = useState<StatsResponse | null>(null);
-  const [yearStats, setYearStats] = useState<StatsResponse | null>(null);
-  const [statsError, setStatsError] = useState<string | null>(null);
+  const [weeklySummary, setWeeklySummary] = useState<SummaryTotals | null>(null);
+  const [yearlySummary, setYearlySummary] = useState<SummaryTotals | null>(null);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
 
   const selectedMonthDate = useMemo(
     () => new Date(selectedYear, selectedMonthIndex, 1),
@@ -226,22 +252,35 @@ export function DashboardPage() {
   useEffect(() => {
     let cancelled = false;
 
-    const loadStats = async () => {
+    const loadSummaryCards = async () => {
       try {
-        setStatsError(null);
-        const [week, year] = await Promise.all([getStats('week'), getStats('year')]);
+        setSummaryError(null);
+        const today = startOfToday();
+        const weekStart = subDays(today, 6);
+        const yearStart = new Date(today.getFullYear(), 0, 1);
+        const [weekActivities, yearActivities] = await Promise.all([
+          listActivities({
+            startDate: format(weekStart, 'yyyy-MM-dd'),
+            endDate: format(today, 'yyyy-MM-dd')
+          }),
+          listActivities({
+            startDate: format(yearStart, 'yyyy-MM-dd'),
+            endDate: format(today, 'yyyy-MM-dd')
+          })
+        ]);
+
         if (!cancelled) {
-          setWeekStats(week);
-          setYearStats(year);
+          setWeeklySummary(summarizeActivities(weekActivities));
+          setYearlySummary(summarizeActivities(yearActivities));
         }
       } catch (err) {
         if (!cancelled) {
-          setStatsError(err instanceof Error ? err.message : String(err));
+          setSummaryError(err instanceof Error ? err.message : String(err));
         }
       }
     };
 
-    void loadStats();
+    void loadSummaryCards();
 
     return () => {
       cancelled = true;
@@ -448,28 +487,28 @@ export function DashboardPage() {
         <h2 className="mt-2 text-3xl font-semibold text-foreground">Training Overview</h2>
       </header>
 
-      {statsError ? <p className="rounded-lg bg-accent/20 p-3 text-sm text-accent">{statsError}</p> : null}
+      {summaryError ? <p className="rounded-lg bg-accent/20 p-3 text-sm text-accent">{summaryError}</p> : null}
       {calendarError ? <p className="rounded-lg bg-accent/20 p-3 text-sm text-accent">{calendarError}</p> : null}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard
           label="Weekly Distance"
-          value={formatDistanceKm(weekStats?.totalDistanceM ?? 0)}
-          subLabel={`${weekStats?.activityCount ?? 0} activities`}
+          value={formatDistanceKm(weeklySummary?.totalDistanceM ?? 0)}
+          subLabel={`${weeklySummary?.activityCount ?? 0} activities`}
         />
         <MetricCard
           label="Weekly Time"
-          value={formatDuration(weekStats?.totalTimeS ?? 0)}
+          value={formatDuration(weeklySummary?.totalTimeS ?? 0)}
           subLabel="Last 7 days"
         />
         <MetricCard
           label="Year-to-Date Distance"
-          value={formatDistanceKm(yearStats?.totalDistanceM ?? 0)}
-          subLabel={`${yearStats?.activityCount ?? 0} activities`}
+          value={formatDistanceKm(yearlySummary?.totalDistanceM ?? 0)}
+          subLabel={`${yearlySummary?.activityCount ?? 0} activities`}
         />
         <MetricCard
           label="Year-to-Date Elevation"
-          value={`${Math.round(yearStats?.totalElevationM ?? 0)} m`}
+          value={`${Math.round(yearlySummary?.totalElevationM ?? 0)} m`}
         />
       </div>
 

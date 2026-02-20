@@ -54,29 +54,6 @@ export interface ActivityDetail {
   originalSampleCount: number;
 }
 
-export interface HistogramBin {
-  start: number;
-  end: number;
-  count: number;
-}
-
-export interface TrendPoint {
-  label: string;
-  distanceM: number;
-}
-
-export interface StatsResponse {
-  range: string;
-  totalDistanceM: number;
-  totalTimeS: number;
-  totalElevationM: number;
-  activityCount: number;
-  durationHistogram: HistogramBin[];
-  distanceHistogram: HistogramBin[];
-  weeklyDistance: TrendPoint[];
-  monthlyDistance: TrendPoint[];
-}
-
 export interface ScanProgressEvent {
   parsed: number;
   total: number;
@@ -89,5 +66,3 @@ export interface ScanDoneEvent {
   skipped: number;
   errors: string[];
 }
-
-export type StatsRange = 'week' | 'month' | 'year' | 'all';

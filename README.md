@@ -27,7 +27,6 @@ Prototype (actively evolving).
 - Active sort direction indicators (`▲`/`▼`) in activities table headers
 - In-memory activities list caching for snappy return navigation (no refetch unless filters/data change)
 - Activity detail with metrics, route map, and charts
-- Statistics view with aggregate metrics, histograms, and trends
 
 ## Tech Stack
 
@@ -67,7 +66,6 @@ npm run tauri dev
    - In year view, hover a weekly bar to preview that week and auto-highlight all matching days in that week across month/day mini-bars
    - **Activities** for filtering/sorting workouts (category + distance filters auto-apply)
    - **Activity Detail** for metrics/map/charts
-   - **Statistics** for aggregate trends and histograms
 
 
 ## Build
@@ -163,7 +161,6 @@ Implemented commands:
 - `scan_import_folder(full_rescan?)`
 - `list_activities(filters)`
 - `get_activity(id)`
-- `get_stats(range)`
 
 `list_activities(filters)` supports:
 - `startDate`, `endDate`

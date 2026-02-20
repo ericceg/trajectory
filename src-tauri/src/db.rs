@@ -1,12 +1,11 @@
 use std::{collections::HashMap, path::Path};
 
 use anyhow::{anyhow, Context, Result};
-use chrono::{Datelike, Duration, TimeZone, Utc};
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::models::{
-    ActivityDetail, ActivityFilters, ActivitySample, ActivitySummary, HistogramBin, ParsedActivity,
-    SourceFileMeta, StatsResponse, TrackPoint, TrendPoint,
+    ActivityDetail, ActivityFilters, ActivitySample, ActivitySummary, ParsedActivity, SourceFileMeta,
+    TrackPoint,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -449,152 +448,5 @@ pub fn get_activity(conn: &Connection, id: i64) -> Result<ActivityDetail> {
         track,
         samples,
         original_sample_count: original_sample_count as usize,
-    })
-}
-
-fn histogram(values: &[f64], bins: usize) -> Vec<HistogramBin> {
-    if values.is_empty() || bins == 0 {
-        return Vec::new();
-    }
-
-    let min = values.iter().copied().reduce(f64::min).unwrap_or(0.0);
-    let max = values.iter().copied().reduce(f64::max).unwrap_or(0.0);
-
-    if (max - min).abs() < f64::EPSILON {
-        return vec![HistogramBin {
-            start: min,
-            end: min + 1.0,
-            count: values.len(),
-        }];
-    }
-
-    let width = (max - min) / bins as f64;
-    let mut counts = vec![0usize; bins];
-
-    for value in values {
-        let mut index = ((value - min) / width).floor() as usize;
-        if index >= bins {
-            index = bins - 1;
-        }
-        counts[index] += 1;
-    }
-
-    counts
-        .into_iter()
-        .enumerate()
-        .map(|(idx, count)| HistogramBin {
-            start: min + width * idx as f64,
-            end: min + width * (idx as f64 + 1.0),
-            count,
-        })
-        .collect()
-}
-
-fn range_start_iso(range: &str) -> Option<String> {
-    let now = Utc::now();
-
-    let date = match range {
-        "week" => Some(now - Duration::days(6)),
-        "month" => Utc
-            .with_ymd_and_hms(now.year(), now.month(), 1, 0, 0, 0)
-            .single(),
-        "year" => Utc.with_ymd_and_hms(now.year(), 1, 1, 0, 0, 0).single(),
-        "all" => None,
-        _ => None,
-    };
-
-    date.map(|date| date.to_rfc3339())
-}
-
-fn distance_trends(conn: &Connection, group_fmt: &str, start_iso: &str) -> Result<Vec<TrendPoint>> {
-    let mut stmt = conn.prepare(
-        r#"
-    SELECT strftime(?1, activity_start) AS bucket, COALESCE(SUM(distance_m), 0)
-    FROM activities
-    WHERE activity_start >= ?2
-    GROUP BY bucket
-    ORDER BY bucket ASC
-    "#,
-    )?;
-
-    let rows = stmt.query_map(params![group_fmt, start_iso], |row| {
-        Ok(TrendPoint {
-            label: row.get::<_, String>(0)?,
-            distance_m: row.get(1)?,
-        })
-    })?;
-
-    let mut result = Vec::new();
-    for row in rows {
-        result.push(row?);
-    }
-
-    Ok(result)
-}
-
-pub fn get_stats(conn: &Connection, range: &str) -> Result<StatsResponse> {
-    let range = range.to_lowercase();
-    let now = Utc::now();
-    let start_iso = range_start_iso(&range);
-    let start_filter = start_iso.as_deref();
-
-    let mut summary_stmt = conn.prepare(
-        r#"
-    SELECT
-      COALESCE(SUM(distance_m), 0),
-      COALESCE(SUM(duration_seconds), 0),
-      COALESCE(SUM(elevation_gain_m), 0),
-      COUNT(*)
-    FROM activities
-    WHERE (?1 IS NULL OR activity_start >= ?1)
-    "#,
-    )?;
-
-    let (total_distance_m, total_time_s, total_elevation_m, activity_count): (f64, f64, f64, i64) =
-        summary_stmt.query_row(params![start_filter], |row| {
-            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
-        })?;
-
-    let mut value_stmt = conn.prepare(
-        r#"
-    SELECT duration_seconds, distance_m
-    FROM activities
-    WHERE (?1 IS NULL OR activity_start >= ?1)
-    "#,
-    )?;
-
-    let value_rows = value_stmt.query_map(params![start_filter], |row| {
-        Ok((row.get::<_, f64>(0)?, row.get::<_, f64>(1)?))
-    })?;
-
-    let mut durations = Vec::new();
-    let mut distances = Vec::new();
-
-    for row in value_rows {
-        let (duration, distance) = row?;
-        durations.push(duration);
-        distances.push(distance);
-    }
-
-    let weekly_start = start_iso
-        .clone()
-        .unwrap_or_else(|| (now - Duration::weeks(24)).to_rfc3339());
-    let monthly_start = start_iso
-        .clone()
-        .unwrap_or_else(|| (now - Duration::days(730)).to_rfc3339());
-
-    let weekly_distance = distance_trends(conn, "%Y-W%W", &weekly_start)?;
-    let monthly_distance = distance_trends(conn, "%Y-%m", &monthly_start)?;
-
-    Ok(StatsResponse {
-        range,
-        total_distance_m,
-        total_time_s,
-        total_elevation_m,
-        activity_count: activity_count as usize,
-        duration_histogram: histogram(&durations, 10),
-        distance_histogram: histogram(&distances, 10),
-        weekly_distance,
-        monthly_distance,
     })
 }

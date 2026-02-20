@@ -95,35 +95,6 @@ pub struct ActivityDetail {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct HistogramBin {
-    pub start: f64,
-    pub end: f64,
-    pub count: usize,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TrendPoint {
-    pub label: String,
-    pub distance_m: f64,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct StatsResponse {
-    pub range: String,
-    pub total_distance_m: f64,
-    pub total_time_s: f64,
-    pub total_elevation_m: f64,
-    pub activity_count: usize,
-    pub duration_histogram: Vec<HistogramBin>,
-    pub distance_histogram: Vec<HistogramBin>,
-    pub weekly_distance: Vec<TrendPoint>,
-    pub monthly_distance: Vec<TrendPoint>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct ScanProgressEvent {
     pub parsed: usize,
     pub total: usize,
