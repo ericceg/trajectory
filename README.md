@@ -24,6 +24,7 @@ Prototype (actively evolving).
 - Calendar bars can switch between hours, kilometers, and activity count
 - Hovering month or year bars highlights the corresponding calendar day/month workout context with a quick pop animation
 - Filterable/sortable activities table
+- Active sort direction indicators (`▲`/`▼`) in activities table headers
 - In-memory activities list caching for snappy return navigation (no refetch unless filters/data change)
 - Activity detail with metrics, route map, and charts
 - Statistics view with aggregate metrics, histograms, and trends

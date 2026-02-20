@@ -215,17 +215,37 @@ export function ActivitiesPage() {
             <thead className="bg-bg/60 text-xs uppercase tracking-[0.12em] text-muted">
               {table.getHeaderGroups().map((headerGroup) => (
                 <tr key={headerGroup.id}>
-                  {headerGroup.headers.map((header) => (
-                    <th
-                      key={header.id}
-                      className="cursor-pointer px-4 py-3"
-                      onClick={header.column.getToggleSortingHandler()}
-                    >
-                      {header.isPlaceholder
-                        ? null
-                        : flexRender(header.column.columnDef.header, header.getContext())}
-                    </th>
-                  ))}
+                  {headerGroup.headers.map((header) => {
+                    const sortDirection = header.column.getIsSorted();
+                    return (
+                      <th key={header.id} className="px-4 py-3">
+                        {header.isPlaceholder ? null : (
+                          <button
+                            type="button"
+                            className="flex items-center gap-1 text-left"
+                            onClick={header.column.getToggleSortingHandler()}
+                          >
+                            <span>{flexRender(header.column.columnDef.header, header.getContext())}</span>
+                            <span
+                              className={`inline-flex w-3 items-center justify-center text-[10px] leading-none ${
+                                sortDirection ? 'text-accent opacity-100' : 'opacity-0'
+                              }`}
+                              aria-label={
+                                sortDirection === 'asc'
+                                  ? 'Sorted ascending'
+                                  : sortDirection === 'desc'
+                                    ? 'Sorted descending'
+                                    : undefined
+                              }
+                              aria-hidden={!sortDirection}
+                            >
+                              {sortDirection === 'desc' ? '▼' : '▲'}
+                            </span>
+                          </button>
+                        )}
+                      </th>
+                    );
+                  })}
                 </tr>
               ))}
             </thead>
