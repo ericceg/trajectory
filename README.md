@@ -27,13 +27,17 @@ Prototype (actively evolving).
 - Active sort direction indicators (`▲`/`▼`) in activities table headers
 - In-memory activities list caching for snappy return navigation (no refetch unless filters/data change)
 - Activity detail with metrics, route map, and charts
+- Continuous, Google Maps-style smooth zooming/panning on map views
+- Global path-based heatmap page that overlays all matching GPS tracks
+- Heatmap filters for time span (presets + custom), category, and sport type
+- Heatmap "Reduced complexity" toggle for a grayscale, lower-noise basemap with stronger route contrast
 
 ## Tech Stack
 
 - Shell: Tauri v2
 - Backend: Rust, `quick-xml`, `rusqlite`, `chrono`, `serde`
 - Frontend: React + TypeScript + Vite + TailwindCSS
-- UI/Data libs: React Router, Zustand, TanStack Table, Recharts, date-fns, Leaflet
+- UI/Data libs: React Router, Zustand, TanStack Table, Recharts, date-fns, MapLibre GL JS
 - Storage: SQLite + JSON settings in OS app data/config directories
 
 ## Quick Start
@@ -65,6 +69,8 @@ npm run tauri dev
    - In month view, move horizontally across daily bars to see a quick popover and auto-highlight the corresponding workout day and all visible workout cards
    - In year view, move horizontally across weekly bars to preview that week and auto-highlight all matching days in that week across month/day mini-bars
    - **Activities** for filtering/sorting workouts (category + distance filters auto-apply)
+   - **Heatmap** for a global path heatmap (overlapping GPS tracks; filter by time span/category/sport)
+   - Enable **Reduced complexity (grayscale)** in Heatmap to declutter the map and emphasize route overlap
    - **Activity Detail** for metrics/map/charts
 
 
@@ -161,12 +167,20 @@ Implemented commands:
 - `scan_import_folder(full_rescan?)`
 - `list_activities(filters)`
 - `get_activity(id)`
+- `get_heatmap_data(filters)`
 
 `list_activities(filters)` supports:
 - `startDate`, `endDate`
 - `category` (normalized workout category)
 - `minDistance`, `maxDistance`
 - `day`
+
+`get_heatmap_data(filters)` supports:
+- `startDate`, `endDate`
+- `category`
+- `sportType`
+- `activityIds` (optional explicit subset)
+- `maxPoints` (optional cap for returned GPS points)
 
 Progress events:
 

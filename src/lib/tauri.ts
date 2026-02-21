@@ -5,6 +5,8 @@ import {
   type ActivityDetail,
   type ActivityFilters,
   type ActivitySummary,
+  type HeatmapData,
+  type HeatmapFilters,
   type ScanDoneEvent,
   type ScanProgressEvent,
   type Settings
@@ -25,6 +27,9 @@ export const listActivities = (filters?: ActivityFilters) =>
   invoke<ActivitySummary[]>('list_activities', { filters });
 
 export const getActivity = (id: number) => invoke<ActivityDetail>('get_activity', { id });
+
+export const getHeatmapData = (filters?: HeatmapFilters) =>
+  invoke<HeatmapData>('get_heatmap_data', { filters });
 
 export const onScanProgress = (handler: (event: ScanProgressEvent) => void): Promise<UnlistenFn> =>
   listen<ScanProgressEvent>('scan:progress', (event) => handler(event.payload));

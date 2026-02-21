@@ -95,6 +95,39 @@ pub struct ActivityDetail {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct HeatmapFilters {
+    pub start_date: Option<String>,
+    pub end_date: Option<String>,
+    pub category: Option<String>,
+    pub sport_type: Option<String>,
+    pub activity_ids: Option<Vec<i64>>,
+    pub max_points: Option<usize>,
+}
+
+impl Default for HeatmapFilters {
+    fn default() -> Self {
+        Self {
+            start_date: None,
+            end_date: None,
+            category: None,
+            sport_type: None,
+            activity_ids: None,
+            max_points: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HeatmapData {
+    pub tracks: Vec<Vec<TrackPoint>>,
+    pub activity_count: usize,
+    pub original_point_count: usize,
+    pub returned_point_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ScanProgressEvent {
     pub parsed: usize,
     pub total: usize,

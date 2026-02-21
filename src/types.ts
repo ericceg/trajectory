@@ -15,6 +15,15 @@ export interface ActivityFilters {
   day?: string;
 }
 
+export interface HeatmapFilters {
+  startDate?: string;
+  endDate?: string;
+  category?: string;
+  sportType?: string;
+  activityIds?: number[];
+  maxPoints?: number;
+}
+
 export interface ActivitySummary {
   id: number;
   sourcePath: string;
@@ -52,6 +61,13 @@ export interface ActivityDetail {
   track: TrackPoint[];
   samples: ActivitySample[];
   originalSampleCount: number;
+}
+
+export interface HeatmapData {
+  tracks: TrackPoint[][];
+  activityCount: number;
+  originalPointCount: number;
+  returnedPointCount: number;
 }
 
 export interface ScanProgressEvent {

@@ -1,11 +1,11 @@
 use std::{collections::HashMap, path::Path};
 
 use anyhow::{anyhow, Context, Result};
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, params_from_iter, types::Value, Connection, OptionalExtension};
 
 use crate::models::{
-    ActivityDetail, ActivityFilters, ActivitySample, ActivitySummary, ParsedActivity, SourceFileMeta,
-    TrackPoint,
+    ActivityDetail, ActivityFilters, ActivitySample, ActivitySummary, HeatmapData, HeatmapFilters,
+    ParsedActivity, SourceFileMeta, TrackPoint,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -312,6 +312,35 @@ fn map_summary_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ActivitySummary>
     })
 }
 
+fn downsample_track(points: &[TrackPoint], stride: usize) -> Vec<TrackPoint> {
+    if stride == 0 {
+        return Vec::new();
+    }
+
+    if points.len() <= 2 || stride <= 1 {
+        return points.to_vec();
+    }
+
+    let mut sampled = Vec::with_capacity((points.len() / stride).max(2));
+
+    for point in points.iter().step_by(stride) {
+        sampled.push(point.clone());
+    }
+
+    let last_point = points.last().cloned();
+    if let Some(last_point) = last_point {
+        let needs_last = sampled
+            .last()
+            .map(|point| point.lat != last_point.lat || point.lon != last_point.lon)
+            .unwrap_or(true);
+        if needs_last {
+            sampled.push(last_point);
+        }
+    }
+
+    sampled
+}
+
 pub fn list_activities(
     conn: &Connection,
     filters: &ActivityFilters,
@@ -363,6 +392,102 @@ pub fn list_activities(
     }
 
     Ok(activities)
+}
+
+pub fn get_heatmap_data(conn: &Connection, filters: &HeatmapFilters) -> Result<HeatmapData> {
+    const DEFAULT_MAX_HEATMAP_POINTS: usize = 60_000;
+
+    let mut sql = String::from(
+        r#"
+    SELECT track_json
+    FROM activities
+    WHERE has_gps = 1
+    "#,
+    );
+
+    let mut params: Vec<Value> = Vec::new();
+
+    if let Some(start_date) = &filters.start_date {
+        sql.push_str(" AND date(activity_start) >= date(?)");
+        params.push(Value::Text(start_date.clone()));
+    }
+
+    if let Some(end_date) = &filters.end_date {
+        sql.push_str(" AND date(activity_start) <= date(?)");
+        params.push(Value::Text(end_date.clone()));
+    }
+
+    if let Some(category) = &filters.category {
+        sql.push_str(" AND category = ?");
+        params.push(Value::Text(category.clone()));
+    }
+
+    if let Some(sport_type) = &filters.sport_type {
+        sql.push_str(" AND sport_type = ?");
+        params.push(Value::Text(sport_type.clone()));
+    }
+
+    if let Some(activity_ids) = filters.activity_ids.as_ref().filter(|ids| !ids.is_empty()) {
+        sql.push_str(" AND id IN (");
+
+        for (index, activity_id) in activity_ids.iter().enumerate() {
+            if index > 0 {
+                sql.push_str(", ");
+            }
+            sql.push('?');
+            params.push(Value::Integer(*activity_id));
+        }
+
+        sql.push(')');
+    }
+
+    sql.push_str(" ORDER BY activity_start DESC");
+
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(params_from_iter(params.iter()), |row| {
+        row.get::<_, String>(0)
+    })?;
+
+    let mut tracks = Vec::<Vec<TrackPoint>>::new();
+    let mut activity_count = 0_usize;
+
+    for row in rows {
+        let track_json = row?;
+        let track: Vec<TrackPoint> = serde_json::from_str(&track_json).unwrap_or_default();
+
+        if track.is_empty() {
+            continue;
+        }
+
+        activity_count += 1;
+        tracks.push(track);
+    }
+
+    let original_point_count = tracks.iter().map(|track| track.len()).sum::<usize>();
+    let max_points = filters.max_points.unwrap_or(DEFAULT_MAX_HEATMAP_POINTS);
+    let stride = if max_points == 0 || original_point_count <= max_points {
+        1
+    } else {
+        ((original_point_count as f64) / (max_points as f64)).ceil() as usize
+    };
+
+    let tracks = if stride > 1 {
+        tracks
+            .into_iter()
+            .map(|track| downsample_track(&track, stride))
+            .collect::<Vec<_>>()
+    } else {
+        tracks
+    };
+
+    let returned_point_count = tracks.iter().map(|track| track.len()).sum::<usize>();
+
+    Ok(HeatmapData {
+        tracks,
+        activity_count,
+        original_point_count,
+        returned_point_count,
+    })
 }
 
 pub fn get_activity(conn: &Connection, id: i64) -> Result<ActivityDetail> {
