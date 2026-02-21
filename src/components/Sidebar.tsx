@@ -3,6 +3,7 @@ import { NavLink } from 'react-router-dom';
 const navItems = [
   { path: '/', label: 'Dashboard' },
   { path: '/activities', label: 'Activities' },
+  { path: '/heatmap', label: 'Heatmap' },
   { path: '/settings', label: 'Settings' }
 ];
 

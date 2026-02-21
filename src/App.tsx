@@ -10,6 +10,9 @@ const DashboardPage = lazy(async () => ({
 const ActivitiesPage = lazy(async () => ({
   default: (await import('@/pages/ActivitiesPage')).ActivitiesPage
 }));
+const HeatmapPage = lazy(async () => ({
+  default: (await import('@/pages/HeatmapPage')).HeatmapPage
+}));
 const ActivityDetailPage = lazy(async () => ({
   default: (await import('@/pages/ActivityDetailPage')).ActivityDetailPage
 }));
@@ -37,6 +40,7 @@ function AppLayout() {
           <Routes>
             <Route path="/" element={<DashboardPage />} />
             <Route path="/activities" element={<ActivitiesPage />} />
+            <Route path="/heatmap" element={<HeatmapPage />} />
             <Route path="/activities/:id" element={<ActivityDetailPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />
