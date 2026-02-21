@@ -197,9 +197,12 @@ const SparkBars = ({
           const ratio = maxValue > 0 ? value / maxValue : 0;
           const height = value > 0 ? Math.max(ratio * 100, 10) : 6;
           const active = activeIndex === index || activeIndicesSet.has(index);
-          const barVisualClass = `rounded-sm transition-all duration-200 ${barClass} ${
-            value > 0 ? 'opacity-100' : 'opacity-20'
-          } ${active ? `${activePopClass} -translate-y-0.5 scale-x-[1.06] shadow-[0_10px_18px_-12px_rgba(252,76,2,0.95)]` : ''}`;
+          const colorClass = active
+            ? 'bg-accent opacity-100'
+            : `${barClass} ${value > 0 ? 'opacity-100' : 'opacity-20'}`;
+          const barVisualClass = `rounded-sm transition-all duration-200 ${colorClass} ${
+            active ? `${activePopClass} -translate-y-0.5 scale-x-[1.06] shadow-[0_10px_18px_-12px_rgba(252,76,2,0.95)]` : ''
+          }`;
 
           if (interactive) {
             return (
