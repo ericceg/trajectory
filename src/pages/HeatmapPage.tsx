@@ -289,7 +289,7 @@ function HeatmapMap({
     return () => {
       map.off('load', applyTracks);
     };
-  }, [syncTracks]);
+  }, [syncTracks, reducedComplexity]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -310,7 +310,7 @@ function HeatmapMap({
     return () => {
       map.off('load', applyBounds);
     };
-  }, [boundsPoints]);
+  }, [boundsPoints, reducedComplexity]);
 
   return <div ref={containerRef} className="h-full w-full" />;
 }
