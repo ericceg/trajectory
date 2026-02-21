@@ -27,6 +27,7 @@ Prototype (actively evolving).
 - Active sort direction indicators (`▲`/`▼`) in activities table headers
 - In-memory activities list caching for snappy return navigation (no refetch unless filters/data change)
 - Activity detail with metrics, route map, and charts
+- Continuous, Google Maps-style smooth zooming/panning on map views
 - Global path-based heatmap page that overlays all matching GPS tracks
 - Heatmap filters for time span (presets + custom), category, and sport type
 - Heatmap "Reduced complexity" toggle for a grayscale, lower-noise basemap with stronger route contrast
@@ -36,7 +37,7 @@ Prototype (actively evolving).
 - Shell: Tauri v2
 - Backend: Rust, `quick-xml`, `rusqlite`, `chrono`, `serde`
 - Frontend: React + TypeScript + Vite + TailwindCSS
-- UI/Data libs: React Router, Zustand, TanStack Table, Recharts, date-fns, Leaflet
+- UI/Data libs: React Router, Zustand, TanStack Table, Recharts, date-fns, MapLibre GL JS
 - Storage: SQLite + JSON settings in OS app data/config directories
 
 ## Quick Start

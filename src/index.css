@@ -46,12 +46,19 @@ a {
   text-decoration: none;
 }
 
-.leaflet-container {
+.maplibregl-map {
   background: rgb(var(--color-bg));
 }
 
-.leaflet-tile.heatmap-tile-minimal {
-  filter: grayscale(1) contrast(1.15) brightness(0.82);
+.maplibregl-ctrl-group {
+  border: 1px solid rgba(var(--color-border), 0.8);
+  box-shadow: 0 10px 20px -16px rgba(0, 0, 0, 0.5);
+}
+
+.maplibregl-ctrl button.maplibregl-ctrl-zoom-in,
+.maplibregl-ctrl button.maplibregl-ctrl-zoom-out,
+.maplibregl-ctrl button.maplibregl-ctrl-compass {
+  background-color: rgba(var(--color-panel), 0.9);
 }
 
 @keyframes calendar-pop-a {

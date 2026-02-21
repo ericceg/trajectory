@@ -1,8 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { format, subDays } from 'date-fns';
-import { MapContainer, Polyline, TileLayer, useMap } from 'react-leaflet';
+import type { FeatureCollection, LineString } from 'geojson';
+import maplibregl, { type GeoJSONSource } from 'maplibre-gl';
 
 import { getHeatmapData, listActivities } from '@/lib/tauri';
+import {
+  US_DEFAULT_CENTER,
+  US_DEFAULT_ZOOM,
+  getMapStyle
+} from '@/lib/mapStyles';
 import type {
   ActivityFilters,
   ActivitySummary,
@@ -33,15 +39,9 @@ const CATEGORY_OPTIONS = [
   'Other'
 ];
 
-const DEFAULT_CENTER: [number, number] = [39.8283, -98.5795];
-const DEFAULT_ZOOM = 4;
-
-interface MapTilesConfig {
-  url: string;
-  attribution: string;
-  className: string;
-  opacity: number;
-}
+const HEATMAP_SOURCE_ID = 'heatmap-track-source';
+const HEATMAP_BASE_LAYER_ID = 'heatmap-track-base-layer';
+const HEATMAP_TOP_LAYER_ID = 'heatmap-track-top-layer';
 
 function resolveDateRange(
   span: TimeSpan,
@@ -116,43 +116,203 @@ function resolveHeatmapStyle(trackCount: number): { baseOpacity: number; topOpac
   return { baseOpacity: 0.045, topOpacity: 0.085, weight: 2.5 };
 }
 
-function resolveMapTilesConfig(reducedComplexity: boolean): MapTilesConfig {
-  if (reducedComplexity) {
-    return {
-      url: 'https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png',
-      attribution:
-        '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
-      className: 'heatmap-tile-minimal',
-      opacity: 0.72
-    };
-  }
-
+function toHeatmapFeatureCollection(tracks: TrackPoint[][]): FeatureCollection<LineString> {
   return {
-    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>',
-    className: 'heatmap-tile-standard',
-    opacity: 1
+    type: 'FeatureCollection',
+    features: tracks
+      .map((track, index) => {
+        const coordinates = track.map((point) => [point.lon, point.lat] as [number, number]);
+        if (coordinates.length < 2) {
+          return null;
+        }
+
+        return {
+          type: 'Feature' as const,
+          id: index,
+          properties: {},
+          geometry: {
+            type: 'LineString' as const,
+            coordinates
+          }
+        };
+      })
+      .filter((feature): feature is NonNullable<typeof feature> => feature != null)
   };
 }
 
-function FitHeatBounds({ points }: { points: TrackPoint[] }) {
-  const map = useMap();
+function fitMapToBounds(map: maplibregl.Map, points: TrackPoint[]) {
+  if (points.length === 0) {
+    return;
+  }
+
+  if (points.length === 1) {
+    map.easeTo({
+      center: [points[0].lon, points[0].lat],
+      zoom: 11,
+      duration: 520
+    });
+    return;
+  }
+
+  const bounds = new maplibregl.LngLatBounds(
+    [points[0].lon, points[0].lat],
+    [points[0].lon, points[0].lat]
+  );
+
+  for (const point of points) {
+    bounds.extend([point.lon, point.lat]);
+  }
+
+  map.fitBounds(bounds, { padding: 40, duration: 620, maxZoom: 13 });
+}
+
+function HeatmapMap({
+  tracks,
+  boundsPoints,
+  heatStyle,
+  reducedComplexity
+}: {
+  tracks: TrackPoint[][];
+  boundsPoints: TrackPoint[];
+  heatStyle: { baseOpacity: number; topOpacity: number; weight: number };
+  reducedComplexity: boolean;
+}) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<maplibregl.Map | null>(null);
+  const viewRef = useRef<{ center: [number, number]; zoom: number }>({
+    center: US_DEFAULT_CENTER,
+    zoom: US_DEFAULT_ZOOM
+  });
+
+  const sourceData = useMemo(() => toHeatmapFeatureCollection(tracks), [tracks]);
+
+  const syncTracks = useCallback(
+    (map: maplibregl.Map) => {
+      if (!map.getSource(HEATMAP_SOURCE_ID)) {
+        map.addSource(HEATMAP_SOURCE_ID, {
+          type: 'geojson',
+          data: sourceData
+        });
+      } else {
+        (map.getSource(HEATMAP_SOURCE_ID) as GeoJSONSource).setData(sourceData);
+      }
+
+      if (!map.getLayer(HEATMAP_BASE_LAYER_ID)) {
+        map.addLayer({
+          id: HEATMAP_BASE_LAYER_ID,
+          type: 'line',
+          source: HEATMAP_SOURCE_ID,
+          paint: {
+            'line-color': '#ff9a47',
+            'line-opacity': heatStyle.baseOpacity,
+            'line-width': heatStyle.weight + 3
+          },
+          layout: {
+            'line-cap': 'round',
+            'line-join': 'round'
+          }
+        });
+      }
+
+      if (!map.getLayer(HEATMAP_TOP_LAYER_ID)) {
+        map.addLayer({
+          id: HEATMAP_TOP_LAYER_ID,
+          type: 'line',
+          source: HEATMAP_SOURCE_ID,
+          paint: {
+            'line-color': '#fc4c02',
+            'line-opacity': heatStyle.topOpacity,
+            'line-width': heatStyle.weight
+          },
+          layout: {
+            'line-cap': 'round',
+            'line-join': 'round'
+          }
+        });
+      }
+
+      map.setPaintProperty(HEATMAP_BASE_LAYER_ID, 'line-opacity', heatStyle.baseOpacity);
+      map.setPaintProperty(HEATMAP_BASE_LAYER_ID, 'line-width', heatStyle.weight + 3);
+      map.setPaintProperty(HEATMAP_TOP_LAYER_ID, 'line-opacity', heatStyle.topOpacity);
+      map.setPaintProperty(HEATMAP_TOP_LAYER_ID, 'line-width', heatStyle.weight);
+    },
+    [heatStyle.baseOpacity, heatStyle.topOpacity, heatStyle.weight, sourceData]
+  );
 
   useEffect(() => {
-    if (points.length === 0) {
-      return;
+    if (!containerRef.current) {
+      return undefined;
     }
 
-    if (points.length === 1) {
-      map.setView([points[0].lat, points[0].lon], 11);
-      return;
+    const map = new maplibregl.Map({
+      container: containerRef.current,
+      style: getMapStyle(reducedComplexity),
+      center: viewRef.current.center,
+      zoom: viewRef.current.zoom,
+      pitchWithRotate: false,
+      dragRotate: false
+    });
+    mapRef.current = map;
+
+    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+    map.scrollZoom.setWheelZoomRate(1 / 520);
+    map.scrollZoom.setZoomRate(1 / 130);
+
+    return () => {
+      const center = map.getCenter();
+      viewRef.current = {
+        center: [center.lng, center.lat],
+        zoom: map.getZoom()
+      };
+
+      map.remove();
+      mapRef.current = null;
+    };
+  }, [reducedComplexity]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) {
+      return undefined;
     }
 
-    const bounds = points.map((point) => [point.lat, point.lon] as [number, number]);
-    map.fitBounds(bounds, { padding: [24, 24] });
-  }, [map, points]);
+    const applyTracks = () => {
+      syncTracks(map);
+    };
 
-  return null;
+    if (map.isStyleLoaded()) {
+      applyTracks();
+      return undefined;
+    }
+
+    map.once('load', applyTracks);
+    return () => {
+      map.off('load', applyTracks);
+    };
+  }, [syncTracks]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) {
+      return undefined;
+    }
+
+    const applyBounds = () => {
+      fitMapToBounds(map, boundsPoints);
+    };
+
+    if (map.isStyleLoaded()) {
+      applyBounds();
+      return undefined;
+    }
+
+    map.once('load', applyBounds);
+    return () => {
+      map.off('load', applyBounds);
+    };
+  }, [boundsPoints]);
+
+  return <div ref={containerRef} className="h-full w-full" />;
 }
 
 export function HeatmapPage() {
@@ -271,17 +431,6 @@ export function HeatmapPage() {
 
   const trackCount = heatmapData?.tracks.length ?? 0;
   const heatStyle = useMemo(() => resolveHeatmapStyle(trackCount), [trackCount]);
-  const mapTiles = useMemo(
-    () => resolveMapTilesConfig(reducedMapComplexity),
-    [reducedMapComplexity]
-  );
-  const polylineTracks = useMemo(
-    () =>
-      (heatmapData?.tracks ?? []).map((track) =>
-        track.map((point) => [point.lat, point.lon] as [number, number])
-      ),
-    [heatmapData?.tracks]
-  );
   const heatBoundsPoints = useMemo(
     () => flattenBoundsPoints(heatmapData?.tracks ?? []),
     [heatmapData?.tracks]
@@ -375,7 +524,6 @@ export function HeatmapPage() {
             </select>
           </label>
         </div>
-
       </section>
 
       {error ? <p className="rounded-lg bg-accent/20 p-3 text-sm text-accent">{error}</p> : null}
@@ -418,47 +566,12 @@ export function HeatmapPage() {
               No GPS points for the selected filters.
             </div>
           ) : (
-            <MapContainer
-              center={DEFAULT_CENTER}
-              zoom={DEFAULT_ZOOM}
-              scrollWheelZoom
-              preferCanvas
-              className="h-full w-full"
-            >
-              <TileLayer
-                attribution={mapTiles.attribution}
-                url={mapTiles.url}
-                className={mapTiles.className}
-                opacity={mapTiles.opacity}
-              />
-              {polylineTracks.map((positions, index) => (
-                <Polyline
-                  key={`heat-base-${index}`}
-                  positions={positions}
-                  pathOptions={{
-                    color: '#ff9a47',
-                    opacity: heatStyle.baseOpacity,
-                    weight: heatStyle.weight + 3,
-                    lineCap: 'round',
-                    lineJoin: 'round'
-                  }}
-                />
-              ))}
-              {polylineTracks.map((positions, index) => (
-                <Polyline
-                  key={`heat-top-${index}`}
-                  positions={positions}
-                  pathOptions={{
-                    color: '#fc4c02',
-                    opacity: heatStyle.topOpacity,
-                    weight: heatStyle.weight,
-                    lineCap: 'round',
-                    lineJoin: 'round'
-                  }}
-                />
-              ))}
-              <FitHeatBounds points={heatBoundsPoints} />
-            </MapContainer>
+            <HeatmapMap
+              tracks={heatmapData?.tracks ?? []}
+              boundsPoints={heatBoundsPoints}
+              heatStyle={heatStyle}
+              reducedComplexity={reducedMapComplexity}
+            />
           )}
         </div>
       </section>
