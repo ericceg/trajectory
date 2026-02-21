@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { format, subDays } from 'date-fns';
 import { MapContainer, Polyline, TileLayer, useMap } from 'react-leaflet';
 
-import { formatDateTime, formatDistanceKm } from '@/lib/format';
 import { getHeatmapData, listActivities } from '@/lib/tauri';
 import type {
   ActivityFilters,
@@ -36,7 +35,6 @@ const CATEGORY_OPTIONS = [
 
 const DEFAULT_CENTER: [number, number] = [39.8283, -98.5795];
 const DEFAULT_ZOOM = 4;
-const MAX_ACTIVITY_OPTIONS = 250;
 
 interface MapTilesConfig {
   url: string;
@@ -163,7 +161,6 @@ export function HeatmapPage() {
   const [customEndDate, setCustomEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [category, setCategory] = useState('');
   const [sportType, setSportType] = useState('');
-  const [selectedActivityIds, setSelectedActivityIds] = useState<number[]>([]);
   const [reducedMapComplexity, setReducedMapComplexity] = useState(false);
   const [availableActivities, setAvailableActivities] = useState<ActivitySummary[]>([]);
   const [activityOptionsLoading, setActivityOptionsLoading] = useState(false);
@@ -224,32 +221,11 @@ export function HeatmapPage() {
     [availableActivities]
   );
 
-  const selectableActivities = useMemo(
-    () =>
-      availableActivities
-        .filter((activity) => activity.hasGps)
-        .filter((activity) => !sportType || activity.sportType === sportType),
-    [availableActivities, sportType]
-  );
-
   useEffect(() => {
     if (sportType && !sportOptions.includes(sportType)) {
       setSportType('');
     }
   }, [sportOptions, sportType]);
-
-  const visibleActivityOptions = useMemo(
-    () => selectableActivities.slice(0, MAX_ACTIVITY_OPTIONS),
-    [selectableActivities]
-  );
-
-  useEffect(() => {
-    const validIds = new Set(selectableActivities.map((activity) => activity.id));
-    setSelectedActivityIds((current) => {
-      const next = current.filter((id) => validIds.has(id));
-      return next.length === current.length ? current : next;
-    });
-  }, [selectableActivities]);
 
   const heatmapFilters = useMemo<HeatmapFilters>(
     () => ({
@@ -257,10 +233,9 @@ export function HeatmapPage() {
       endDate: resolvedRange.endDate,
       category: category || undefined,
       sportType: sportType || undefined,
-      activityIds: selectedActivityIds.length ? selectedActivityIds : undefined,
       maxPoints: 80_000
     }),
-    [category, resolvedRange.endDate, resolvedRange.startDate, selectedActivityIds, sportType]
+    [category, resolvedRange.endDate, resolvedRange.startDate, sportType]
   );
 
   useEffect(() => {
@@ -401,50 +376,6 @@ export function HeatmapPage() {
           </label>
         </div>
 
-        <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_auto]">
-          <label className="space-y-2">
-            <span className="text-xs uppercase tracking-[0.14em] text-muted">
-              Specific activities (optional)
-            </span>
-            <select
-              multiple
-              value={selectedActivityIds.map(String)}
-              onChange={(event) => {
-                const values = Array.from(event.target.selectedOptions).map((option) =>
-                  Number(option.value)
-                );
-                setSelectedActivityIds(values);
-              }}
-              className="h-44 w-full rounded-md border border-border bg-bg px-3 py-2 text-sm"
-            >
-              {visibleActivityOptions.map((activity) => (
-                <option key={activity.id} value={activity.id}>
-                  {formatDateTime(activity.activityStart)} · {activity.category} ·{' '}
-                  {formatDistanceKm(activity.distanceM)} · #{activity.id}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <div className="flex flex-col justify-between gap-2 rounded-md border border-border bg-bg/70 p-3 text-xs text-muted">
-            <p>{selectableActivities.length} GPS activities match the current filters.</p>
-            {selectableActivities.length > MAX_ACTIVITY_OPTIONS ? (
-              <p>
-                Showing the first {MAX_ACTIVITY_OPTIONS} for manual selection. Keep no selection to use
-                all {selectableActivities.length}.
-              </p>
-            ) : (
-              <p>Leave this list empty to include all matching activities in the heatmap.</p>
-            )}
-            <button
-              type="button"
-              onClick={() => setSelectedActivityIds([])}
-              className="rounded-md border border-border px-3 py-2 text-left text-sm text-muted hover:text-foreground"
-            >
-              Clear activity selection
-            </button>
-          </div>
-        </div>
       </section>
 
       {error ? <p className="rounded-lg bg-accent/20 p-3 text-sm text-accent">{error}</p> : null}
