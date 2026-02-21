@@ -50,6 +50,10 @@ a {
   background: rgb(var(--color-bg));
 }
 
+.leaflet-tile.heatmap-tile-minimal {
+  filter: grayscale(1) contrast(1.15) brightness(0.82);
+}
+
 @keyframes calendar-pop-a {
   0% {
     transform: translateY(0) scale(1);

@@ -29,6 +29,7 @@ Prototype (actively evolving).
 - Activity detail with metrics, route map, and charts
 - Global path-based heatmap page that overlays all matching GPS tracks
 - Heatmap filters for time span (presets + custom), category, sport type, and specific activity selection
+- Heatmap "Reduced complexity" toggle for a grayscale, lower-noise basemap with stronger route contrast
 
 ## Tech Stack
 
@@ -68,6 +69,7 @@ npm run tauri dev
    - In year view, move horizontally across weekly bars to preview that week and auto-highlight all matching days in that week across month/day mini-bars
    - **Activities** for filtering/sorting workouts (category + distance filters auto-apply)
    - **Heatmap** for a global path heatmap (overlapping GPS tracks; filter by time span/category/sport/specific activities)
+   - Enable **Reduced complexity (grayscale)** in Heatmap to declutter the map and emphasize route overlap
    - **Activity Detail** for metrics/map/charts
 
 

@@ -38,6 +38,13 @@ const DEFAULT_CENTER: [number, number] = [39.8283, -98.5795];
 const DEFAULT_ZOOM = 4;
 const MAX_ACTIVITY_OPTIONS = 250;
 
+interface MapTilesConfig {
+  url: string;
+  attribution: string;
+  className: string;
+  opacity: number;
+}
+
 function resolveDateRange(
   span: TimeSpan,
   customStartDate: string,
@@ -111,6 +118,25 @@ function resolveHeatmapStyle(trackCount: number): { baseOpacity: number; topOpac
   return { baseOpacity: 0.045, topOpacity: 0.085, weight: 2.5 };
 }
 
+function resolveMapTilesConfig(reducedComplexity: boolean): MapTilesConfig {
+  if (reducedComplexity) {
+    return {
+      url: 'https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png',
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+      className: 'heatmap-tile-minimal',
+      opacity: 0.72
+    };
+  }
+
+  return {
+    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>',
+    className: 'heatmap-tile-standard',
+    opacity: 1
+  };
+}
+
 function FitHeatBounds({ points }: { points: TrackPoint[] }) {
   const map = useMap();
 
@@ -138,6 +164,7 @@ export function HeatmapPage() {
   const [category, setCategory] = useState('');
   const [sportType, setSportType] = useState('');
   const [selectedActivityIds, setSelectedActivityIds] = useState<number[]>([]);
+  const [reducedMapComplexity, setReducedMapComplexity] = useState(false);
   const [availableActivities, setAvailableActivities] = useState<ActivitySummary[]>([]);
   const [activityOptionsLoading, setActivityOptionsLoading] = useState(false);
   const [heatmapLoading, setHeatmapLoading] = useState(false);
@@ -269,6 +296,10 @@ export function HeatmapPage() {
 
   const trackCount = heatmapData?.tracks.length ?? 0;
   const heatStyle = useMemo(() => resolveHeatmapStyle(trackCount), [trackCount]);
+  const mapTiles = useMemo(
+    () => resolveMapTilesConfig(reducedMapComplexity),
+    [reducedMapComplexity]
+  );
   const polylineTracks = useMemo(
     () =>
       (heatmapData?.tracks ?? []).map((track) =>
@@ -430,10 +461,21 @@ export function HeatmapPage() {
                 : ''}
             </p>
           </div>
-          <div className="flex items-center gap-2 text-xs text-muted">
-            <span>Low</span>
-            <span className="h-2 w-24 rounded-full bg-gradient-to-r from-[#ffccaa] via-[#ff8c42] to-[#fc4c02]" />
-            <span>High</span>
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="flex cursor-pointer items-center gap-2 rounded-md border border-border bg-bg/80 px-2.5 py-1.5 text-xs text-muted hover:text-foreground">
+              <input
+                type="checkbox"
+                checked={reducedMapComplexity}
+                onChange={(event) => setReducedMapComplexity(event.target.checked)}
+                className="h-3.5 w-3.5 accent-[rgb(var(--color-accent))]"
+              />
+              Reduced complexity (grayscale)
+            </label>
+            <div className="flex items-center gap-2 text-xs text-muted">
+              <span>Low</span>
+              <span className="h-2 w-24 rounded-full bg-gradient-to-r from-[#ffccaa] via-[#ff8c42] to-[#fc4c02]" />
+              <span>High</span>
+            </div>
           </div>
         </div>
 
@@ -453,8 +495,10 @@ export function HeatmapPage() {
               className="h-full w-full"
             >
               <TileLayer
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                attribution={mapTiles.attribution}
+                url={mapTiles.url}
+                className={mapTiles.className}
+                opacity={mapTiles.opacity}
               />
               {polylineTracks.map((positions, index) => (
                 <Polyline
