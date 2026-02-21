@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   CartesianGrid,
@@ -9,7 +9,8 @@ import {
   XAxis,
   YAxis
 } from 'recharts';
-import { MapContainer, Polyline, TileLayer, useMap } from 'react-leaflet';
+import type { FeatureCollection, LineString } from 'geojson';
+import maplibregl, { type GeoJSONSource } from 'maplibre-gl';
 
 import { getActivity } from '@/lib/tauri';
 import {
@@ -19,22 +20,146 @@ import {
   formatPaceMinKm,
   formatSpeedKmh
 } from '@/lib/format';
+import { US_DEFAULT_CENTER, US_DEFAULT_ZOOM, getMapStyle } from '@/lib/mapStyles';
 import { MetricCard } from '@/components/MetricCard';
 import type { ActivityDetail, TrackPoint } from '@/types';
 
-function FitBounds({ track }: { track: TrackPoint[] }) {
-  const map = useMap();
+const ACTIVITY_ROUTE_SOURCE_ID = 'activity-route-source';
+const ACTIVITY_ROUTE_LAYER_ID = 'activity-route-layer';
+
+function toRouteFeatureCollection(track: TrackPoint[]): FeatureCollection<LineString> {
+  const coordinates = track.map((point) => [point.lon, point.lat] as [number, number]);
+  if (coordinates.length < 2) {
+    return { type: 'FeatureCollection', features: [] };
+  }
+
+  return {
+    type: 'FeatureCollection',
+    features: [
+      {
+        type: 'Feature',
+        properties: {},
+        geometry: {
+          type: 'LineString',
+          coordinates
+        }
+      }
+    ]
+  };
+}
+
+function fitMapToTrack(map: maplibregl.Map, track: TrackPoint[]) {
+  if (track.length === 0) {
+    map.easeTo({
+      center: US_DEFAULT_CENTER,
+      zoom: US_DEFAULT_ZOOM,
+      duration: 520
+    });
+    return;
+  }
+
+  if (track.length === 1) {
+    map.easeTo({
+      center: [track[0].lon, track[0].lat],
+      zoom: 14,
+      duration: 520
+    });
+    return;
+  }
+
+  const bounds = new maplibregl.LngLatBounds(
+    [track[0].lon, track[0].lat],
+    [track[0].lon, track[0].lat]
+  );
+  for (const point of track) {
+    bounds.extend([point.lon, point.lat]);
+  }
+
+  map.fitBounds(bounds, {
+    padding: 40,
+    duration: 620,
+    maxZoom: 15
+  });
+}
+
+function ActivityRouteMap({ track }: { track: TrackPoint[] }) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const mapRef = useRef<maplibregl.Map | null>(null);
+  const trackSource = useMemo(() => toRouteFeatureCollection(track), [track]);
 
   useEffect(() => {
-    if (track.length === 0) {
-      return;
+    if (!containerRef.current) {
+      return undefined;
     }
 
-    const bounds = track.map((point) => [point.lat, point.lon] as [number, number]);
-    map.fitBounds(bounds, { padding: [20, 20] });
-  }, [track, map]);
+    const map = new maplibregl.Map({
+      container: containerRef.current,
+      style: getMapStyle(false),
+      center: US_DEFAULT_CENTER,
+      zoom: US_DEFAULT_ZOOM,
+      pitchWithRotate: false,
+      dragRotate: false
+    });
+    mapRef.current = map;
 
-  return null;
+    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
+    map.scrollZoom.setWheelZoomRate(1 / 520);
+    map.scrollZoom.setZoomRate(1 / 130);
+
+    return () => {
+      map.remove();
+      mapRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) {
+      return undefined;
+    }
+
+    const syncTrack = () => {
+      if (!map.getSource(ACTIVITY_ROUTE_SOURCE_ID)) {
+        map.addSource(ACTIVITY_ROUTE_SOURCE_ID, {
+          type: 'geojson',
+          data: trackSource
+        });
+      } else {
+        (map.getSource(ACTIVITY_ROUTE_SOURCE_ID) as GeoJSONSource).setData(trackSource);
+      }
+
+      if (!map.getLayer(ACTIVITY_ROUTE_LAYER_ID)) {
+        map.addLayer({
+          id: ACTIVITY_ROUTE_LAYER_ID,
+          type: 'line',
+          source: ACTIVITY_ROUTE_SOURCE_ID,
+          paint: {
+            'line-color': '#FC4C02',
+            'line-width': 4,
+            'line-opacity': 0.95
+          },
+          layout: {
+            'line-cap': 'round',
+            'line-join': 'round'
+          }
+        });
+      }
+
+      fitMapToTrack(map, track);
+    };
+
+    if (map.isStyleLoaded()) {
+      syncTrack();
+      return undefined;
+    }
+
+    map.once('load', syncTrack);
+    return () => {
+      map.off('load', syncTrack);
+    };
+  }, [track, trackSource]);
+
+  return <div ref={containerRef} className="h-full w-full" />;
 }
 
 export function ActivityDetailPage() {
@@ -109,8 +234,6 @@ export function ActivityDetailPage() {
     return <p className="text-sm text-muted">Activity not found.</p>;
   }
 
-  const positions = detail.track.map((point) => [point.lat, point.lon] as [number, number]);
-
   return (
     <div className="space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
@@ -148,19 +271,12 @@ export function ActivityDetailPage() {
           <h3 className="text-lg font-semibold text-foreground">Route</h3>
         </div>
         <div className="h-80">
-          {positions.length === 0 ? (
+          {detail.track.length === 0 ? (
             <div className="flex h-full items-center justify-center text-sm text-muted">
               No GPS track available
             </div>
           ) : (
-            <MapContainer center={positions[0]} zoom={13} scrollWheelZoom className="h-full w-full">
-              <TileLayer
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a>'
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              />
-              <Polyline positions={positions} pathOptions={{ color: '#FC4C02', weight: 4 }} />
-              <FitBounds track={detail.track} />
-            </MapContainer>
+            <ActivityRouteMap track={detail.track} />
           )}
         </div>
       </section>

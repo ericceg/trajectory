@@ -9,7 +9,10 @@ mod settings;
 use std::{fs, path::PathBuf};
 
 use anyhow::{Context, Result};
-use models::{ActivityDetail, ActivityFilters, ActivitySummary, ScanDoneEvent, Settings};
+use models::{
+    ActivityDetail, ActivityFilters, ActivitySummary, HeatmapData, HeatmapFilters, ScanDoneEvent,
+    Settings,
+};
 use tauri::{AppHandle, Manager, State};
 
 #[derive(Debug, Clone)]
@@ -132,6 +135,22 @@ async fn get_activity(id: i64, state: State<'_, AppState>) -> Result<ActivityDet
     .map_err(|err| err.to_string())?
 }
 
+#[tauri::command]
+async fn get_heatmap_data(
+    filters: Option<HeatmapFilters>,
+    state: State<'_, AppState>,
+) -> Result<HeatmapData, String> {
+    let db_path = state.db_path.clone();
+    let filters = filters.unwrap_or_default();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let conn = db::open_connection(&db_path).map_err(|err| err.to_string())?;
+        db::get_heatmap_data(&conn, &filters).map_err(|err| err.to_string())
+    })
+    .await
+    .map_err(|err| err.to_string())?
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -146,7 +165,8 @@ fn main() {
             set_dark_mode,
             scan_import_folder,
             list_activities,
-            get_activity
+            get_activity,
+            get_heatmap_data
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
