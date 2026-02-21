@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useMemo, useState } from 'react';
+import { type MouseEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   addMonths,
@@ -169,10 +169,25 @@ const SparkBars = ({
   const activePopClass = pulseTick % 2 === 0 ? 'calendar-pop-a' : 'calendar-pop-b';
   const popoverLeft = activeIndex == null || values.length === 0 ? '0%' : `${((activeIndex + 0.5) / values.length) * 100}%`;
   const activeIndicesSet = useMemo(() => new Set(activeIndices ?? []), [activeIndices]);
+  const handleMouseMove = (event: MouseEvent<HTMLDivElement>) => {
+    if (!interactive || values.length === 0) {
+      return;
+    }
+    const rect = event.currentTarget.getBoundingClientRect();
+    if (rect.width <= 0) {
+      return;
+    }
+    const ratio = Math.min(Math.max((event.clientX - rect.left) / rect.width, 0), 0.999999);
+    const nextIndex = Math.floor(ratio * values.length);
+    if (activeIndex !== nextIndex) {
+      onActiveIndexChange?.(nextIndex);
+    }
+  };
 
   return (
     <div
       className="relative"
+      onMouseMove={handleMouseMove}
       onMouseLeave={() => onActiveIndexChange?.(null)}
       role={interactive ? 'group' : 'img'}
       aria-label={ariaLabel}
@@ -182,7 +197,7 @@ const SparkBars = ({
           const ratio = maxValue > 0 ? value / maxValue : 0;
           const height = value > 0 ? Math.max(ratio * 100, 10) : 6;
           const active = activeIndex === index || activeIndicesSet.has(index);
-          const sharedClass = `min-w-[2px] flex-1 rounded-sm transition-all duration-200 ${barClass} ${
+          const barVisualClass = `rounded-sm transition-all duration-200 ${barClass} ${
             value > 0 ? 'opacity-100' : 'opacity-20'
           } ${active ? `${activePopClass} -translate-y-0.5 scale-x-[1.06] shadow-[0_10px_18px_-12px_rgba(252,76,2,0.95)]` : ''}`;
 
@@ -191,20 +206,23 @@ const SparkBars = ({
               <button
                 key={`${ariaLabel}-${index}`}
                 type="button"
-                onMouseEnter={() => onActiveIndexChange?.(index)}
                 onFocus={() => onActiveIndexChange?.(index)}
                 onBlur={() => onActiveIndexChange?.(null)}
-                className={`${sharedClass} appearance-none cursor-pointer border-0 p-0 focus-visible:outline-none`}
-                style={{ height: `${height}%` }}
+                className="min-w-[2px] flex h-full flex-1 items-end appearance-none cursor-pointer border-0 bg-transparent p-0 focus-visible:outline-none"
                 aria-label={`${ariaLabel} bar ${index + 1}`}
-              />
+              >
+                <span
+                  className={`w-full ${barVisualClass}`}
+                  style={{ height: `${height}%` }}
+                />
+              </button>
             );
           }
 
           return (
             <span
               key={`${ariaLabel}-${index}`}
-              className={sharedClass}
+              className={`min-w-[2px] flex-1 ${barVisualClass}`}
               style={{ height: `${height}%` }}
             />
           );
