@@ -17,6 +17,7 @@ Prototype (actively evolving).
 - Background parsing with progress events
 - Route-level lazy loading for faster initial app startup
 - Workout category derivation (`Running`, `Biking`, `Strength`, etc.) from TCX/FIT sport + notes
+- Workout titles stored for every activity (FIT session/workout names when available, otherwise generated fallback titles)
 - Single visible workout category in UI (used for filtering)
 - Activities filters auto-apply on change (no Apply button)
 - Light mode by default with optional dark mode toggle in Settings
