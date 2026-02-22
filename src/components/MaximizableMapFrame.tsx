@@ -65,7 +65,7 @@ export function MaximizableMapFrame({
             : `relative ${collapsedHeightClassName}`
         }
       >
-        <div className="absolute right-3 top-3 z-10">
+        <div className="absolute left-3 top-3 z-10">
           <button
             type="button"
             onClick={() => setIsMaximized((value) => !value)}
