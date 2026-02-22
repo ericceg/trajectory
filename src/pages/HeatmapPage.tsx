@@ -168,10 +168,9 @@ function fitMapToBounds(map: maplibregl.Map, points: TrackPoint[]) {
   }
 
   if (points.length === 1) {
-    map.easeTo({
+    map.jumpTo({
       center: [points[0].lon, points[0].lat],
-      zoom: 11,
-      duration: 520
+      zoom: 11
     });
     return;
   }
@@ -185,7 +184,7 @@ function fitMapToBounds(map: maplibregl.Map, points: TrackPoint[]) {
     bounds.extend([point.lon, point.lat]);
   }
 
-  map.fitBounds(bounds, { padding: 40, duration: 620, maxZoom: 13 });
+  map.fitBounds(bounds, { padding: 40, duration: 0, maxZoom: 13 });
 }
 
 function HeatmapMap({
