@@ -831,15 +831,18 @@ pub fn parse_fit_file(path: &Path) -> Result<ParsedActivity> {
                     "enhanced_avg_speed" | "avg_speed" => {
                         if let Some(v) = fit_value_as_f64(value) {
                             summary.avg_speed_mps = Some(summary.avg_speed_mps.map_or(v, |cur| {
-                                if cur > 0.0 { cur } else { v }
+                                if cur > 0.0 {
+                                    cur
+                                } else {
+                                    v
+                                }
                             }));
                         }
                     }
                     "enhanced_max_speed" | "max_speed" => {
                         if let Some(v) = fit_value_as_f64(value) {
-                            summary.max_speed_mps = Some(
-                                summary.max_speed_mps.map_or(v, |cur| cur.max(v)),
-                            );
+                            summary.max_speed_mps =
+                                Some(summary.max_speed_mps.map_or(v, |cur| cur.max(v)));
                         }
                     }
                     "avg_heart_rate" => {
