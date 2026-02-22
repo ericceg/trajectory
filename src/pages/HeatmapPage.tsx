@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { format, subDays } from 'date-fns';
 import type { FeatureCollection, LineString } from 'geojson';
 import maplibregl, { type GeoJSONSource } from 'maplibre-gl';
@@ -6,9 +6,9 @@ import maplibregl, { type GeoJSONSource } from 'maplibre-gl';
 import { getHeatmapData, listActivities } from '@/lib/tauri';
 import {
   US_DEFAULT_CENTER,
-  US_DEFAULT_ZOOM,
-  getMapStyle
+  US_DEFAULT_ZOOM
 } from '@/lib/mapStyles';
+import { useManagedMapLibre } from '@/lib/useManagedMapLibre';
 import { MaximizableMapFrame } from '@/components/MaximizableMapFrame';
 import type {
   ActivityFilters,
@@ -178,11 +178,10 @@ function HeatmapMap({
   heatStyle: { baseOpacity: number; topOpacity: number; weight: number };
   reducedComplexity: boolean;
 }) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<maplibregl.Map | null>(null);
-  const viewRef = useRef<{ center: [number, number]; zoom: number }>({
-    center: US_DEFAULT_CENTER,
-    zoom: US_DEFAULT_ZOOM
+  const { containerRef, mapRef } = useManagedMapLibre({
+    reducedComplexity,
+    initialCenter: US_DEFAULT_CENTER,
+    initialZoom: US_DEFAULT_ZOOM
   });
 
   const sourceData = useMemo(() => toHeatmapFeatureCollection(tracks), [tracks]);
@@ -239,54 +238,6 @@ function HeatmapMap({
     },
     [heatStyle.baseOpacity, heatStyle.topOpacity, heatStyle.weight, sourceData]
   );
-
-  useEffect(() => {
-    if (!containerRef.current) {
-      return undefined;
-    }
-
-    const map = new maplibregl.Map({
-      container: containerRef.current,
-      style: getMapStyle(reducedComplexity),
-      center: viewRef.current.center,
-      zoom: viewRef.current.zoom,
-      pitchWithRotate: false,
-      dragRotate: false
-    });
-    mapRef.current = map;
-
-    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
-    map.scrollZoom.setWheelZoomRate(1 / 520);
-    map.scrollZoom.setZoomRate(1 / 130);
-
-    return () => {
-      const center = map.getCenter();
-      viewRef.current = {
-        center: [center.lng, center.lat],
-        zoom: map.getZoom()
-      };
-
-      map.remove();
-      mapRef.current = null;
-    };
-  }, [reducedComplexity]);
-
-  useEffect(() => {
-    const container = containerRef.current;
-    const map = mapRef.current;
-    if (!container || !map) {
-      return undefined;
-    }
-
-    const observer = new ResizeObserver(() => {
-      map.resize();
-    });
-    observer.observe(container);
-
-    return () => {
-      observer.disconnect();
-    };
-  }, [reducedComplexity]);
 
   useEffect(() => {
     const map = mapRef.current;
