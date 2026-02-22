@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { format, subDays } from 'date-fns';
 import type { FeatureCollection, LineString } from 'geojson';
 import maplibregl, { type GeoJSONSource } from 'maplibre-gl';
@@ -6,9 +6,10 @@ import maplibregl, { type GeoJSONSource } from 'maplibre-gl';
 import { getHeatmapData, listActivities } from '@/lib/tauri';
 import {
   US_DEFAULT_CENTER,
-  US_DEFAULT_ZOOM,
-  getMapStyle
+  US_DEFAULT_ZOOM
 } from '@/lib/mapStyles';
+import { useManagedMapLibre } from '@/lib/useManagedMapLibre';
+import { MaximizableMapFrame } from '@/components/MaximizableMapFrame';
 import type {
   ActivityFilters,
   ActivitySummary,
@@ -177,11 +178,10 @@ function HeatmapMap({
   heatStyle: { baseOpacity: number; topOpacity: number; weight: number };
   reducedComplexity: boolean;
 }) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<maplibregl.Map | null>(null);
-  const viewRef = useRef<{ center: [number, number]; zoom: number }>({
-    center: US_DEFAULT_CENTER,
-    zoom: US_DEFAULT_ZOOM
+  const { containerRef, mapRef } = useManagedMapLibre({
+    reducedComplexity,
+    initialCenter: US_DEFAULT_CENTER,
+    initialZoom: US_DEFAULT_ZOOM
   });
 
   const sourceData = useMemo(() => toHeatmapFeatureCollection(tracks), [tracks]);
@@ -240,37 +240,6 @@ function HeatmapMap({
   );
 
   useEffect(() => {
-    if (!containerRef.current) {
-      return undefined;
-    }
-
-    const map = new maplibregl.Map({
-      container: containerRef.current,
-      style: getMapStyle(reducedComplexity),
-      center: viewRef.current.center,
-      zoom: viewRef.current.zoom,
-      pitchWithRotate: false,
-      dragRotate: false
-    });
-    mapRef.current = map;
-
-    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
-    map.scrollZoom.setWheelZoomRate(1 / 520);
-    map.scrollZoom.setZoomRate(1 / 130);
-
-    return () => {
-      const center = map.getCenter();
-      viewRef.current = {
-        center: [center.lng, center.lat],
-        zoom: map.getZoom()
-      };
-
-      map.remove();
-      mapRef.current = null;
-    };
-  }, [reducedComplexity]);
-
-  useEffect(() => {
     const map = mapRef.current;
     if (!map) {
       return undefined;
@@ -313,6 +282,45 @@ function HeatmapMap({
   }, [boundsPoints]);
 
   return <div ref={containerRef} className="h-full w-full" />;
+}
+
+function HeatmapMapOverlayControls({
+  reducedMapComplexity,
+  onReducedMapComplexityChange
+}: {
+  reducedMapComplexity: boolean;
+  onReducedMapComplexityChange: (checked: boolean) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <button
+        type="button"
+        onClick={() => onReducedMapComplexityChange(!reducedMapComplexity)}
+        aria-pressed={reducedMapComplexity}
+        className={`flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs shadow-sm backdrop-blur transition-colors ${
+          reducedMapComplexity
+            ? 'border-accent/60 bg-panel/90 text-foreground'
+            : 'border-border bg-panel/80 text-muted hover:text-foreground'
+        }`}
+      >
+        <span
+          className={`inline-flex h-3.5 w-3.5 items-center justify-center rounded-sm border text-[10px] leading-none ${
+            reducedMapComplexity
+              ? 'border-accent bg-accent text-white'
+              : 'border-border bg-bg/90 text-transparent'
+          }`}
+        >
+          ✓
+        </span>
+        Reduced complexity
+      </button>
+      <div className="flex items-center gap-2 rounded-md border border-border bg-panel/80 px-2.5 py-1.5 text-xs text-muted shadow-sm backdrop-blur">
+        <span>Low</span>
+        <span className="h-2 w-24 rounded-full bg-gradient-to-r from-[#ffccaa] via-[#ff8c42] to-[#fc4c02]" />
+        <span>High</span>
+      </div>
+    </div>
+  );
 }
 
 export function HeatmapPage() {
@@ -540,25 +548,18 @@ export function HeatmapPage() {
                 : ''}
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <label className="flex cursor-pointer items-center gap-2 rounded-md border border-border bg-bg/80 px-2.5 py-1.5 text-xs text-muted hover:text-foreground">
-              <input
-                type="checkbox"
-                checked={reducedMapComplexity}
-                onChange={(event) => setReducedMapComplexity(event.target.checked)}
-                className="h-3.5 w-3.5 accent-[rgb(var(--color-accent))]"
-              />
-              Reduced complexity (grayscale)
-            </label>
-            <div className="flex items-center gap-2 text-xs text-muted">
-              <span>Low</span>
-              <span className="h-2 w-24 rounded-full bg-gradient-to-r from-[#ffccaa] via-[#ff8c42] to-[#fc4c02]" />
-              <span>High</span>
-            </div>
-          </div>
         </div>
 
-        <div className="h-[36rem]">
+        <MaximizableMapFrame
+          label="heatmap"
+          collapsedHeightClassName="h-[36rem]"
+          topLeftActions={
+            <HeatmapMapOverlayControls
+              reducedMapComplexity={reducedMapComplexity}
+              onReducedMapComplexityChange={setReducedMapComplexity}
+            />
+          }
+        >
           {loading ? (
             <div className="flex h-full items-center justify-center text-sm text-muted">Loading heatmap...</div>
           ) : !trackCount ? (
@@ -573,7 +574,7 @@ export function HeatmapPage() {
               reducedComplexity={reducedMapComplexity}
             />
           )}
-        </div>
+        </MaximizableMapFrame>
       </section>
     </div>
   );
