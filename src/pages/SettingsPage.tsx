@@ -166,8 +166,8 @@ export function SettingsPage() {
             ) : null}
 
             <p className="mt-3 text-xs text-muted">
-              Full rescan clears cached activities first, then re-imports every TCX file. Use this
-              if deleted or previously broken files are still visible.
+              Full rescan clears cached activities first, then re-imports every TCX/FIT file. Use
+              this if deleted or previously broken files are still visible.
             </p>
 
             {settings?.lastScanTimestamp ? (

@@ -32,8 +32,8 @@ export function OnboardingPage() {
         <p className="text-xs uppercase tracking-[0.2em] text-muted">First Launch</p>
         <h1 className="mt-2 text-3xl font-semibold">Select Import Folder</h1>
         <p className="mt-3 text-sm text-muted">
-          Choose the existing folder containing your .tcx files. The app will never modify these
-          files and will start scanning automatically in the background once selected.
+          Choose the existing folder containing your .tcx or .fit files. The app will never
+          modify these files and will start scanning automatically in the background once selected.
         </p>
 
         <label className="mt-6 flex items-center gap-3 text-sm text-muted">

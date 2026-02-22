@@ -2,11 +2,13 @@ use std::{fs::File, io::BufReader, path::Path};
 
 use anyhow::{anyhow, Context, Result};
 use chrono::{DateTime, Utc};
+use fitparser::{self, Value};
 use quick_xml::{events::Event, Reader};
 
 use crate::models::{ActivitySample, ParsedActivity, TrackPoint};
 
 const MAX_UI_POINTS: usize = 2000;
+const FIT_SEMICIRCLES_TO_DEGREES: f64 = 180.0 / 2_147_483_648.0;
 
 #[derive(Debug, Default, Clone)]
 struct RawTrackPoint {
@@ -113,6 +115,285 @@ fn downsample<T: Clone>(items: &[T], max: usize) -> Vec<T> {
 
     output.push(items[items.len() - 1].clone());
     output
+}
+
+fn fit_value_as_f64(value: &Value) -> Option<f64> {
+    match value {
+        Value::Byte(v) => Some(*v as f64),
+        Value::Enum(v) => Some(*v as f64),
+        Value::SInt8(v) => Some(*v as f64),
+        Value::UInt8(v) => Some(*v as f64),
+        Value::UInt8z(v) => Some(*v as f64),
+        Value::SInt16(v) => Some(*v as f64),
+        Value::UInt16(v) => Some(*v as f64),
+        Value::UInt16z(v) => Some(*v as f64),
+        Value::SInt32(v) => Some(*v as f64),
+        Value::UInt32(v) => Some(*v as f64),
+        Value::UInt32z(v) => Some(*v as f64),
+        Value::SInt64(v) => Some(*v as f64),
+        Value::UInt64(v) => Some(*v as f64),
+        Value::UInt64z(v) => Some(*v as f64),
+        Value::Float32(v) => Some(*v as f64),
+        Value::Float64(v) => Some(*v),
+        _ => None,
+    }
+}
+
+fn fit_value_as_u8(value: &Value) -> Option<u8> {
+    match value {
+        Value::Enum(v) | Value::Byte(v) | Value::UInt8(v) => Some(*v),
+        _ => None,
+    }
+}
+
+fn fit_value_as_string(value: &Value) -> Option<String> {
+    match value {
+        Value::String(v) => Some(v.clone()),
+        _ => None,
+    }
+}
+
+fn fit_value_as_time(value: &Value) -> Option<DateTime<Utc>> {
+    match value {
+        Value::Timestamp(v) => Some(v.with_timezone(&Utc)),
+        _ => None,
+    }
+}
+
+fn normalize_fit_position(name: &str, units: &str, raw: f64) -> f64 {
+    let looks_like_semicircles = units.eq_ignore_ascii_case("semicircles")
+        || ((name == "position_lat" || name == "position_long") && raw.abs() > 180.0);
+
+    if looks_like_semicircles {
+        raw * FIT_SEMICIRCLES_TO_DEGREES
+    } else {
+        raw
+    }
+}
+
+fn fit_sport_code_to_name(code: u8) -> &'static str {
+    match code {
+        1 => "Running",
+        2 => "Cycling",
+        4 => "Fitness Equipment",
+        5 => "Swimming",
+        10 => "Training",
+        11 => "Walking",
+        15 => "Rowing",
+        16 => "Mountaineering",
+        17 => "Hiking",
+        18 => "Multisport",
+        19 => "Paddling",
+        21 => "E-Biking",
+        25 => "Golf",
+        31 => "Climbing",
+        35 => "Snowshoeing",
+        37 => "Stand Up Paddleboarding",
+        41 => "Kayaking",
+        _ => "Other",
+    }
+}
+
+fn build_parsed_activity(
+    path: &Path,
+    points: Vec<RawTrackPoint>,
+    sport_type: String,
+    notes: Option<String>,
+    activity_start: Option<DateTime<Utc>>,
+    fallback_distance_m: f64,
+    fallback_duration_seconds: f64,
+) -> Result<ParsedActivity> {
+    if points.is_empty() {
+        return Err(anyhow!("no trackpoints in {}", path.display()));
+    }
+
+    let first_time = points.iter().find_map(|point| point.time.as_ref().cloned());
+    let last_time = points
+        .iter()
+        .rev()
+        .find_map(|point| point.time.as_ref().cloned());
+
+    let start_time = activity_start
+        .or(first_time)
+        .ok_or_else(|| anyhow!("missing activity start time in {}", path.display()))?;
+
+    let duration_seconds = match (first_time, last_time) {
+        (Some(start), Some(end)) if end >= start => {
+            (end - start).num_milliseconds() as f64 / 1000.0
+        }
+        _ => fallback_duration_seconds.max(0.0),
+    };
+
+    let mut gps_distance_accum = 0.0;
+    let mut previous_gps: Option<(f64, f64)> = None;
+    let mut has_gps = false;
+
+    let mut first_reported_distance: Option<f64> = None;
+    let mut last_reported_distance: Option<f64> = None;
+
+    let mut elevation_gain = 0.0;
+    let mut previous_altitude: Option<f64> = None;
+
+    let mut heart_rate_values: Vec<f64> = Vec::new();
+    let mut speed_values: Vec<f64> = Vec::new();
+
+    let mut previous_elapsed: Option<f64> = None;
+    let mut previous_distance: Option<f64> = None;
+
+    let mut raw_samples: Vec<ActivitySample> = Vec::with_capacity(points.len());
+    let mut raw_track: Vec<TrackPoint> = Vec::with_capacity(points.len());
+
+    for point in &points {
+        if let (Some(lat), Some(lon)) = (point.lat, point.lon) {
+            has_gps = true;
+
+            if let Some((prev_lat, prev_lon)) = previous_gps {
+                gps_distance_accum += haversine_m(prev_lat, prev_lon, lat, lon);
+            }
+            previous_gps = Some((lat, lon));
+            raw_track.push(TrackPoint { lat, lon });
+        }
+
+        if let Some(distance) = point.distance {
+            if first_reported_distance.is_none() {
+                first_reported_distance = Some(distance);
+            }
+            let relative = distance - first_reported_distance.unwrap_or(distance);
+            last_reported_distance = Some(relative.max(0.0));
+        }
+
+        if let (Some(prev_alt), Some(current_alt)) = (previous_altitude, point.altitude) {
+            let delta = current_alt - prev_alt;
+            if delta > 1.0 {
+                elevation_gain += delta;
+            }
+        }
+
+        if point.altitude.is_some() {
+            previous_altitude = point.altitude;
+        }
+
+        if let Some(hr) = point.heart_rate {
+            heart_rate_values.push(hr);
+        }
+
+        let elapsed = point
+            .time
+            .as_ref()
+            .map(|time| (*time - start_time).num_milliseconds() as f64 / 1000.0)
+            .unwrap_or(0.0)
+            .max(0.0);
+
+        let distance_m = point
+            .distance
+            .and_then(|distance| first_reported_distance.map(|first| (distance - first).max(0.0)))
+            .or_else(|| {
+                if has_gps {
+                    Some(gps_distance_accum)
+                } else {
+                    None
+                }
+            });
+
+        let derived_speed = if let Some(speed) = point.speed {
+            Some(speed)
+        } else if let (Some(prev_elapsed), Some(prev_distance), Some(distance_m)) =
+            (previous_elapsed, previous_distance, distance_m)
+        {
+            let dt = elapsed - prev_elapsed;
+            if dt > 0.1 {
+                Some(((distance_m - prev_distance) / dt).max(0.0))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        if let Some(speed) = derived_speed {
+            speed_values.push(speed);
+        }
+
+        raw_samples.push(ActivitySample {
+            elapsed_seconds: elapsed,
+            distance_m,
+            speed_mps: derived_speed,
+            heart_rate: point.heart_rate,
+            altitude_m: point.altitude,
+            lat: point.lat,
+            lon: point.lon,
+            timestamp: point.time.as_ref().map(|time| time.to_rfc3339()),
+        });
+
+        previous_elapsed = Some(elapsed);
+        previous_distance = distance_m;
+    }
+
+    let distance_m = last_reported_distance
+        .or_else(|| {
+            if gps_distance_accum > 0.0 {
+                Some(gps_distance_accum)
+            } else {
+                None
+            }
+        })
+        .unwrap_or(fallback_distance_m.max(0.0));
+
+    let avg_speed_mps = if duration_seconds > 0.1 && distance_m > 0.0 {
+        Some(distance_m / duration_seconds)
+    } else if !speed_values.is_empty() {
+        Some(speed_values.iter().sum::<f64>() / speed_values.len() as f64)
+    } else {
+        None
+    };
+
+    let max_speed_mps = speed_values.into_iter().reduce(f64::max);
+
+    let avg_hr = if heart_rate_values.is_empty() {
+        None
+    } else {
+        Some(heart_rate_values.iter().sum::<f64>() / heart_rate_values.len() as f64)
+    };
+
+    let max_hr = heart_rate_values.into_iter().reduce(f64::max);
+
+    let sampled_track = downsample(&raw_track, MAX_UI_POINTS);
+    let sampled_samples = downsample(&raw_samples, MAX_UI_POINTS);
+    let category = derive_activity_category(&sport_type, notes.as_deref());
+
+    Ok(ParsedActivity {
+        start_time: start_time.to_rfc3339(),
+        category,
+        sport_type,
+        duration_seconds: duration_seconds.max(0.0),
+        distance_m: distance_m.max(0.0),
+        elevation_gain_m: elevation_gain.max(0.0),
+        avg_speed_mps,
+        max_speed_mps,
+        avg_hr,
+        max_hr,
+        has_gps,
+        track: sampled_track,
+        samples: sampled_samples,
+        original_sample_count: points.len(),
+    })
+}
+
+pub fn parse_activity_file(path: &Path) -> Result<ParsedActivity> {
+    let extension = path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.to_ascii_lowercase())
+        .unwrap_or_default();
+
+    match extension.as_str() {
+        "tcx" | "txc" => parse_tcx_file(path),
+        "fit" => parse_fit_file(path),
+        _ => Err(anyhow!(
+            "unsupported activity file type for {}",
+            path.display()
+        )),
+    }
 }
 
 pub fn parse_tcx_file(path: &Path) -> Result<ParsedActivity> {
@@ -253,178 +534,138 @@ pub fn parse_tcx_file(path: &Path) -> Result<ParsedActivity> {
         buf.clear();
     }
 
-    if points.is_empty() {
-        return Err(anyhow!("no trackpoints in {}", path.display()));
-    }
-
-    let first_time = points.iter().find_map(|point| point.time.as_ref().cloned());
-    let last_time = points
-        .iter()
-        .rev()
-        .find_map(|point| point.time.as_ref().cloned());
-
-    let start_time = activity_start
-        .or(first_time)
-        .ok_or_else(|| anyhow!("missing activity start time in {}", path.display()))?;
-
-    let duration_seconds = match (first_time, last_time) {
-        (Some(start), Some(end)) if end >= start => {
-            (end - start).num_milliseconds() as f64 / 1000.0
-        }
-        _ => lap_duration_total.max(0.0),
-    };
-
-    let mut gps_distance_accum = 0.0;
-    let mut previous_gps: Option<(f64, f64)> = None;
-    let mut has_gps = false;
-
-    let mut first_reported_distance: Option<f64> = None;
-    let mut last_reported_distance: Option<f64> = None;
-
-    let mut elevation_gain = 0.0;
-    let mut previous_altitude: Option<f64> = None;
-
-    let mut heart_rate_values: Vec<f64> = Vec::new();
-    let mut speed_values: Vec<f64> = Vec::new();
-
-    let mut previous_elapsed: Option<f64> = None;
-    let mut previous_distance: Option<f64> = None;
-
-    let mut raw_samples: Vec<ActivitySample> = Vec::with_capacity(points.len());
-    let mut raw_track: Vec<TrackPoint> = Vec::with_capacity(points.len());
-
-    for point in &points {
-        if let (Some(lat), Some(lon)) = (point.lat, point.lon) {
-            has_gps = true;
-
-            if let Some((prev_lat, prev_lon)) = previous_gps {
-                gps_distance_accum += haversine_m(prev_lat, prev_lon, lat, lon);
-            }
-            previous_gps = Some((lat, lon));
-            raw_track.push(TrackPoint { lat, lon });
-        }
-
-        if let Some(distance) = point.distance {
-            if first_reported_distance.is_none() {
-                first_reported_distance = Some(distance);
-            }
-            let relative = distance - first_reported_distance.unwrap_or(distance);
-            last_reported_distance = Some(relative.max(0.0));
-        }
-
-        if let (Some(prev_alt), Some(current_alt)) = (previous_altitude, point.altitude) {
-            let delta = current_alt - prev_alt;
-            if delta > 1.0 {
-                elevation_gain += delta;
-            }
-        }
-
-        if point.altitude.is_some() {
-            previous_altitude = point.altitude;
-        }
-
-        if let Some(hr) = point.heart_rate {
-            heart_rate_values.push(hr);
-        }
-
-        let elapsed = point
-            .time
-            .as_ref()
-            .map(|time| (*time - start_time).num_milliseconds() as f64 / 1000.0)
-            .unwrap_or(0.0)
-            .max(0.0);
-
-        let distance_m = point
-            .distance
-            .and_then(|distance| first_reported_distance.map(|first| (distance - first).max(0.0)))
-            .or_else(|| {
-                if has_gps {
-                    Some(gps_distance_accum)
-                } else {
-                    None
-                }
-            });
-
-        let derived_speed = if let Some(speed) = point.speed {
-            Some(speed)
-        } else if let (Some(prev_elapsed), Some(prev_distance), Some(distance_m)) =
-            (previous_elapsed, previous_distance, distance_m)
-        {
-            let dt = elapsed - prev_elapsed;
-            if dt > 0.1 {
-                Some(((distance_m - prev_distance) / dt).max(0.0))
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-
-        if let Some(speed) = derived_speed {
-            speed_values.push(speed);
-        }
-
-        raw_samples.push(ActivitySample {
-            elapsed_seconds: elapsed,
-            distance_m,
-            speed_mps: derived_speed,
-            heart_rate: point.heart_rate,
-            altitude_m: point.altitude,
-            lat: point.lat,
-            lon: point.lon,
-            timestamp: point.time.as_ref().map(|time| time.to_rfc3339()),
-        });
-
-        previous_elapsed = Some(elapsed);
-        previous_distance = distance_m;
-    }
-
-    let distance_m = last_reported_distance
-        .or_else(|| {
-            if gps_distance_accum > 0.0 {
-                Some(gps_distance_accum)
-            } else {
-                None
-            }
-        })
-        .unwrap_or(lap_distance_total.max(0.0));
-
-    let avg_speed_mps = if duration_seconds > 0.1 && distance_m > 0.0 {
-        Some(distance_m / duration_seconds)
-    } else if !speed_values.is_empty() {
-        Some(speed_values.iter().sum::<f64>() / speed_values.len() as f64)
-    } else {
-        None
-    };
-
-    let max_speed_mps = speed_values.into_iter().reduce(f64::max);
-
-    let avg_hr = if heart_rate_values.is_empty() {
-        None
-    } else {
-        Some(heart_rate_values.iter().sum::<f64>() / heart_rate_values.len() as f64)
-    };
-
-    let max_hr = heart_rate_values.into_iter().reduce(f64::max);
-
-    let sampled_track = downsample(&raw_track, MAX_UI_POINTS);
-    let sampled_samples = downsample(&raw_samples, MAX_UI_POINTS);
-    let category = derive_activity_category(&sport_type, notes.as_deref());
-
-    Ok(ParsedActivity {
-        start_time: start_time.to_rfc3339(),
-        category,
+    build_parsed_activity(
+        path,
+        points,
         sport_type,
-        duration_seconds: duration_seconds.max(0.0),
-        distance_m: distance_m.max(0.0),
-        elevation_gain_m: elevation_gain.max(0.0),
-        avg_speed_mps,
-        max_speed_mps,
-        avg_hr,
-        max_hr,
-        has_gps,
-        track: sampled_track,
-        samples: sampled_samples,
-        original_sample_count: points.len(),
-    })
+        notes,
+        activity_start,
+        lap_distance_total,
+        lap_duration_total,
+    )
+}
+
+pub fn parse_fit_file(path: &Path) -> Result<ParsedActivity> {
+    let file =
+        File::open(path).with_context(|| format!("failed to open FIT file {}", path.display()))?;
+    let mut reader = BufReader::new(file);
+    let records = fitparser::from_reader(&mut reader)
+        .with_context(|| format!("failed to parse FIT {}", path.display()))?;
+
+    let mut sport_type = String::from("Other");
+    let mut notes: Option<String> = None;
+    let mut activity_start: Option<DateTime<Utc>> = None;
+    let mut total_distance_m: f64 = 0.0;
+    let mut total_duration_seconds: f64 = 0.0;
+    let mut points: Vec<RawTrackPoint> = Vec::new();
+
+    for record in records {
+        let kind = format!("{:?}", record.kind()).to_ascii_lowercase();
+
+        if kind == "record" {
+            let mut point = RawTrackPoint::default();
+
+            for field in record.fields() {
+                let name = field.name();
+                let units = field.units();
+                let value = field.value();
+
+                match name {
+                    "timestamp" => {
+                        point.time = fit_value_as_time(value);
+                    }
+                    "position_lat" => {
+                        if let Some(v) = fit_value_as_f64(value) {
+                            point.lat = Some(normalize_fit_position(name, units, v));
+                        }
+                    }
+                    "position_long" => {
+                        if let Some(v) = fit_value_as_f64(value) {
+                            point.lon = Some(normalize_fit_position(name, units, v));
+                        }
+                    }
+                    "enhanced_altitude" if point.altitude.is_none() => {
+                        point.altitude = fit_value_as_f64(value);
+                    }
+                    "altitude" => {
+                        point.altitude = fit_value_as_f64(value);
+                    }
+                    "heart_rate" => {
+                        point.heart_rate = fit_value_as_f64(value);
+                    }
+                    "enhanced_speed" if point.speed.is_none() => {
+                        point.speed = fit_value_as_f64(value);
+                    }
+                    "speed" => {
+                        point.speed = fit_value_as_f64(value);
+                    }
+                    "distance" => {
+                        point.distance = fit_value_as_f64(value);
+                    }
+                    _ => {}
+                }
+            }
+
+            if point.time.is_some()
+                || point.lat.is_some()
+                || point.lon.is_some()
+                || point.distance.is_some()
+                || point.heart_rate.is_some()
+                || point.altitude.is_some()
+            {
+                points.push(point);
+            }
+
+            continue;
+        }
+
+        if kind == "session" || kind == "activity" || kind == "sport" {
+            for field in record.fields() {
+                let name = field.name();
+                let value = field.value();
+
+                match name {
+                    "sport" => {
+                        if let Some(label) = fit_value_as_string(value) {
+                            sport_type = label;
+                        } else if let Some(code) = fit_value_as_u8(value) {
+                            sport_type = fit_sport_code_to_name(code).to_string();
+                        }
+                    }
+                    "sub_sport" if sport_type == "Other" => {
+                        if let Some(label) = fit_value_as_string(value) {
+                            sport_type = label;
+                        }
+                    }
+                    "notes" | "session_name" if notes.is_none() => {
+                        notes = fit_value_as_string(value);
+                    }
+                    "start_time" | "timestamp" if activity_start.is_none() => {
+                        activity_start = fit_value_as_time(value);
+                    }
+                    "total_distance" => {
+                        if let Some(v) = fit_value_as_f64(value) {
+                            total_distance_m = total_distance_m.max(v);
+                        }
+                    }
+                    "total_timer_time" | "total_elapsed_time" => {
+                        if let Some(v) = fit_value_as_f64(value) {
+                            total_duration_seconds = total_duration_seconds.max(v);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    build_parsed_activity(
+        path,
+        points,
+        sport_type,
+        notes,
+        activity_start,
+        total_distance_m,
+        total_duration_seconds,
+    )
 }
