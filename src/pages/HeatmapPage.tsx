@@ -9,6 +9,7 @@ import {
   US_DEFAULT_ZOOM,
   getMapStyle
 } from '@/lib/mapStyles';
+import { MaximizableMapFrame } from '@/components/MaximizableMapFrame';
 import type {
   ActivityFilters,
   ActivitySummary,
@@ -267,6 +268,23 @@ function HeatmapMap({
 
       map.remove();
       mapRef.current = null;
+    };
+  }, [reducedComplexity]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    const map = mapRef.current;
+    if (!container || !map) {
+      return undefined;
+    }
+
+    const observer = new ResizeObserver(() => {
+      map.resize();
+    });
+    observer.observe(container);
+
+    return () => {
+      observer.disconnect();
     };
   }, [reducedComplexity]);
 
@@ -558,7 +576,7 @@ export function HeatmapPage() {
           </div>
         </div>
 
-        <div className="h-[36rem]">
+        <MaximizableMapFrame label="heatmap" collapsedHeightClassName="h-[36rem]">
           {loading ? (
             <div className="flex h-full items-center justify-center text-sm text-muted">Loading heatmap...</div>
           ) : !trackCount ? (
@@ -573,7 +591,7 @@ export function HeatmapPage() {
               reducedComplexity={reducedMapComplexity}
             />
           )}
-        </div>
+        </MaximizableMapFrame>
       </section>
     </div>
   );
