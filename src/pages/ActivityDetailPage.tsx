@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   CartesianGrid,
@@ -20,7 +20,8 @@ import {
   formatPaceMinKm,
   formatSpeedKmh
 } from '@/lib/format';
-import { US_DEFAULT_CENTER, US_DEFAULT_ZOOM, getMapStyle } from '@/lib/mapStyles';
+import { US_DEFAULT_CENTER, US_DEFAULT_ZOOM } from '@/lib/mapStyles';
+import { useManagedMapLibre } from '@/lib/useManagedMapLibre';
 import { MaximizableMapFrame } from '@/components/MaximizableMapFrame';
 import { MetricCard } from '@/components/MetricCard';
 import type { ActivityDetail, TrackPoint } from '@/types';
@@ -83,52 +84,19 @@ function fitMapToTrack(map: maplibregl.Map, track: TrackPoint[]) {
   });
 }
 
-function ActivityRouteMap({ track }: { track: TrackPoint[] }) {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<maplibregl.Map | null>(null);
+function ActivityRouteMap({
+  track,
+  reducedComplexity
+}: {
+  track: TrackPoint[];
+  reducedComplexity: boolean;
+}) {
+  const { containerRef, mapRef } = useManagedMapLibre({
+    reducedComplexity,
+    initialCenter: US_DEFAULT_CENTER,
+    initialZoom: US_DEFAULT_ZOOM
+  });
   const trackSource = useMemo(() => toRouteFeatureCollection(track), [track]);
-
-  useEffect(() => {
-    if (!containerRef.current) {
-      return undefined;
-    }
-
-    const map = new maplibregl.Map({
-      container: containerRef.current,
-      style: getMapStyle(false),
-      center: US_DEFAULT_CENTER,
-      zoom: US_DEFAULT_ZOOM,
-      pitchWithRotate: false,
-      dragRotate: false
-    });
-    mapRef.current = map;
-
-    map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
-    map.scrollZoom.setWheelZoomRate(1 / 520);
-    map.scrollZoom.setZoomRate(1 / 130);
-
-    return () => {
-      map.remove();
-      mapRef.current = null;
-    };
-  }, []);
-
-  useEffect(() => {
-    const container = containerRef.current;
-    const map = mapRef.current;
-    if (!container || !map) {
-      return undefined;
-    }
-
-    const observer = new ResizeObserver(() => {
-      map.resize();
-    });
-    observer.observe(container);
-
-    return () => {
-      observer.disconnect();
-    };
-  }, []);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -163,7 +131,6 @@ function ActivityRouteMap({ track }: { track: TrackPoint[] }) {
         });
       }
 
-      fitMapToTrack(map, track);
     };
 
     if (map.isStyleLoaded()) {
@@ -175,9 +142,60 @@ function ActivityRouteMap({ track }: { track: TrackPoint[] }) {
     return () => {
       map.off('load', syncTrack);
     };
-  }, [track, trackSource]);
+  }, [track, trackSource, reducedComplexity]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) {
+      return undefined;
+    }
+
+    const fitTrack = () => {
+      fitMapToTrack(map, track);
+    };
+
+    if (map.isStyleLoaded()) {
+      fitTrack();
+      return undefined;
+    }
+
+    map.once('load', fitTrack);
+    return () => {
+      map.off('load', fitTrack);
+    };
+  }, [track]);
 
   return <div ref={containerRef} className="h-full w-full" />;
+}
+
+function ReducedComplexityMapToggle({
+  enabled,
+  onChange
+}: {
+  enabled: boolean;
+  onChange: (enabled: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => onChange(!enabled)}
+      aria-pressed={enabled}
+      className={`flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs shadow-sm backdrop-blur transition-colors ${
+        enabled
+          ? 'border-accent/60 bg-panel/90 text-foreground'
+          : 'border-border bg-panel/80 text-muted hover:text-foreground'
+      }`}
+    >
+      <span
+        className={`inline-flex h-3.5 w-3.5 items-center justify-center rounded-sm border text-[10px] leading-none ${
+          enabled ? 'border-accent bg-accent text-white' : 'border-border bg-bg/90 text-transparent'
+        }`}
+      >
+        ✓
+      </span>
+      Reduced complexity
+    </button>
+  );
 }
 
 export function ActivityDetailPage() {
@@ -185,6 +203,7 @@ export function ActivityDetailPage() {
   const [detail, setDetail] = useState<ActivityDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [reducedMapComplexity, setReducedMapComplexity] = useState(false);
 
   useEffect(() => {
     if (!id) {
@@ -288,13 +307,24 @@ export function ActivityDetailPage() {
         <div className="border-b border-border px-4 py-3">
           <h3 className="text-lg font-semibold text-foreground">Route</h3>
         </div>
-        <MaximizableMapFrame label="route map" collapsedHeightClassName="h-80">
+        <MaximizableMapFrame
+          label="route map"
+          collapsedHeightClassName="h-80"
+          topLeftActions={
+            detail.track.length > 0 ? (
+              <ReducedComplexityMapToggle
+                enabled={reducedMapComplexity}
+                onChange={setReducedMapComplexity}
+              />
+            ) : null
+          }
+        >
           {detail.track.length === 0 ? (
             <div className="flex h-full items-center justify-center text-sm text-muted">
               No GPS track available
             </div>
           ) : (
-            <ActivityRouteMap track={detail.track} />
+            <ActivityRouteMap track={detail.track} reducedComplexity={reducedMapComplexity} />
           )}
         </MaximizableMapFrame>
       </section>

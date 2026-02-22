@@ -28,11 +28,12 @@ Prototype (actively evolving).
 - In-memory activities list caching for snappy return navigation (no refetch unless filters/data change)
 - Activity detail with metrics, route map, and charts
 - Continuous, Google Maps-style smooth zooming/panning on map views
+- Toggling "Reduced complexity" preserves the current map viewport (pan/zoom)
 - Map views support in-place maximize/minimize (with `Esc` to close expanded view)
 - Global path-based heatmap page that overlays all matching GPS tracks
 - Heatmap filters for time span (presets + custom), category, and sport type
-- Heatmap "Reduced complexity" toggle for a grayscale, lower-noise basemap with stronger route contrast
-- Heatmap controls/legend are overlaid on the map so they remain visible in maximized map mode
+- "Reduced complexity" toggle on map views for a grayscale, lower-noise basemap with stronger route contrast
+- Map controls (including reduced-complexity toggles/legend) are overlaid on maps so they remain visible in maximized map mode
 
 ## Tech Stack
 
