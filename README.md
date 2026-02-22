@@ -21,6 +21,7 @@ Prototype (actively evolving).
 - Activities filters auto-apply on change (no Apply button)
 - Light mode by default with optional dark mode toggle in Settings
 - Settings tabs for Import and Appearance
+- UI view/filter state is remembered across navigation (e.g. Settings tab, Dashboard calendar view, Heatmap filters), and sidebar sections reopen the last route you visited in that section (e.g. `Activities` detail page)
 - Dashboard with a drill-down training calendar (year view -> month view -> activity links)
 - Calendar bars can switch between hours, kilometers, and activity count
 - Hovering month or year bars uses horizontal cursor position (full-height hit area) and highlights the corresponding calendar day/month workout context with a quick pop animation

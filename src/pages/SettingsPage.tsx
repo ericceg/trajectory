@@ -3,8 +3,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 
 import { ScanStatusCard } from '@/components/ScanStatusCard';
 import { useAppStore } from '@/store/useAppStore';
-
-type SettingsTab = 'import' | 'appearance';
+import { useUiStateStore } from '@/store/useUiStateStore';
 
 export function SettingsPage() {
   const settings = useAppStore((state) => state.settings);
@@ -16,10 +15,11 @@ export function SettingsPage() {
   const updateDarkMode = useAppStore((state) => state.updateDarkMode);
   const updateHeatmapFullOpacity = useAppStore((state) => state.updateHeatmapFullOpacity);
   const runScan = useAppStore((state) => state.runScan);
+  const activeTab = useUiStateStore((state) => state.settingsActiveTab);
+  const setSettingsActiveTab = useUiStateStore((state) => state.setSettingsActiveTab);
 
   const [error, setError] = useState<string | null>(null);
   const [confirmFullRescan, setConfirmFullRescan] = useState(false);
-  const [activeTab, setActiveTab] = useState<SettingsTab>('import');
 
   const handleChooseFolder = async () => {
     const path = await open({ directory: true, multiple: false, title: 'Select Import Folder' });
@@ -68,7 +68,7 @@ export function SettingsPage() {
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            onClick={() => setActiveTab('import')}
+            onClick={() => setSettingsActiveTab('import')}
             className={`rounded-md px-3 py-2 text-sm font-medium transition-colors ${
               activeTab === 'import'
                 ? 'bg-accent text-white'
@@ -79,7 +79,7 @@ export function SettingsPage() {
           </button>
           <button
             type="button"
-            onClick={() => setActiveTab('appearance')}
+            onClick={() => setSettingsActiveTab('appearance')}
             className={`rounded-md px-3 py-2 text-sm font-medium transition-colors ${
               activeTab === 'appearance'
                 ? 'bg-accent text-white'

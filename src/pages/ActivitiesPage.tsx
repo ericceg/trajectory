@@ -11,6 +11,7 @@ import {
 
 import { listActivities } from '@/lib/tauri';
 import { useAppStore } from '@/store/useAppStore';
+import { useUiStateStore } from '@/store/useUiStateStore';
 import {
   formatDateTime,
   formatDistanceKm,
@@ -38,29 +39,26 @@ export function ActivitiesPage() {
   const settings = useAppStore((state) => state.settings);
   const getCachedActivities = useAppStore((state) => state.getCachedActivities);
   const setCachedActivities = useAppStore((state) => state.setCachedActivities);
-
-  const [filters, setFilters] = useState<{
-    category: string;
-    minDistanceKm: string;
-    maxDistanceKm: string;
-  }>({
-    category: '',
-    minDistanceKm: '',
-    maxDistanceKm: ''
-  });
+  const activitiesCategory = useUiStateStore((state) => state.activitiesCategory);
+  const setActivitiesCategory = useUiStateStore((state) => state.setActivitiesCategory);
+  const activitiesMinDistanceKm = useUiStateStore((state) => state.activitiesMinDistanceKm);
+  const setActivitiesMinDistanceKm = useUiStateStore((state) => state.setActivitiesMinDistanceKm);
+  const activitiesMaxDistanceKm = useUiStateStore((state) => state.activitiesMaxDistanceKm);
+  const setActivitiesMaxDistanceKm = useUiStateStore((state) => state.setActivitiesMaxDistanceKm);
+  const sorting = useUiStateStore((state) => state.activitiesSorting) as SortingState;
+  const setSorting = useUiStateStore((state) => state.setActivitiesSorting);
 
   const [data, setData] = useState<ActivitySummary[]>([]);
-  const [sorting, setSorting] = useState<SortingState>([{ id: 'activityStart', desc: true }]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const query = useMemo<ActivityFilters>(
     () => ({
-      category: filters.category || undefined,
-      minDistance: filters.minDistanceKm ? Number(filters.minDistanceKm) * 1000 : undefined,
-      maxDistance: filters.maxDistanceKm ? Number(filters.maxDistanceKm) * 1000 : undefined
+      category: activitiesCategory || undefined,
+      minDistance: activitiesMinDistanceKm ? Number(activitiesMinDistanceKm) * 1000 : undefined,
+      maxDistance: activitiesMaxDistanceKm ? Number(activitiesMaxDistanceKm) * 1000 : undefined
     }),
-    [filters.category, filters.maxDistanceKm, filters.minDistanceKm]
+    [activitiesCategory, activitiesMaxDistanceKm, activitiesMinDistanceKm]
   );
 
   const cacheKey = useMemo(
@@ -117,7 +115,8 @@ export function ActivitiesPage() {
     state: {
       sorting
     },
-    onSortingChange: setSorting,
+    onSortingChange: (updater) =>
+      setSorting(typeof updater === 'function' ? updater(sorting) : updater),
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel()
   });
@@ -171,8 +170,8 @@ export function ActivitiesPage() {
       <section className="rounded-xl border border-border bg-panel p-4 shadow-card">
         <div className="grid gap-3 md:grid-cols-3">
           <select
-            value={filters.category}
-            onChange={(event) => setFilters((prev) => ({ ...prev, category: event.target.value }))}
+            value={activitiesCategory}
+            onChange={(event) => setActivitiesCategory(event.target.value)}
             className="rounded-md border border-border bg-bg px-3 py-2 text-sm"
           >
             <option value="">All categories</option>
@@ -187,10 +186,8 @@ export function ActivitiesPage() {
             min="0"
             step="0.1"
             placeholder="Min distance (km)"
-            value={filters.minDistanceKm}
-            onChange={(event) =>
-              setFilters((prev) => ({ ...prev, minDistanceKm: event.target.value }))
-            }
+            value={activitiesMinDistanceKm}
+            onChange={(event) => setActivitiesMinDistanceKm(event.target.value)}
             className="rounded-md border border-border bg-bg px-3 py-2 text-sm"
           />
           <input
@@ -198,10 +195,8 @@ export function ActivitiesPage() {
             min="0"
             step="0.1"
             placeholder="Max distance (km)"
-            value={filters.maxDistanceKm}
-            onChange={(event) =>
-              setFilters((prev) => ({ ...prev, maxDistanceKm: event.target.value }))
-            }
+            value={activitiesMaxDistanceKm}
+            onChange={(event) => setActivitiesMaxDistanceKm(event.target.value)}
             className="rounded-md border border-border bg-bg px-3 py-2 text-sm"
           />
         </div>
@@ -253,7 +248,15 @@ export function ActivitiesPage() {
               {table.getRowModel().rows.map((row) => (
                 <tr
                   key={row.id}
-                  className="cursor-pointer border-t border-border hover:bg-white/5"
+                  tabIndex={0}
+                  className="cursor-pointer border-t border-border transition-colors hover:bg-white/5 focus:outline-none focus-visible:bg-white/5"
+                  onKeyDown={(event) => {
+                    if (event.key !== 'Enter' && event.key !== ' ') {
+                      return;
+                    }
+                    event.preventDefault();
+                    navigate(`/activities/${row.original.id}`);
+                  }}
                   onClick={() => navigate(`/activities/${row.original.id}`)}
                 >
                   {row.getVisibleCells().map((cell) => (

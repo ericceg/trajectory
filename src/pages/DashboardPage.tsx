@@ -20,6 +20,7 @@ import { listActivities } from '@/lib/tauri';
 import { formatDateTime, formatDistanceKm, formatDuration } from '@/lib/format';
 import { MetricCard } from '@/components/MetricCard';
 import { useAppStore } from '@/store/useAppStore';
+import { useUiStateStore } from '@/store/useUiStateStore';
 import type { ActivitySummary } from '@/types';
 
 type CalendarMode = 'year' | 'month';
@@ -250,10 +251,14 @@ export function DashboardPage() {
   const navigate = useNavigate();
   const scanDone = useAppStore((state) => state.scanDone);
 
-  const [mode, setMode] = useState<CalendarMode>('year');
-  const [selectedYear, setSelectedYear] = useState(() => new Date().getFullYear());
-  const [selectedMonthIndex, setSelectedMonthIndex] = useState(() => new Date().getMonth());
-  const [barMetric, setBarMetric] = useState<CalendarBarMetric>('durationHours');
+  const mode = useUiStateStore((state) => state.dashboardMode) as CalendarMode;
+  const setMode = useUiStateStore((state) => state.setDashboardMode);
+  const selectedYear = useUiStateStore((state) => state.dashboardSelectedYear);
+  const setSelectedYear = useUiStateStore((state) => state.setDashboardSelectedYear);
+  const selectedMonthIndex = useUiStateStore((state) => state.dashboardSelectedMonthIndex);
+  const setSelectedMonthIndex = useUiStateStore((state) => state.setDashboardSelectedMonthIndex);
+  const barMetric = useUiStateStore((state) => state.dashboardBarMetric) as CalendarBarMetric;
+  const setBarMetric = useUiStateStore((state) => state.setDashboardBarMetric);
   const [hoveredBarIndex, setHoveredBarIndex] = useState<number | null>(null);
   const [pinnedBarIndex, setPinnedBarIndex] = useState<number | null>(null);
   const [hoverPulseTick, setHoverPulseTick] = useState(0);
@@ -497,7 +502,7 @@ export function DashboardPage() {
   }, [selectedMonthDate]);
 
   const shiftYear = (direction: -1 | 1) => {
-    setSelectedYear((value) => value + direction);
+    setSelectedYear(selectedYear + direction);
     setMode('year');
   };
 

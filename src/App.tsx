@@ -1,8 +1,9 @@
 import { Suspense, lazy, useEffect, useRef } from 'react';
-import { HashRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { HashRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 
 import { Sidebar } from '@/components/Sidebar';
 import { useAppStore } from '@/store/useAppStore';
+import { useUiStateStore } from '@/store/useUiStateStore';
 
 const DashboardPage = lazy(async () => ({
   default: (await import('@/pages/DashboardPage')).DashboardPage
@@ -31,9 +32,40 @@ function LoadingScreen({ message }: { message: string }) {
   );
 }
 
+function NavigationMemoryTracker() {
+  const location = useLocation();
+  const setLastSectionRoute = useUiStateStore((state) => state.setLastSectionRoute);
+
+  useEffect(() => {
+    const { pathname } = location;
+
+    if (pathname === '/') {
+      setLastSectionRoute('dashboard', pathname);
+      return;
+    }
+
+    if (pathname === '/heatmap') {
+      setLastSectionRoute('heatmap', pathname);
+      return;
+    }
+
+    if (pathname === '/settings') {
+      setLastSectionRoute('settings', pathname);
+      return;
+    }
+
+    if (pathname === '/activities' || pathname.startsWith('/activities/')) {
+      setLastSectionRoute('activities', pathname);
+    }
+  }, [location, setLastSectionRoute]);
+
+  return null;
+}
+
 function AppLayout() {
   return (
     <div className="flex min-h-screen bg-bg text-foreground">
+      <NavigationMemoryTracker />
       <Sidebar />
       <main className="flex-1 overflow-y-auto p-6">
         <Suspense fallback={<LoadingScreen message="Loading page..." />}>
