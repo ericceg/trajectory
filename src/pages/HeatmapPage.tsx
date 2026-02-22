@@ -310,7 +310,7 @@ function HeatmapMap({
     return () => {
       map.off('load', applyBounds);
     };
-  }, [boundsPoints, reducedComplexity]);
+  }, [boundsPoints]);
 
   return <div ref={containerRef} className="h-full w-full" />;
 }
