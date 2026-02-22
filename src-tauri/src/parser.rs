@@ -4,11 +4,24 @@ use anyhow::{anyhow, Context, Result};
 use chrono::{DateTime, Utc};
 use fitparser::{self, Value};
 use quick_xml::{events::Event, Reader};
+use thiserror::Error;
 
 use crate::models::{ActivitySample, ParsedActivity, TrackPoint};
 
 const MAX_UI_POINTS: usize = 2000;
 const FIT_SEMICIRCLES_TO_DEGREES: f64 = 180.0 / 2_147_483_648.0;
+
+#[derive(Debug, Error)]
+enum ParseActivityError {
+    #[error("no trackpoints in {0}")]
+    NoTrackpoints(String),
+}
+
+pub fn is_no_trackpoints_error(err: &anyhow::Error) -> bool {
+    err.downcast_ref::<ParseActivityError>()
+        .map(|cause| matches!(cause, ParseActivityError::NoTrackpoints(_)))
+        .unwrap_or(false)
+}
 
 #[derive(Debug, Default, Clone)]
 struct RawTrackPoint {
@@ -19,6 +32,17 @@ struct RawTrackPoint {
     heart_rate: Option<f64>,
     distance: Option<f64>,
     speed: Option<f64>,
+}
+
+#[derive(Debug, Default, Clone)]
+struct SummaryMetrics {
+    distance_m: f64,
+    duration_seconds: f64,
+    elevation_gain_m: f64,
+    avg_speed_mps: Option<f64>,
+    max_speed_mps: Option<f64>,
+    avg_hr: Option<f64>,
+    max_hr: Option<f64>,
 }
 
 fn normalize_tag(bytes: &[u8]) -> String {
@@ -280,7 +304,7 @@ fn build_parsed_activity(
     fallback_duration_seconds: f64,
 ) -> Result<ParsedActivity> {
     if points.is_empty() {
-        return Err(anyhow!("no trackpoints in {}", path.display()));
+        return Err(ParseActivityError::NoTrackpoints(path.display().to_string()).into());
     }
 
     let first_time = points.iter().find_map(|point| point.time.as_ref().cloned());
@@ -460,6 +484,55 @@ fn build_parsed_activity(
         track: sampled_track,
         samples: sampled_samples,
         original_sample_count: points.len(),
+    })
+}
+
+fn build_summary_only_activity(
+    path: &Path,
+    sport_type: String,
+    explicit_title: Option<String>,
+    notes: Option<String>,
+    activity_start: Option<DateTime<Utc>>,
+    summary: SummaryMetrics,
+) -> Result<ParsedActivity> {
+    let start_time = activity_start
+        .ok_or_else(|| anyhow!("missing activity start time in {}", path.display()))?;
+
+    let category = derive_activity_category(&sport_type, notes.as_deref());
+    let title = derive_activity_title(
+        path,
+        &sport_type,
+        &category,
+        explicit_title.as_deref(),
+        notes.as_deref(),
+    );
+
+    let distance_m = summary.distance_m.max(0.0);
+    let duration_seconds = summary.duration_seconds.max(0.0);
+    let avg_speed_mps = summary.avg_speed_mps.or_else(|| {
+        if duration_seconds > 0.1 && distance_m > 0.0 {
+            Some(distance_m / duration_seconds)
+        } else {
+            None
+        }
+    });
+
+    Ok(ParsedActivity {
+        start_time: start_time.to_rfc3339(),
+        title,
+        category,
+        sport_type,
+        duration_seconds,
+        distance_m,
+        elevation_gain_m: summary.elevation_gain_m.max(0.0),
+        avg_speed_mps,
+        max_speed_mps: summary.max_speed_mps,
+        avg_hr: summary.avg_hr,
+        max_hr: summary.max_hr,
+        has_gps: false,
+        track: Vec::new(),
+        samples: Vec::new(),
+        original_sample_count: 0,
     })
 }
 
@@ -643,8 +716,7 @@ pub fn parse_fit_file(path: &Path) -> Result<ParsedActivity> {
     let mut explicit_title: Option<String> = None;
     let mut notes: Option<String> = None;
     let mut activity_start: Option<DateTime<Utc>> = None;
-    let mut total_distance_m: f64 = 0.0;
-    let mut total_duration_seconds: f64 = 0.0;
+    let mut summary = SummaryMetrics::default();
     let mut points: Vec<RawTrackPoint> = Vec::new();
 
     for record in records {
@@ -743,12 +815,41 @@ pub fn parse_fit_file(path: &Path) -> Result<ParsedActivity> {
                     }
                     "total_distance" => {
                         if let Some(v) = fit_value_as_f64(value) {
-                            total_distance_m = total_distance_m.max(v);
+                            summary.distance_m = summary.distance_m.max(v);
                         }
                     }
                     "total_timer_time" | "total_elapsed_time" => {
                         if let Some(v) = fit_value_as_f64(value) {
-                            total_duration_seconds = total_duration_seconds.max(v);
+                            summary.duration_seconds = summary.duration_seconds.max(v);
+                        }
+                    }
+                    "total_ascent" => {
+                        if let Some(v) = fit_value_as_f64(value) {
+                            summary.elevation_gain_m = summary.elevation_gain_m.max(v);
+                        }
+                    }
+                    "enhanced_avg_speed" | "avg_speed" => {
+                        if let Some(v) = fit_value_as_f64(value) {
+                            summary.avg_speed_mps = Some(summary.avg_speed_mps.map_or(v, |cur| {
+                                if cur > 0.0 { cur } else { v }
+                            }));
+                        }
+                    }
+                    "enhanced_max_speed" | "max_speed" => {
+                        if let Some(v) = fit_value_as_f64(value) {
+                            summary.max_speed_mps = Some(
+                                summary.max_speed_mps.map_or(v, |cur| cur.max(v)),
+                            );
+                        }
+                    }
+                    "avg_heart_rate" => {
+                        if let Some(v) = fit_value_as_f64(value) {
+                            summary.avg_hr = Some(v);
+                        }
+                    }
+                    "max_heart_rate" => {
+                        if let Some(v) = fit_value_as_f64(value) {
+                            summary.max_hr = Some(summary.max_hr.map_or(v, |cur| cur.max(v)));
                         }
                     }
                     _ => {}
@@ -771,6 +872,17 @@ pub fn parse_fit_file(path: &Path) -> Result<ParsedActivity> {
         };
     }
 
+    if points.is_empty() {
+        return build_summary_only_activity(
+            path,
+            sport_type,
+            explicit_title,
+            notes,
+            activity_start,
+            summary,
+        );
+    }
+
     build_parsed_activity(
         path,
         points,
@@ -778,7 +890,7 @@ pub fn parse_fit_file(path: &Path) -> Result<ParsedActivity> {
         explicit_title,
         notes,
         activity_start,
-        total_distance_m,
-        total_duration_seconds,
+        summary.distance_m,
+        summary.duration_seconds,
     )
 }
