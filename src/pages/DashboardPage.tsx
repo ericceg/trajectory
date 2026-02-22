@@ -204,7 +204,7 @@ const SparkBars = ({
             ? 'bg-accent opacity-100'
             : `${barClass} ${value > 0 ? 'opacity-100' : 'opacity-20'}`;
           const barVisualClass = `rounded-sm transition-all duration-200 ${colorClass} ${
-            active ? `${activePopClass} -translate-y-0.5 scale-x-[1.06] shadow-[0_10px_18px_-12px_rgba(252,76,2,0.95)]` : ''
+            active ? `${activePopClass} -translate-y-0.5 scale-x-[1.06]` : ''
           }`;
 
           if (interactive) {
@@ -583,7 +583,7 @@ export function DashboardPage() {
         />
       </div>
 
-      <section className="rounded-xl border border-border bg-panel p-5 shadow-card">
+      <section className="rounded-xl border border-border bg-panel p-5">
         <header className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <h3 className="text-3xl font-semibold text-foreground">Training Calendar</h3>
@@ -769,7 +769,7 @@ export function DashboardPage() {
                   }}
                   className={`rounded-lg border border-border bg-bg/30 p-3 text-left transition hover:border-accent/40 hover:bg-accent/5 ${
                     yearHoveredMonth
-                      ? `relative z-10 -translate-y-0.5 border-accent bg-accent/10 shadow-[0_14px_26px_-20px_rgba(252,76,2,0.9)] ${yearPopClass}`
+                      ? `relative z-10 -translate-y-0.5 border-accent bg-accent/10 ${yearPopClass}`
                       : ''
                   }`}
                 >
@@ -821,11 +821,11 @@ export function DashboardPage() {
                 return (
                   <div
                     key={dayKey}
-                    className={`min-h-[140px] border-r border-t border-border p-2 text-xs transition-[background-color,box-shadow,transform] duration-200 last:border-r-0 ${
+                    className={`min-h-[140px] border-r border-t border-border p-2 text-xs transition-[background-color,transform] duration-200 last:border-r-0 ${
                       inCurrentMonth ? 'bg-bg/20' : 'bg-bg/10 text-muted/40'
                     } ${
                       hoveredDay
-                        ? `relative z-10 -translate-y-0.5 bg-accent/10 shadow-[0_12px_24px_-18px_rgba(252,76,2,0.95)] ${popClass}`
+                        ? `relative z-10 -translate-y-0.5 bg-accent/10 ${popClass}`
                         : ''
                     }`}
                   >
@@ -855,7 +855,7 @@ export function DashboardPage() {
                             )} · ${formatDuration(activity.durationSeconds)}`}
                             className={`block truncate rounded px-1.5 py-0.5 text-[11px] transition-colors ${
                               hoveredDay
-                                ? `${popClass} bg-accent text-white shadow-[0_10px_18px_-14px_rgba(252,76,2,0.95)]`
+                                ? `${popClass} bg-accent text-white`
                                 : 'bg-accent/10 text-accent hover:bg-accent/20'
                             }`}
                           >

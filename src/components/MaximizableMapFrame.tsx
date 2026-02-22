@@ -63,7 +63,7 @@ export function MaximizableMapFrame({
       <div
         className={
           isMaximized
-            ? 'fixed inset-4 z-50 overflow-hidden rounded-xl border border-border bg-panel shadow-2xl'
+            ? 'fixed inset-4 z-50 overflow-hidden rounded-xl border border-border bg-panel'
             : `relative ${collapsedHeightClassName}`
         }
       >
@@ -73,7 +73,7 @@ export function MaximizableMapFrame({
             onClick={() => setIsMaximized((value) => !value)}
             aria-pressed={isMaximized}
             aria-label={isMaximized ? `Minimize ${label}` : `Maximize ${label}`}
-            className="rounded-md border border-border bg-panel/90 px-3 py-1.5 text-xs font-medium text-foreground shadow-sm backdrop-blur hover:border-accent/50"
+            className="rounded-md border border-border bg-panel/90 px-3 py-1.5 text-xs font-medium text-foreground backdrop-blur hover:border-accent/50"
           >
             {isMaximized ? 'Minimize' : 'Maximize'}
           </button>

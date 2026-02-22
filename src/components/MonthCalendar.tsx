@@ -43,7 +43,7 @@ export function MonthCalendar({
   const days = eachDayOfInterval({ start: gridStart, end: gridEnd });
 
   return (
-    <section className="rounded-xl border border-border bg-panel p-4 shadow-card">
+    <section className="rounded-xl border border-border bg-panel p-4">
       <div className="mb-4 flex items-center justify-between">
         <button
           type="button"
