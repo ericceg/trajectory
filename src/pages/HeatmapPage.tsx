@@ -333,6 +333,45 @@ function HeatmapMap({
   return <div ref={containerRef} className="h-full w-full" />;
 }
 
+function HeatmapMapOverlayControls({
+  reducedMapComplexity,
+  onReducedMapComplexityChange
+}: {
+  reducedMapComplexity: boolean;
+  onReducedMapComplexityChange: (checked: boolean) => void;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <button
+        type="button"
+        onClick={() => onReducedMapComplexityChange(!reducedMapComplexity)}
+        aria-pressed={reducedMapComplexity}
+        className={`flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs shadow-sm backdrop-blur transition-colors ${
+          reducedMapComplexity
+            ? 'border-accent/60 bg-panel/90 text-foreground'
+            : 'border-border bg-panel/80 text-muted hover:text-foreground'
+        }`}
+      >
+        <span
+          className={`inline-flex h-3.5 w-3.5 items-center justify-center rounded-sm border text-[10px] leading-none ${
+            reducedMapComplexity
+              ? 'border-accent bg-accent text-white'
+              : 'border-border bg-bg/90 text-transparent'
+          }`}
+        >
+          ✓
+        </span>
+        Reduced complexity
+      </button>
+      <div className="flex items-center gap-2 rounded-md border border-border bg-panel/80 px-2.5 py-1.5 text-xs text-muted shadow-sm backdrop-blur">
+        <span>Low</span>
+        <span className="h-2 w-24 rounded-full bg-gradient-to-r from-[#ffccaa] via-[#ff8c42] to-[#fc4c02]" />
+        <span>High</span>
+      </div>
+    </div>
+  );
+}
+
 export function HeatmapPage() {
   const [timeSpan, setTimeSpan] = useState<TimeSpan>('all');
   const [customStartDate, setCustomStartDate] = useState(format(subDays(new Date(), 30), 'yyyy-MM-dd'));
@@ -558,25 +597,18 @@ export function HeatmapPage() {
                 : ''}
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <label className="flex cursor-pointer items-center gap-2 rounded-md border border-border bg-bg/80 px-2.5 py-1.5 text-xs text-muted hover:text-foreground">
-              <input
-                type="checkbox"
-                checked={reducedMapComplexity}
-                onChange={(event) => setReducedMapComplexity(event.target.checked)}
-                className="h-3.5 w-3.5 accent-[rgb(var(--color-accent))]"
-              />
-              Reduced complexity (grayscale)
-            </label>
-            <div className="flex items-center gap-2 text-xs text-muted">
-              <span>Low</span>
-              <span className="h-2 w-24 rounded-full bg-gradient-to-r from-[#ffccaa] via-[#ff8c42] to-[#fc4c02]" />
-              <span>High</span>
-            </div>
-          </div>
         </div>
 
-        <MaximizableMapFrame label="heatmap" collapsedHeightClassName="h-[36rem]">
+        <MaximizableMapFrame
+          label="heatmap"
+          collapsedHeightClassName="h-[36rem]"
+          topLeftActions={
+            <HeatmapMapOverlayControls
+              reducedMapComplexity={reducedMapComplexity}
+              onReducedMapComplexityChange={setReducedMapComplexity}
+            />
+          }
+        >
           {loading ? (
             <div className="flex h-full items-center justify-center text-sm text-muted">Loading heatmap...</div>
           ) : !trackCount ? (

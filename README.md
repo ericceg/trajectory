@@ -32,6 +32,7 @@ Prototype (actively evolving).
 - Global path-based heatmap page that overlays all matching GPS tracks
 - Heatmap filters for time span (presets + custom), category, and sport type
 - Heatmap "Reduced complexity" toggle for a grayscale, lower-noise basemap with stronger route contrast
+- Heatmap controls/legend are overlaid on the map so they remain visible in maximized map mode
 
 ## Tech Stack
 

@@ -4,12 +4,14 @@ type MaximizableMapFrameProps = {
   label: string;
   collapsedHeightClassName: string;
   children: ReactNode;
+  topLeftActions?: ReactNode;
 };
 
 export function MaximizableMapFrame({
   label,
   collapsedHeightClassName,
-  children
+  children,
+  topLeftActions
 }: MaximizableMapFrameProps) {
   const [isMaximized, setIsMaximized] = useState(false);
 
@@ -65,7 +67,7 @@ export function MaximizableMapFrame({
             : `relative ${collapsedHeightClassName}`
         }
       >
-        <div className="absolute left-3 top-3 z-10">
+        <div className="absolute left-3 top-3 z-10 flex max-w-[calc(100%-6.5rem)] flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => setIsMaximized((value) => !value)}
@@ -75,6 +77,7 @@ export function MaximizableMapFrame({
           >
             {isMaximized ? 'Minimize' : 'Maximize'}
           </button>
+          {topLeftActions}
         </div>
         <div className="h-full w-full">{children}</div>
       </div>
