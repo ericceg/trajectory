@@ -178,7 +178,7 @@ function ReducedComplexityMapToggle({
       type="button"
       onClick={() => onChange(!enabled)}
       aria-pressed={enabled}
-      className={`flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs shadow-sm backdrop-blur transition-colors ${
+      className={`flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs backdrop-blur transition-colors ${
         enabled
           ? 'border-accent/60 bg-panel/90 text-foreground'
           : 'border-border bg-panel/80 text-muted hover:text-foreground'
@@ -301,7 +301,7 @@ export function ActivityDetailPage() {
         />
       </div>
 
-      <section className="overflow-hidden rounded-xl border border-border bg-panel shadow-card">
+      <section className="overflow-hidden rounded-xl border border-border bg-panel">
         <div className="border-b border-border px-4 py-3">
           <h3 className="text-lg font-semibold text-foreground">Route</h3>
         </div>
@@ -328,7 +328,7 @@ export function ActivityDetailPage() {
       </section>
 
       <div className="grid gap-6 xl:grid-cols-3">
-        <section className="rounded-xl border border-border bg-panel p-4 shadow-card">
+        <section className="rounded-xl border border-border bg-panel p-4">
           <h3 className="text-lg font-semibold text-foreground">Speed vs Time</h3>
           <div className="mt-3 h-64">
             {speedData.length === 0 ? (
@@ -347,7 +347,7 @@ export function ActivityDetailPage() {
           </div>
         </section>
 
-        <section className="rounded-xl border border-border bg-panel p-4 shadow-card">
+        <section className="rounded-xl border border-border bg-panel p-4">
           <h3 className="text-lg font-semibold text-foreground">Heart Rate vs Time</h3>
           <div className="mt-3 h-64">
             {heartRateData.length === 0 ? (
@@ -366,7 +366,7 @@ export function ActivityDetailPage() {
           </div>
         </section>
 
-        <section className="rounded-xl border border-border bg-panel p-4 shadow-card">
+        <section className="rounded-xl border border-border bg-panel p-4">
           <h3 className="text-lg font-semibold text-foreground">Elevation</h3>
           <div className="mt-3 h-64">
             {elevationData.length === 0 ? (

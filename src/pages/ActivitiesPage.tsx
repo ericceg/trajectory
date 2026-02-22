@@ -167,7 +167,7 @@ export function ActivitiesPage() {
         <h2 className="mt-2 text-3xl font-semibold text-foreground">All Workouts</h2>
       </header>
 
-      <section className="rounded-xl border border-border bg-panel p-4 shadow-card">
+      <section className="rounded-xl border border-border bg-panel p-4">
         <div className="grid gap-3 md:grid-cols-3">
           <select
             value={activitiesCategory}
@@ -204,7 +204,7 @@ export function ActivitiesPage() {
 
       {error ? <p className="rounded-lg bg-accent/20 p-3 text-sm text-accent">{error}</p> : null}
 
-      <section className="overflow-hidden rounded-xl border border-border bg-panel shadow-card">
+      <section className="overflow-hidden rounded-xl border border-border bg-panel">
         <div className="overflow-x-auto">
           <table className="min-w-full text-left text-sm">
             <thead className="bg-bg/60 text-xs uppercase tracking-[0.12em] text-muted">

@@ -317,7 +317,7 @@ function HeatmapMapOverlayControls({
         type="button"
         onClick={() => onReducedMapComplexityChange(!reducedMapComplexity)}
         aria-pressed={reducedMapComplexity}
-        className={`flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs shadow-sm backdrop-blur transition-colors ${
+        className={`flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-xs backdrop-blur transition-colors ${
           reducedMapComplexity
             ? 'border-accent/60 bg-panel/90 text-foreground'
             : 'border-border bg-panel/80 text-muted hover:text-foreground'
@@ -334,7 +334,7 @@ function HeatmapMapOverlayControls({
         </span>
         Reduced complexity
       </button>
-      <div className="flex items-center gap-2 rounded-md border border-border bg-panel/80 px-2.5 py-1.5 text-xs text-muted shadow-sm backdrop-blur">
+      <div className="flex items-center gap-2 rounded-md border border-border bg-panel/80 px-2.5 py-1.5 text-xs text-muted backdrop-blur">
         <span>Low</span>
         <span className="h-2 w-24 rounded-full bg-gradient-to-r from-[#ffccaa] via-[#ff8c42] to-[#fc4c02]" />
         <span>High</span>
@@ -486,7 +486,7 @@ export function HeatmapPage() {
         </p>
       </header>
 
-      <section className="rounded-xl border border-border bg-panel p-4 shadow-card">
+      <section className="rounded-xl border border-border bg-panel p-4">
         <div className="grid gap-4 xl:grid-cols-4">
           <div className="xl:col-span-2">
             <p className="mb-2 text-xs uppercase tracking-[0.14em] text-muted">Time span</p>
@@ -566,7 +566,7 @@ export function HeatmapPage() {
 
       {error ? <p className="rounded-lg bg-accent/20 p-3 text-sm text-accent">{error}</p> : null}
 
-      <section className="overflow-hidden rounded-xl border border-border bg-panel shadow-card">
+      <section className="overflow-hidden rounded-xl border border-border bg-panel">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
           <div>
             <h3 className="text-lg font-semibold text-foreground">Heatmap</h3>
