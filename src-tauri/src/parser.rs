@@ -83,6 +83,81 @@ fn derive_activity_category(sport_type: &str, notes: Option<&str>) -> String {
     }
 }
 
+fn humanize_identifier(value: &str) -> String {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+
+    let normalized = trimmed
+        .replace(['_', '-'], " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    if normalized.is_empty() {
+        return String::new();
+    }
+
+    normalized
+        .split(' ')
+        .map(|word| {
+            let lower = word.to_ascii_lowercase();
+            let mut chars = lower.chars();
+            match chars.next() {
+                Some(first) => format!("{}{}", first.to_ascii_uppercase(), chars.as_str()),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn derive_activity_title(
+    path: &Path,
+    sport_type: &str,
+    category: &str,
+    explicit_title: Option<&str>,
+    notes: Option<&str>,
+) -> String {
+    let candidate = explicit_title
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            notes.and_then(|value| {
+                let trimmed = value.trim();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(trimmed)
+                }
+            })
+        });
+
+    if let Some(candidate) = candidate {
+        let humanized = humanize_identifier(candidate);
+        if !humanized.is_empty() {
+            return humanized;
+        }
+        return candidate.to_string();
+    }
+
+    let sport_title = humanize_identifier(sport_type);
+    if !sport_title.is_empty() && !sport_title.eq_ignore_ascii_case("other") {
+        return sport_title;
+    }
+
+    if !category.trim().is_empty() {
+        return category.to_string();
+    }
+
+    path.file_stem()
+        .and_then(|stem| stem.to_str())
+        .map(humanize_identifier)
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "Workout".to_string())
+}
+
 fn haversine_m(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
     let r = 6_371_000.0_f64;
     let lat1r = lat1.to_radians();
@@ -198,6 +273,7 @@ fn build_parsed_activity(
     path: &Path,
     points: Vec<RawTrackPoint>,
     sport_type: String,
+    explicit_title: Option<String>,
     notes: Option<String>,
     activity_start: Option<DateTime<Utc>>,
     fallback_distance_m: f64,
@@ -360,9 +436,17 @@ fn build_parsed_activity(
     let sampled_track = downsample(&raw_track, MAX_UI_POINTS);
     let sampled_samples = downsample(&raw_samples, MAX_UI_POINTS);
     let category = derive_activity_category(&sport_type, notes.as_deref());
+    let title = derive_activity_title(
+        path,
+        &sport_type,
+        &category,
+        explicit_title.as_deref(),
+        notes.as_deref(),
+    );
 
     Ok(ParsedActivity {
         start_time: start_time.to_rfc3339(),
+        title,
         category,
         sport_type,
         duration_seconds: duration_seconds.max(0.0),
@@ -406,6 +490,7 @@ pub fn parse_tcx_file(path: &Path) -> Result<ParsedActivity> {
     let mut current_tag = String::new();
 
     let mut sport_type = String::from("Other");
+    let explicit_title: Option<String> = None;
     let mut notes: Option<String> = None;
     let mut activity_start: Option<DateTime<Utc>> = None;
 
@@ -538,6 +623,7 @@ pub fn parse_tcx_file(path: &Path) -> Result<ParsedActivity> {
         path,
         points,
         sport_type,
+        explicit_title,
         notes,
         activity_start,
         lap_distance_total,
@@ -553,6 +639,8 @@ pub fn parse_fit_file(path: &Path) -> Result<ParsedActivity> {
         .with_context(|| format!("failed to parse FIT {}", path.display()))?;
 
     let mut sport_type = String::from("Other");
+    let mut sub_sport_type: Option<String> = None;
+    let mut explicit_title: Option<String> = None;
     let mut notes: Option<String> = None;
     let mut activity_start: Option<DateTime<Utc>> = None;
     let mut total_distance_m: f64 = 0.0;
@@ -619,7 +707,7 @@ pub fn parse_fit_file(path: &Path) -> Result<ParsedActivity> {
             continue;
         }
 
-        if kind == "session" || kind == "activity" || kind == "sport" {
+        if kind == "session" || kind == "activity" || kind == "sport" || kind == "workout" {
             for field in record.fields() {
                 let name = field.name();
                 let value = field.value();
@@ -634,10 +722,20 @@ pub fn parse_fit_file(path: &Path) -> Result<ParsedActivity> {
                     }
                     "sub_sport" if sport_type == "Other" => {
                         if let Some(label) = fit_value_as_string(value) {
-                            sport_type = label;
+                            sub_sport_type = Some(label);
                         }
                     }
-                    "notes" | "session_name" if notes.is_none() => {
+                    "sub_sport" => {
+                        if let Some(label) = fit_value_as_string(value) {
+                            sub_sport_type = Some(label);
+                        }
+                    }
+                    "workout_name" | "wkt_name" | "session_name" | "sport_profile_name"
+                        if explicit_title.is_none() =>
+                    {
+                        explicit_title = fit_value_as_string(value);
+                    }
+                    "notes" if notes.is_none() => {
                         notes = fit_value_as_string(value);
                     }
                     "start_time" | "timestamp" if activity_start.is_none() => {
@@ -659,10 +757,25 @@ pub fn parse_fit_file(path: &Path) -> Result<ParsedActivity> {
         }
     }
 
+    if let Some(sub_sport) = sub_sport_type
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+    {
+        let sub_sport = sub_sport.to_string();
+        sport_type = if sport_type == "Other" {
+            sub_sport
+        } else if sport_type.eq_ignore_ascii_case(&sub_sport) {
+            sport_type
+        } else {
+            format!("{sport_type} {sub_sport}")
+        };
+    }
+
     build_parsed_activity(
         path,
         points,
         sport_type,
+        explicit_title,
         notes,
         activity_start,
         total_distance_m,

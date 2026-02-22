@@ -29,6 +29,7 @@ export interface ActivitySummary {
   id: number;
   sourcePath: string;
   activityStart: string;
+  title: string;
   category: string;
   sportType: string;
   durationSeconds: number;
