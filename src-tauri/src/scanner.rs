@@ -176,7 +176,11 @@ pub fn scan_import_folder(
             Ok(UpsertResult::Added) => added += 1,
             Ok(UpsertResult::Updated) => updated += 1,
             Err(err) => {
-                errors.push(format!("{}: {}", canonical_path.display(), err));
+                if parser::is_no_trackpoints_error(&err) {
+                    skipped += 1;
+                } else {
+                    errors.push(format!("{}: {}", canonical_path.display(), err));
+                }
             }
         }
 
