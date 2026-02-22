@@ -21,6 +21,7 @@ import {
   formatSpeedKmh
 } from '@/lib/format';
 import { US_DEFAULT_CENTER, US_DEFAULT_ZOOM, getMapStyle } from '@/lib/mapStyles';
+import { MaximizableMapFrame } from '@/components/MaximizableMapFrame';
 import { MetricCard } from '@/components/MetricCard';
 import type { ActivityDetail, TrackPoint } from '@/types';
 
@@ -109,6 +110,23 @@ function ActivityRouteMap({ track }: { track: TrackPoint[] }) {
     return () => {
       map.remove();
       mapRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    const map = mapRef.current;
+    if (!container || !map) {
+      return undefined;
+    }
+
+    const observer = new ResizeObserver(() => {
+      map.resize();
+    });
+    observer.observe(container);
+
+    return () => {
+      observer.disconnect();
     };
   }, []);
 
@@ -270,7 +288,7 @@ export function ActivityDetailPage() {
         <div className="border-b border-border px-4 py-3">
           <h3 className="text-lg font-semibold text-foreground">Route</h3>
         </div>
-        <div className="h-80">
+        <MaximizableMapFrame label="route map" collapsedHeightClassName="h-80">
           {detail.track.length === 0 ? (
             <div className="flex h-full items-center justify-center text-sm text-muted">
               No GPS track available
@@ -278,7 +296,7 @@ export function ActivityDetailPage() {
           ) : (
             <ActivityRouteMap track={detail.track} />
           )}
-        </div>
+        </MaximizableMapFrame>
       </section>
 
       <div className="grid gap-6 xl:grid-cols-3">
