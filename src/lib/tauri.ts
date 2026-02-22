@@ -20,6 +20,9 @@ export const setImportFolder = (path: string, recursive: boolean) =>
 export const setDarkMode = (darkMode: boolean) =>
   invoke<Settings>('set_dark_mode', { darkMode });
 
+export const setHeatmapFullOpacity = (heatmapFullOpacity: boolean) =>
+  invoke<Settings>('set_heatmap_full_opacity', { heatmapFullOpacity });
+
 export const scanImportFolder = (fullRescan = false) =>
   invoke<ScanDoneEvent>('scan_import_folder', { fullRescan });
 

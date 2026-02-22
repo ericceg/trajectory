@@ -90,6 +90,18 @@ async fn set_dark_mode(dark_mode: bool, state: State<'_, AppState>) -> Result<Se
 }
 
 #[tauri::command]
+async fn set_heatmap_full_opacity(
+    heatmap_full_opacity: bool,
+    state: State<'_, AppState>,
+) -> Result<Settings, String> {
+    let mut settings =
+        settings::load_settings(&state.settings_path).map_err(|err| err.to_string())?;
+    settings.heatmap_full_opacity = heatmap_full_opacity;
+    settings::save_settings(&state.settings_path, &settings).map_err(|err| err.to_string())?;
+    Ok(settings)
+}
+
+#[tauri::command]
 async fn scan_import_folder(
     app: AppHandle,
     full_rescan: Option<bool>,
@@ -163,6 +175,7 @@ fn main() {
             get_settings,
             set_import_folder,
             set_dark_mode,
+            set_heatmap_full_opacity,
             scan_import_folder,
             list_activities,
             get_activity,

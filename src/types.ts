@@ -3,6 +3,7 @@ export interface Settings {
   scanRecursive: boolean;
   lastScanTimestamp: string | null;
   darkMode: boolean;
+  heatmapFullOpacity: boolean;
 }
 
 export interface ActivityFilters {

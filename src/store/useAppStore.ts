@@ -4,6 +4,7 @@ import {
   getSettings,
   scanImportFolder,
   setDarkMode,
+  setHeatmapFullOpacity,
   setImportFolder,
   onScanProgress
 } from '@/lib/tauri';
@@ -20,6 +21,7 @@ interface AppState {
   updateImportFolder: (path: string, recursive: boolean) => Promise<void>;
   setScanRecursive: (recursive: boolean) => Promise<void>;
   updateDarkMode: (darkMode: boolean) => Promise<void>;
+  updateHeatmapFullOpacity: (heatmapFullOpacity: boolean) => Promise<void>;
   runScan: (fullRescan?: boolean) => Promise<void>;
   getCachedActivities: (cacheKey: string) => ActivitySummary[] | null;
   setCachedActivities: (cacheKey: string, activities: ActivitySummary[]) => void;
@@ -62,6 +64,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   updateDarkMode: async (darkMode) => {
     const settings = await setDarkMode(darkMode);
+    set({ settings });
+  },
+  updateHeatmapFullOpacity: async (heatmapFullOpacity) => {
+    const settings = await setHeatmapFullOpacity(heatmapFullOpacity);
     set({ settings });
   },
   runScan: async (fullRescan = false) => {
