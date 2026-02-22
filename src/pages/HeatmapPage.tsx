@@ -10,6 +10,7 @@ import {
 } from '@/lib/mapStyles';
 import { useManagedMapLibre } from '@/lib/useManagedMapLibre';
 import { MaximizableMapFrame } from '@/components/MaximizableMapFrame';
+import { useAppStore } from '@/store/useAppStore';
 import type {
   ActivityFilters,
   ActivitySummary,
@@ -101,7 +102,26 @@ function flattenBoundsPoints(tracks: TrackPoint[][]): TrackPoint[] {
   return sampled;
 }
 
-function resolveHeatmapStyle(trackCount: number): { baseOpacity: number; topOpacity: number; weight: number } {
+function resolveHeatmapStyle(
+  trackCount: number,
+  fullOpacity: boolean
+): { baseOpacity: number; topOpacity: number; weight: number } {
+  if (fullOpacity) {
+    if (trackCount <= 20) {
+      return { baseOpacity: 1, topOpacity: 1, weight: 5 };
+    }
+
+    if (trackCount <= 80) {
+      return { baseOpacity: 1, topOpacity: 1, weight: 4 };
+    }
+
+    if (trackCount <= 250) {
+      return { baseOpacity: 1, topOpacity: 1, weight: 3 };
+    }
+
+    return { baseOpacity: 1, topOpacity: 1, weight: 2.5 };
+  }
+
   if (trackCount <= 20) {
     return { baseOpacity: 0.2, topOpacity: 0.32, weight: 5 };
   }
@@ -324,6 +344,7 @@ function HeatmapMapOverlayControls({
 }
 
 export function HeatmapPage() {
+  const heatmapFullOpacity = useAppStore((state) => state.settings?.heatmapFullOpacity ?? false);
   const [timeSpan, setTimeSpan] = useState<TimeSpan>('all');
   const [customStartDate, setCustomStartDate] = useState(format(subDays(new Date(), 30), 'yyyy-MM-dd'));
   const [customEndDate, setCustomEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
@@ -438,7 +459,10 @@ export function HeatmapPage() {
   }, [heatmapFilters]);
 
   const trackCount = heatmapData?.tracks.length ?? 0;
-  const heatStyle = useMemo(() => resolveHeatmapStyle(trackCount), [trackCount]);
+  const heatStyle = useMemo(
+    () => resolveHeatmapStyle(trackCount, heatmapFullOpacity),
+    [heatmapFullOpacity, trackCount]
+  );
   const heatBoundsPoints = useMemo(
     () => flattenBoundsPoints(heatmapData?.tracks ?? []),
     [heatmapData?.tracks]
@@ -547,6 +571,9 @@ export function HeatmapPage() {
                 ? ` (downsampled from ${heatmapData.originalPointCount})`
                 : ''}
             </p>
+            {heatmapFullOpacity ? (
+              <p className="text-xs text-muted">Appearance: full-opacity heatmap enabled</p>
+            ) : null}
           </div>
         </div>
 

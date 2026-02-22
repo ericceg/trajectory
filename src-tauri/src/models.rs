@@ -7,6 +7,7 @@ pub struct Settings {
     pub scan_recursive: bool,
     pub last_scan_timestamp: Option<String>,
     pub dark_mode: bool,
+    pub heatmap_full_opacity: bool,
 }
 
 impl Default for Settings {
@@ -16,6 +17,7 @@ impl Default for Settings {
             scan_recursive: true,
             last_scan_timestamp: None,
             dark_mode: false,
+            heatmap_full_opacity: false,
         }
     }
 }
