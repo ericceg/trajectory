@@ -11,6 +11,7 @@ import {
 import { useManagedMapLibre } from '@/lib/useManagedMapLibre';
 import { MaximizableMapFrame } from '@/components/MaximizableMapFrame';
 import { useAppStore } from '@/store/useAppStore';
+import { useUiStateStore } from '@/store/useUiStateStore';
 import type {
   ActivityFilters,
   ActivitySummary,
@@ -345,12 +346,18 @@ function HeatmapMapOverlayControls({
 
 export function HeatmapPage() {
   const heatmapFullOpacity = useAppStore((state) => state.settings?.heatmapFullOpacity ?? false);
-  const [timeSpan, setTimeSpan] = useState<TimeSpan>('all');
-  const [customStartDate, setCustomStartDate] = useState(format(subDays(new Date(), 30), 'yyyy-MM-dd'));
-  const [customEndDate, setCustomEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
-  const [category, setCategory] = useState('');
-  const [sportType, setSportType] = useState('');
-  const [reducedMapComplexity, setReducedMapComplexity] = useState(false);
+  const timeSpan = useUiStateStore((state) => state.heatmapTimeSpan) as TimeSpan;
+  const setTimeSpan = useUiStateStore((state) => state.setHeatmapTimeSpan);
+  const customStartDate = useUiStateStore((state) => state.heatmapCustomStartDate);
+  const setCustomStartDate = useUiStateStore((state) => state.setHeatmapCustomStartDate);
+  const customEndDate = useUiStateStore((state) => state.heatmapCustomEndDate);
+  const setCustomEndDate = useUiStateStore((state) => state.setHeatmapCustomEndDate);
+  const category = useUiStateStore((state) => state.heatmapCategory);
+  const setCategory = useUiStateStore((state) => state.setHeatmapCategory);
+  const sportType = useUiStateStore((state) => state.heatmapSportType);
+  const setSportType = useUiStateStore((state) => state.setHeatmapSportType);
+  const reducedMapComplexity = useUiStateStore((state) => state.heatmapReducedMapComplexity);
+  const setReducedMapComplexity = useUiStateStore((state) => state.setHeatmapReducedMapComplexity);
   const [availableActivities, setAvailableActivities] = useState<ActivitySummary[]>([]);
   const [activityOptionsLoading, setActivityOptionsLoading] = useState(false);
   const [heatmapLoading, setHeatmapLoading] = useState(false);

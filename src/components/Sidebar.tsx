@@ -1,13 +1,41 @@
-import { NavLink } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 
-const navItems = [
-  { path: '/', label: 'Dashboard' },
-  { path: '/activities', label: 'Activities' },
-  { path: '/heatmap', label: 'Heatmap' },
-  { path: '/settings', label: 'Settings' }
+import { useUiStateStore } from '@/store/useUiStateStore';
+
+type NavSection = 'dashboard' | 'activities' | 'heatmap' | 'settings';
+
+const navItems: Array<{ section: NavSection; defaultPath: string; label: string }> = [
+  { section: 'dashboard', defaultPath: '/', label: 'Dashboard' },
+  { section: 'activities', defaultPath: '/activities', label: 'Activities' },
+  { section: 'heatmap', defaultPath: '/heatmap', label: 'Heatmap' },
+  { section: 'settings', defaultPath: '/settings', label: 'Settings' }
 ];
 
+function sectionForPath(pathname: string): NavSection | null {
+  if (pathname === '/') {
+    return 'dashboard';
+  }
+
+  if (pathname === '/heatmap') {
+    return 'heatmap';
+  }
+
+  if (pathname === '/settings') {
+    return 'settings';
+  }
+
+  if (pathname === '/activities' || pathname.startsWith('/activities/')) {
+    return 'activities';
+  }
+
+  return null;
+}
+
 export function Sidebar() {
+  const location = useLocation();
+  const lastSectionRoutes = useUiStateStore((state) => state.lastSectionRoutes);
+  const activeSection = sectionForPath(location.pathname);
+
   return (
     <aside className="flex h-screen w-64 flex-col border-r border-border bg-gradient-to-b from-panel to-bg px-5 py-6">
       <div className="mb-8">
@@ -16,19 +44,19 @@ export function Sidebar() {
       </div>
       <nav className="space-y-2">
         {navItems.map((item) => (
-          <NavLink
-            key={item.path}
-            to={item.path}
-            className={({ isActive }) =>
+          <Link
+            key={item.section}
+            to={lastSectionRoutes[item.section] ?? item.defaultPath}
+            className={
               `block rounded-lg px-4 py-3 text-sm font-medium transition-colors ${
-                isActive
+                activeSection === item.section
                   ? 'bg-accent text-white shadow-card'
                   : 'text-muted hover:bg-white/5 hover:text-foreground'
               }`
             }
           >
             {item.label}
-          </NavLink>
+          </Link>
         ))}
       </nav>
     </aside>
