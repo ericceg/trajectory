@@ -50,7 +50,7 @@ export function Sidebar() {
             className={
               `block rounded-lg px-4 py-3 text-sm font-medium transition-colors ${
                 activeSection === item.section
-                  ? 'bg-accent text-white shadow-card'
+                  ? 'bg-accent text-white'
                   : 'text-muted hover:bg-white/5 hover:text-foreground'
               }`
             }

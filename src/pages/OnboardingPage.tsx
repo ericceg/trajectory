@@ -28,7 +28,7 @@ export function OnboardingPage() {
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-bg px-6 text-foreground">
-      <section className="w-full max-w-lg rounded-2xl border border-border bg-panel p-8 shadow-card">
+      <section className="w-full max-w-lg rounded-2xl border border-border bg-panel p-8">
         <p className="text-xs uppercase tracking-[0.2em] text-muted">First Launch</p>
         <h1 className="mt-2 text-3xl font-semibold">Select Import Folder</h1>
         <p className="mt-3 text-sm text-muted">

@@ -10,7 +10,7 @@ export function ScanStatusCard({ scanning, progress, done }: ScanStatusCardProps
   if (scanning && progress) {
     const percent = progress.total > 0 ? Math.round((progress.parsed / progress.total) * 100) : 0;
     return (
-      <section className="rounded-xl border border-border bg-panel p-4 shadow-card">
+      <section className="rounded-xl border border-border bg-panel p-4">
         <p className="text-xs uppercase tracking-[0.18em] text-muted">Scan In Progress</p>
         <p className="mt-2 text-lg font-semibold text-foreground">
           {progress.parsed} / {progress.total} ({percent}%)
@@ -22,7 +22,7 @@ export function ScanStatusCard({ scanning, progress, done }: ScanStatusCardProps
 
   if (done) {
     return (
-      <section className="rounded-xl border border-border bg-panel p-4 shadow-card">
+      <section className="rounded-xl border border-border bg-panel p-4">
         <p className="text-xs uppercase tracking-[0.18em] text-muted">Last Scan</p>
         <p className="mt-2 text-sm text-foreground">
           Added: {done.added} · Updated: {done.updated} · Skipped: {done.skipped}
@@ -37,7 +37,7 @@ export function ScanStatusCard({ scanning, progress, done }: ScanStatusCardProps
   }
 
   return (
-    <section className="rounded-xl border border-border bg-panel p-4 shadow-card">
+    <section className="rounded-xl border border-border bg-panel p-4">
       <p className="text-xs uppercase tracking-[0.18em] text-muted">Scan</p>
       <p className="mt-2 text-sm text-muted">
         Trajectory scans automatically on startup. You can also run a manual rescan from Settings.
