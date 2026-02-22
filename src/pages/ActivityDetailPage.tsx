@@ -52,19 +52,17 @@ function toRouteFeatureCollection(track: TrackPoint[]): FeatureCollection<LineSt
 
 function fitMapToTrack(map: maplibregl.Map, track: TrackPoint[]) {
   if (track.length === 0) {
-    map.easeTo({
+    map.jumpTo({
       center: US_DEFAULT_CENTER,
-      zoom: US_DEFAULT_ZOOM,
-      duration: 520
+      zoom: US_DEFAULT_ZOOM
     });
     return;
   }
 
   if (track.length === 1) {
-    map.easeTo({
+    map.jumpTo({
       center: [track[0].lon, track[0].lat],
-      zoom: 14,
-      duration: 520
+      zoom: 14
     });
     return;
   }
@@ -79,7 +77,7 @@ function fitMapToTrack(map: maplibregl.Map, track: TrackPoint[]) {
 
   map.fitBounds(bounds, {
     padding: 40,
-    duration: 620,
+    duration: 0,
     maxZoom: 15
   });
 }
