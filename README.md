@@ -111,15 +111,9 @@ Release guardrails:
 - The workflow must successfully generate both:
   - `.app` bundle
   - `.dmg` installer
-- The workflow requires macOS signing/notarization secrets so release builds are trusted by Gatekeeper.
-
-Required GitHub secrets for signed/notarized macOS releases:
-- `APPLE_CERTIFICATE` (base64-encoded `Developer ID Application` certificate `.p12`)
-- `APPLE_CERTIFICATE_PASSWORD`
-- `APPLE_ID`
-- `APPLE_PASSWORD` (app-specific password)
-- `APPLE_TEAM_ID`
-- Optional: `APPLE_SIGNING_IDENTITY` (if you need to force a specific identity)
+- CI uses macOS ad-hoc signing (`APPLE_SIGNING_IDENTITY="-"`) and does not attempt Apple Developer ID signing or notarization.
+- No Apple signing/notarization GitHub secrets are required for the current release workflow.
+- Builds are expected to run on macOS (including Apple Silicon), but Gatekeeper warnings will still appear on first launch.
 
 ### First release (`v0.1.0`)
 
@@ -137,17 +131,13 @@ After pushing the tag:
 1. Open GitHub Actions and confirm the `Release` workflow for `v0.1.0` is green.
 2. Open the GitHub Release `v0.1.0` and confirm release assets include the macOS installer (`.dmg`).
 
-### If macOS says "is damaged and can't be opened"
+### First launch warnings (expected for ad-hoc signed builds)
 
-That usually means the app was not signed/notarized (or notarization did not validate), not that the binary is corrupted.
+Because CI uses ad-hoc signing and no notarization, users may see "can't be opened" / "unidentified developer" warnings on first launch.
 
-For a one-off local unblock while testing:
-
-```bash
-xattr -dr com.apple.quarantine /Applications/Trajectory.app
-```
-
-For shipped releases, fix the pipeline by configuring the signing/notarization secrets above.
+User workaround (expected):
+1. Right-click the app, choose **Open**, then click **Open** again.
+2. Or open **System Settings** -> **Privacy & Security** and click **Open Anyway**.
 
 ## Architecture
 
