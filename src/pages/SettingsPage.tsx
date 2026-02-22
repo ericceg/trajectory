@@ -64,7 +64,7 @@ export function SettingsPage() {
         </h2>
       </header>
 
-      <section className="rounded-xl border border-border bg-panel p-2 shadow-card">
+      <section className="rounded-xl border border-border bg-panel p-2">
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
@@ -95,7 +95,7 @@ export function SettingsPage() {
 
       {activeTab === 'import' ? (
         <>
-          <section className="rounded-xl border border-border bg-panel p-5 shadow-card">
+          <section className="rounded-xl border border-border bg-panel p-5">
             <h3 className="text-lg font-semibold text-foreground">Import Folder</h3>
             <p className="mt-2 text-sm text-muted">
               Current folder: {settings?.importFolderPath ?? 'Not set'}
@@ -178,7 +178,7 @@ export function SettingsPage() {
           <ScanStatusCard scanning={scanning} progress={scanProgress} done={scanDone} />
 
           {scanDone?.errors.length ? (
-            <section className="rounded-xl border border-border bg-panel p-4 shadow-card">
+            <section className="rounded-xl border border-border bg-panel p-4">
               <h3 className="text-lg font-semibold text-foreground">Scan Errors</h3>
               <ul className="mt-3 space-y-2 text-xs text-accent">
                 {scanDone.errors.map((entry) => (
@@ -191,7 +191,7 @@ export function SettingsPage() {
           ) : null}
         </>
       ) : (
-        <section className="rounded-xl border border-border bg-panel p-5 shadow-card">
+        <section className="rounded-xl border border-border bg-panel p-5">
           <h3 className="text-lg font-semibold text-foreground">Theme</h3>
           <div className="mt-4 space-y-4">
             <label className="flex items-center gap-2 text-sm text-muted">
