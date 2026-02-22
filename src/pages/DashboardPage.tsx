@@ -1,5 +1,5 @@
 import { type MouseEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   addMonths,
   eachDayOfInterval,
@@ -152,6 +152,7 @@ const SparkBars = ({
   activeIndices,
   pulseTick = 0,
   onActiveIndexChange,
+  onBarClick,
   renderActivePopover
 }: {
   values: number[];
@@ -162,6 +163,7 @@ const SparkBars = ({
   activeIndices?: number[];
   pulseTick?: number;
   onActiveIndexChange?: (index: number | null) => void;
+  onBarClick?: (index: number) => void;
   renderActivePopover?: (index: number) => ReactNode;
 }) => {
   const maxValue = values.reduce((max, value) => Math.max(max, value), 0);
@@ -209,6 +211,7 @@ const SparkBars = ({
               <button
                 key={`${ariaLabel}-${index}`}
                 type="button"
+                onClick={() => onBarClick?.(index)}
                 onFocus={() => onActiveIndexChange?.(index)}
                 onBlur={() => onActiveIndexChange?.(null)}
                 className="min-w-[2px] flex h-full flex-1 items-end appearance-none cursor-pointer border-0 bg-transparent p-0 focus-visible:outline-none"
@@ -244,6 +247,7 @@ const SparkBars = ({
 };
 
 export function DashboardPage() {
+  const navigate = useNavigate();
   const scanDone = useAppStore((state) => state.scanDone);
 
   const [mode, setMode] = useState<CalendarMode>('year');
@@ -251,6 +255,7 @@ export function DashboardPage() {
   const [selectedMonthIndex, setSelectedMonthIndex] = useState(() => new Date().getMonth());
   const [barMetric, setBarMetric] = useState<CalendarBarMetric>('durationHours');
   const [hoveredBarIndex, setHoveredBarIndex] = useState<number | null>(null);
+  const [pinnedBarIndex, setPinnedBarIndex] = useState<number | null>(null);
   const [hoverPulseTick, setHoverPulseTick] = useState(0);
 
   const [yearActivities, setYearActivities] = useState<ActivitySummary[]>([]);
@@ -268,6 +273,7 @@ export function DashboardPage() {
 
   useEffect(() => {
     setHoveredBarIndex(null);
+    setPinnedBarIndex(null);
   }, [mode, selectedYear, selectedMonthIndex, barMetric]);
 
   useEffect(() => {
@@ -448,9 +454,10 @@ export function DashboardPage() {
   const selectedMonthBars = monthSummaries[selectedMonthIndex]?.dayValues ?? [];
   const activeTotals = mode === 'year' ? calendarData.yearTotals : selectedMonthTotals;
   const activeBars = mode === 'year' ? yearBarValues : selectedMonthBars;
+  const activeBarIndex = hoveredBarIndex ?? pinnedBarIndex;
   const activityMap = selectedMonthBucket?.activitiesByDay ?? new Map<string, ActivitySummary[]>();
   const seriesLabel = mode === 'year' ? `${activeBars.length} weeks` : `${activeBars.length} days`;
-  const hoveredWeekStart = mode === 'year' && hoveredBarIndex != null ? yearWeekStarts[hoveredBarIndex] ?? null : null;
+  const hoveredWeekStart = mode === 'year' && activeBarIndex != null ? yearWeekStarts[activeBarIndex] ?? null : null;
   const hoveredWeekDaysByMonth = useMemo(() => {
     if (mode !== 'year' || !hoveredWeekStart) {
       return new Map<number, number[]>();
@@ -476,8 +483,8 @@ export function DashboardPage() {
     return indicesByMonth;
   }, [hoveredWeekStart, mode, selectedYear]);
   const hoveredDayKey =
-    mode === 'month' && hoveredBarIndex != null
-      ? format(new Date(selectedYear, selectedMonthIndex, hoveredBarIndex + 1), 'yyyy-MM-dd')
+    mode === 'month' && activeBarIndex != null
+      ? format(new Date(selectedYear, selectedMonthIndex, activeBarIndex + 1), 'yyyy-MM-dd')
       : null;
 
   const monthGridDays = useMemo(() => {
@@ -499,6 +506,44 @@ export function DashboardPage() {
     setSelectedYear(shifted.getFullYear());
     setSelectedMonthIndex(shifted.getMonth());
     setMode('month');
+  };
+
+  const activateCalendarBar = (index: number) => {
+    setHoveredBarIndex(index);
+    setHoverPulseTick((tick) => tick + 1);
+
+    if (mode === 'year') {
+      setPinnedBarIndex(null);
+      const weekStart = yearWeekStarts[index];
+      if (!weekStart) {
+        return;
+      }
+      const weekDays = eachDayOfInterval({
+        start: weekStart,
+        end: endOfWeek(weekStart, { weekStartsOn: 1 })
+      });
+      const inYearDay = weekDays.find((day) => day.getFullYear() === selectedYear);
+      if (!inYearDay) {
+        return;
+      }
+      setSelectedMonthIndex(inYearDay.getMonth());
+      setMode('month');
+      return;
+    }
+
+    const daysInMonth = selectedMonthBars.length;
+    if (index < 0 || index >= daysInMonth) {
+      return;
+    }
+    const clickedDate = new Date(selectedYear, selectedMonthIndex, index + 1);
+    const clickedDayKey = format(clickedDate, 'yyyy-MM-dd');
+    const dayActivities = activityMap.get(clickedDayKey) ?? [];
+    const targetActivity = selectPrimaryActivity(dayActivities, barMetric) ?? dayActivities[0] ?? null;
+    if (!targetActivity) {
+      setPinnedBarIndex((current) => (current === index ? null : index));
+      return;
+    }
+    navigate(`/activities/${targetActivity.id}`);
   };
 
   return (
@@ -594,7 +639,7 @@ export function DashboardPage() {
                     mode === 'year' ? `${selectedYear}` : format(selectedMonthDate, 'MMMM yyyy')
                   }`}
                   interactive
-                  activeIndex={hoveredBarIndex}
+                  activeIndex={activeBarIndex}
                   pulseTick={hoverPulseTick}
                   onActiveIndexChange={(index) => {
                     if (index == null) {
@@ -604,6 +649,7 @@ export function DashboardPage() {
                     setHoveredBarIndex(index);
                     setHoverPulseTick((tick) => tick + 1);
                   }}
+                  onBarClick={activateCalendarBar}
                   renderActivePopover={(index) => {
                     const hoverValue = activeBars[index] ?? 0;
 
