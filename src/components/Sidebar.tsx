@@ -36,6 +36,14 @@ export function Sidebar() {
   const lastSectionRoutes = useUiStateStore((state) => state.lastSectionRoutes);
   const activeSection = sectionForPath(location.pathname);
 
+  const pathForSection = (item: (typeof navItems)[number]) => {
+    if (item.section === 'activities') {
+      return item.defaultPath;
+    }
+
+    return lastSectionRoutes[item.section] ?? item.defaultPath;
+  };
+
   return (
     <aside className="flex h-screen w-64 flex-col border-r border-border bg-gradient-to-b from-panel to-bg px-5 py-6">
       <div className="mb-8">
@@ -46,7 +54,7 @@ export function Sidebar() {
         {navItems.map((item) => (
           <Link
             key={item.section}
-            to={lastSectionRoutes[item.section] ?? item.defaultPath}
+            to={pathForSection(item)}
             className={
               `block rounded-lg px-4 py-3 text-sm font-medium transition-colors ${
                 activeSection === item.section

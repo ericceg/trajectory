@@ -50,9 +50,27 @@ fn init_state(app: &AppHandle) -> Result<AppState> {
     })
 }
 
+fn load_app_settings(state: &AppState) -> Result<Settings, String> {
+    settings::load_settings(&state.settings_path).map_err(|err| err.to_string())
+}
+
+fn save_app_settings(state: &AppState, settings_value: &Settings) -> Result<(), String> {
+    settings::save_settings(&state.settings_path, settings_value).map_err(|err| err.to_string())
+}
+
+fn update_app_settings(
+    state: &AppState,
+    update: impl FnOnce(&mut Settings) -> Result<(), String>,
+) -> Result<Settings, String> {
+    let mut settings = load_app_settings(state)?;
+    update(&mut settings)?;
+    save_app_settings(state, &settings)?;
+    Ok(settings)
+}
+
 #[tauri::command]
 async fn get_settings(state: State<'_, AppState>) -> Result<Settings, String> {
-    settings::load_settings(&state.settings_path).map_err(|err| err.to_string())
+    load_app_settings(state.inner())
 }
 
 #[tauri::command]
@@ -71,22 +89,19 @@ async fn set_import_folder(
         ));
     }
 
-    let mut settings =
-        settings::load_settings(&state.settings_path).map_err(|err| err.to_string())?;
-    settings.import_folder_path = Some(canonical.to_string_lossy().to_string());
-    settings.scan_recursive = recursive;
-    settings::save_settings(&state.settings_path, &settings).map_err(|err| err.to_string())?;
-
-    Ok(settings)
+    update_app_settings(state.inner(), move |settings| {
+        settings.import_folder_path = Some(canonical.to_string_lossy().to_string());
+        settings.scan_recursive = recursive;
+        Ok(())
+    })
 }
 
 #[tauri::command]
 async fn set_dark_mode(dark_mode: bool, state: State<'_, AppState>) -> Result<Settings, String> {
-    let mut settings =
-        settings::load_settings(&state.settings_path).map_err(|err| err.to_string())?;
-    settings.dark_mode = dark_mode;
-    settings::save_settings(&state.settings_path, &settings).map_err(|err| err.to_string())?;
-    Ok(settings)
+    update_app_settings(state.inner(), |settings| {
+        settings.dark_mode = dark_mode;
+        Ok(())
+    })
 }
 
 #[tauri::command]
@@ -94,11 +109,10 @@ async fn set_heatmap_full_opacity(
     heatmap_full_opacity: bool,
     state: State<'_, AppState>,
 ) -> Result<Settings, String> {
-    let mut settings =
-        settings::load_settings(&state.settings_path).map_err(|err| err.to_string())?;
-    settings.heatmap_full_opacity = heatmap_full_opacity;
-    settings::save_settings(&state.settings_path, &settings).map_err(|err| err.to_string())?;
-    Ok(settings)
+    update_app_settings(state.inner(), |settings| {
+        settings.heatmap_full_opacity = heatmap_full_opacity;
+        Ok(())
+    })
 }
 
 #[tauri::command]

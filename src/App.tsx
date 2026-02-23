@@ -55,7 +55,7 @@ function NavigationMemoryTracker() {
     }
 
     if (pathname === '/activities' || pathname.startsWith('/activities/')) {
-      setLastSectionRoute('activities', pathname);
+      setLastSectionRoute('activities', '/activities');
     }
   }, [location, setLastSectionRoute]);
 

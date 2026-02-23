@@ -677,7 +677,7 @@ export function DashboardPage() {
                           </p>
                           {topActivity ? (
                             <p className="mt-1 text-[11px] text-muted">
-                              {topActivity.category} · {formatDateTime(topActivity.activityStart)}
+                              {topActivity.title} · {formatDateTime(topActivity.activityStart)}
                             </p>
                           ) : (
                             <p className="mt-1 text-[11px] text-muted">No workouts</p>
@@ -701,7 +701,7 @@ export function DashboardPage() {
                         </p>
                         {topActivity ? (
                           <p className="mt-1 text-[11px] text-muted">
-                            {topActivity.category} · {formatDuration(topActivity.durationSeconds)} ·{' '}
+                            {topActivity.title} · {formatDuration(topActivity.durationSeconds)} ·{' '}
                             {formatDistanceKm(topActivity.distanceM)}
                           </p>
                         ) : (
@@ -859,7 +859,7 @@ export function DashboardPage() {
                                 : 'bg-accent/10 text-accent hover:bg-accent/20'
                             }`}
                           >
-                            {activity.category}
+                            {activity.title}
                           </Link>
                         );
                       })}
