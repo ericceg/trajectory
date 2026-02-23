@@ -55,6 +55,8 @@ const COMBINED_CHART_BANDS = {
 } as const;
 
 type ChartSeriesKey = 'pace' | 'speed' | 'heartRate' | 'elevation';
+type SplitMetricKey = 'paceSecondsPerKm' | 'speedKmh' | 'heartRate' | 'elevationM';
+type ChartMode = 'combined' | 'split';
 
 type ChartSeriesVisibility = Record<ChartSeriesKey, boolean>;
 
@@ -111,6 +113,17 @@ function formatPaceSeconds(secondsPerKm: number | null): string {
   const minutes = Math.floor(rounded / 60);
   const seconds = rounded % 60;
   return `${minutes}:${String(seconds).padStart(2, '0')} /km`;
+}
+
+function formatPaceTick(secondsPerKm: number): string {
+  if (!Number.isFinite(secondsPerKm) || secondsPerKm <= 0) {
+    return 'n/a';
+  }
+
+  const rounded = Math.round(secondsPerKm);
+  const minutes = Math.floor(rounded / 60);
+  const seconds = rounded % 60;
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
 }
 
 function metricRange(values: Array<number | null | undefined>): [number, number] | null {
@@ -187,6 +200,39 @@ function SeriesToggle({
   );
 }
 
+function ChartModeToggle({
+  mode,
+  onChange
+}: {
+  mode: ChartMode;
+  onChange: (mode: ChartMode) => void;
+}) {
+  return (
+    <div className="inline-flex rounded-lg border border-border bg-bg/40 p-1">
+      <button
+        type="button"
+        onClick={() => onChange('combined')}
+        aria-pressed={mode === 'combined'}
+        className={`rounded-md px-2.5 py-1 text-xs transition-colors ${
+          mode === 'combined' ? 'bg-panel text-foreground shadow-sm' : 'text-muted hover:text-foreground'
+        }`}
+      >
+        Combined
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange('split')}
+        aria-pressed={mode === 'split'}
+        className={`rounded-md px-2.5 py-1 text-xs transition-colors ${
+          mode === 'split' ? 'bg-panel text-foreground shadow-sm' : 'text-muted hover:text-foreground'
+        }`}
+      >
+        Split
+      </button>
+    </div>
+  );
+}
+
 function CombinedChartTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload?: CombinedChartPoint }> }) {
   if (!active || !payload || payload.length === 0 || !payload[0]?.payload) {
     return null;
@@ -224,6 +270,138 @@ function CombinedChartTooltip({ active, payload }: { active?: boolean; payload?:
             {point.gradePct == null ? 'n/a' : `${point.gradePct >= 0 ? '+' : ''}${formatNumberTick(point.gradePct, 1)}%`}
           </span>
         </p>
+      </div>
+    </div>
+  );
+}
+
+function SplitMetricTooltip({
+  active,
+  payload,
+  metricKey,
+  metricLabel,
+  formatValue
+}: {
+  active?: boolean;
+  payload?: Array<{ payload?: CombinedChartPoint }>;
+  metricKey: SplitMetricKey;
+  metricLabel: string;
+  formatValue: (value: number | null) => string;
+}) {
+  if (!active || !payload || payload.length === 0 || !payload[0]?.payload) {
+    return null;
+  }
+
+  const point = payload[0].payload;
+  const rawValue = point[metricKey] as number | null;
+
+  return (
+    <div style={CHART_TOOLTIP_STYLE} className="min-w-[12rem] p-3 text-sm leading-tight">
+      <p className="font-semibold text-foreground">{formatElapsedTooltip(point.elapsedSeconds)}</p>
+      <div className="mt-2 space-y-1 text-foreground">
+        <p>
+          Dist: <span className="font-semibold">{formatNumberTick(point.distanceKm, 2)} km</span>
+        </p>
+        <p>
+          {metricLabel}: <span className="font-semibold">{formatValue(rawValue)}</span>
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function SplitMetricChart({
+  title,
+  unitLabel,
+  data,
+  hasData,
+  dataKey,
+  color,
+  valueLabel,
+  valueFormatter,
+  yTickFormatter,
+  maxDistanceKm,
+  variant = 'line'
+}: {
+  title: string;
+  unitLabel: string;
+  data: CombinedChartPoint[];
+  hasData: boolean;
+  dataKey: SplitMetricKey;
+  color: string;
+  valueLabel: string;
+  valueFormatter: (value: number | null) => string;
+  yTickFormatter: (value: number) => string;
+  maxDistanceKm: number;
+  variant?: 'line' | 'area';
+}) {
+  return (
+    <div className="rounded-lg border border-border/80 bg-bg/30 p-3">
+      <div className="flex items-baseline justify-between gap-3">
+        <h4 className="text-sm font-semibold text-foreground">{title}</h4>
+        <p className="text-[11px] text-muted">{unitLabel}</p>
+      </div>
+      <div className="mt-2 h-40">
+        {!hasData ? (
+          <p className="text-sm text-muted">No {title.toLowerCase()} data available.</p>
+        ) : (
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={data} syncId="activity-distance-split-charts" margin={{ top: 8, right: 8, left: -6, bottom: 2 }}>
+              <CartesianGrid stroke={CHART_GRID_STROKE} strokeDasharray="3 3" vertical={false} />
+              <XAxis
+                type="number"
+                dataKey="distanceKm"
+                stroke={CHART_AXIS_STROKE}
+                tickFormatter={(value) => formatDistanceAxisTick(Number(value))}
+                tickMargin={8}
+                minTickGap={24}
+                domain={[0, Math.max(0.1, maxDistanceKm)]}
+              />
+              <YAxis
+                stroke={CHART_AXIS_STROKE}
+                tickFormatter={(value) => yTickFormatter(Number(value))}
+                tickMargin={8}
+                width={58}
+              />
+              <Tooltip
+                cursor={{ stroke: 'rgba(var(--color-border), 0.95)', strokeWidth: 1 }}
+                content={
+                  <SplitMetricTooltip
+                    metricKey={dataKey}
+                    metricLabel={valueLabel}
+                    formatValue={valueFormatter}
+                  />
+                }
+                isAnimationActive={false}
+              />
+              {variant === 'area' ? (
+                <Area
+                  type="monotone"
+                  dataKey={dataKey}
+                  stroke={color}
+                  fill={color}
+                  fillOpacity={0.18}
+                  strokeWidth={1.5}
+                  dot={false}
+                  connectNulls
+                  activeDot={{ r: 3, strokeWidth: 0 }}
+                  isAnimationActive={false}
+                />
+              ) : (
+                <Line
+                  type="monotone"
+                  dataKey={dataKey}
+                  stroke={color}
+                  strokeWidth={2}
+                  dot={false}
+                  connectNulls
+                  activeDot={{ r: 3, strokeWidth: 0 }}
+                  isAnimationActive={false}
+                />
+              )}
+            </LineChart>
+          </ResponsiveContainer>
+        )}
       </div>
     </div>
   );
@@ -405,6 +583,7 @@ export function ActivityDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reducedMapComplexity, setReducedMapComplexity] = useState(false);
+  const [chartMode, setChartMode] = useState<ChartMode>('combined');
   const [chartSeriesVisibility, setChartSeriesVisibility] = useState<ChartSeriesVisibility>({
     pace: true,
     speed: false,
@@ -581,132 +760,198 @@ export function ActivityDetailPage() {
               <div>
                 <h3 className="text-lg font-semibold text-foreground">Performance vs Distance</h3>
                 <p className="mt-1 text-xs text-muted">
-                  One shared plot (x-axis in kilometers) with hover cursor and point stats.
+                  X-axis uses kilometers. Switch between a combined overlay and synchronized split plots.
                 </p>
               </div>
-              <div className="flex flex-wrap justify-end gap-2">
-                <SeriesToggle
-                  label="Elevation"
-                  color={CHART_LINE_COLORS.elevation}
-                  enabled={chartSeriesVisibility.elevation}
-                  disabled={!combinedChart.has.elevation}
-                  onToggle={() =>
-                    setChartSeriesVisibility((current) => ({ ...current, elevation: !current.elevation }))
-                  }
-                />
-                <SeriesToggle
-                  label="Pace"
-                  color={CHART_LINE_COLORS.pace}
-                  enabled={chartSeriesVisibility.pace}
-                  disabled={!combinedChart.has.pace}
-                  onToggle={() => setChartSeriesVisibility((current) => ({ ...current, pace: !current.pace }))}
-                />
-                <SeriesToggle
-                  label="Heart Rate"
-                  color={CHART_LINE_COLORS.heartRate}
-                  enabled={chartSeriesVisibility.heartRate}
-                  disabled={!combinedChart.has.heartRate}
-                  onToggle={() =>
-                    setChartSeriesVisibility((current) => ({ ...current, heartRate: !current.heartRate }))
-                  }
-                />
-                <SeriesToggle
-                  label="Speed"
-                  color={CHART_LINE_COLORS.speed}
-                  enabled={chartSeriesVisibility.speed}
-                  disabled={!combinedChart.has.speed}
-                  onToggle={() => setChartSeriesVisibility((current) => ({ ...current, speed: !current.speed }))}
-                />
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                <ChartModeToggle mode={chartMode} onChange={setChartMode} />
+                {chartMode === 'combined' ? (
+                  <>
+                    <SeriesToggle
+                      label="Elevation"
+                      color={CHART_LINE_COLORS.elevation}
+                      enabled={chartSeriesVisibility.elevation}
+                      disabled={!combinedChart.has.elevation}
+                      onToggle={() =>
+                        setChartSeriesVisibility((current) => ({ ...current, elevation: !current.elevation }))
+                      }
+                    />
+                    <SeriesToggle
+                      label="Pace"
+                      color={CHART_LINE_COLORS.pace}
+                      enabled={chartSeriesVisibility.pace}
+                      disabled={!combinedChart.has.pace}
+                      onToggle={() => setChartSeriesVisibility((current) => ({ ...current, pace: !current.pace }))}
+                    />
+                    <SeriesToggle
+                      label="Heart Rate"
+                      color={CHART_LINE_COLORS.heartRate}
+                      enabled={chartSeriesVisibility.heartRate}
+                      disabled={!combinedChart.has.heartRate}
+                      onToggle={() =>
+                        setChartSeriesVisibility((current) => ({ ...current, heartRate: !current.heartRate }))
+                      }
+                    />
+                    <SeriesToggle
+                      label="Speed"
+                      color={CHART_LINE_COLORS.speed}
+                      enabled={chartSeriesVisibility.speed}
+                      disabled={!combinedChart.has.speed}
+                      onToggle={() => setChartSeriesVisibility((current) => ({ ...current, speed: !current.speed }))}
+                    />
+                  </>
+                ) : null}
               </div>
             </div>
 
-            <div className="mt-3 h-72">
-              {combinedChart.data.length === 0 ? (
-                <p className="text-sm text-muted">No chart samples available.</p>
-              ) : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart
-                    data={combinedChart.data}
-                    margin={{ top: 8, right: 8, left: 8, bottom: 8 }}
-                  >
-                    <CartesianGrid stroke={CHART_GRID_STROKE} strokeDasharray="3 3" horizontal={false} />
-                    <XAxis
-                      type="number"
-                      dataKey="distanceKm"
-                      stroke={CHART_AXIS_STROKE}
-                      tickFormatter={(value) => formatDistanceAxisTick(Number(value))}
-                      tickMargin={8}
-                      minTickGap={24}
-                      domain={[0, Math.max(0.1, combinedChart.maxDistanceKm)]}
-                    />
-                    <YAxis hide type="number" domain={COMBINED_CHART_DOMAIN} />
-                    <Tooltip
-                      cursor={{ stroke: 'rgba(var(--color-border), 0.95)', strokeWidth: 1 }}
-                      content={<CombinedChartTooltip />}
-                      isAnimationActive={false}
-                    />
+            {chartMode === 'combined' ? (
+              <>
+                <div className="mt-3 h-72">
+                  {combinedChart.data.length === 0 ? (
+                    <p className="text-sm text-muted">No chart samples available.</p>
+                  ) : (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart
+                        data={combinedChart.data}
+                        margin={{ top: 8, right: 8, left: 8, bottom: 8 }}
+                      >
+                        <CartesianGrid stroke={CHART_GRID_STROKE} strokeDasharray="3 3" horizontal={false} />
+                        <XAxis
+                          type="number"
+                          dataKey="distanceKm"
+                          stroke={CHART_AXIS_STROKE}
+                          tickFormatter={(value) => formatDistanceAxisTick(Number(value))}
+                          tickMargin={8}
+                          minTickGap={24}
+                          domain={[0, Math.max(0.1, combinedChart.maxDistanceKm)]}
+                        />
+                        <YAxis hide type="number" domain={COMBINED_CHART_DOMAIN} />
+                        <Tooltip
+                          cursor={{ stroke: 'rgba(var(--color-border), 0.95)', strokeWidth: 1 }}
+                          content={<CombinedChartTooltip />}
+                          isAnimationActive={false}
+                        />
 
-                    {chartSeriesVisibility.elevation && combinedChart.has.elevation ? (
-                      <Area
-                        type="monotone"
-                        dataKey="elevationPlot"
-                        stroke="rgba(119, 192, 67, 0.45)"
-                        fill="rgba(148, 163, 184, 0.24)"
-                        fillOpacity={1}
-                        strokeWidth={1}
-                        dot={false}
-                        activeDot={false}
-                        connectNulls
-                        isAnimationActive={false}
-                      />
-                    ) : null}
+                        {chartSeriesVisibility.elevation && combinedChart.has.elevation ? (
+                          <Area
+                            type="monotone"
+                            dataKey="elevationPlot"
+                            stroke="rgba(119, 192, 67, 0.45)"
+                            fill="rgba(148, 163, 184, 0.24)"
+                            fillOpacity={1}
+                            strokeWidth={1}
+                            dot={false}
+                            activeDot={false}
+                            connectNulls
+                            isAnimationActive={false}
+                          />
+                        ) : null}
 
-                    {chartSeriesVisibility.pace && combinedChart.has.pace ? (
-                      <Line
-                        type="monotone"
-                        dataKey="pacePlot"
-                        stroke={CHART_LINE_COLORS.pace}
-                        strokeWidth={2}
-                        dot={false}
-                        connectNulls
-                        activeDot={{ r: 3, strokeWidth: 0 }}
-                        isAnimationActive={false}
-                      />
-                    ) : null}
+                        {chartSeriesVisibility.pace && combinedChart.has.pace ? (
+                          <Line
+                            type="monotone"
+                            dataKey="pacePlot"
+                            stroke={CHART_LINE_COLORS.pace}
+                            strokeWidth={2}
+                            dot={false}
+                            connectNulls
+                            activeDot={{ r: 3, strokeWidth: 0 }}
+                            isAnimationActive={false}
+                          />
+                        ) : null}
 
-                    {chartSeriesVisibility.heartRate && combinedChart.has.heartRate ? (
-                      <Line
-                        type="monotone"
-                        dataKey="heartRatePlot"
-                        stroke={CHART_LINE_COLORS.heartRate}
-                        strokeWidth={2}
-                        dot={false}
-                        connectNulls
-                        activeDot={{ r: 3, strokeWidth: 0 }}
-                        isAnimationActive={false}
-                      />
-                    ) : null}
+                        {chartSeriesVisibility.heartRate && combinedChart.has.heartRate ? (
+                          <Line
+                            type="monotone"
+                            dataKey="heartRatePlot"
+                            stroke={CHART_LINE_COLORS.heartRate}
+                            strokeWidth={2}
+                            dot={false}
+                            connectNulls
+                            activeDot={{ r: 3, strokeWidth: 0 }}
+                            isAnimationActive={false}
+                          />
+                        ) : null}
 
-                    {chartSeriesVisibility.speed && combinedChart.has.speed ? (
-                      <Line
-                        type="monotone"
-                        dataKey="speedPlot"
-                        stroke={CHART_LINE_COLORS.speed}
-                        strokeWidth={2}
-                        dot={false}
-                        connectNulls
-                        activeDot={{ r: 3, strokeWidth: 0 }}
-                        isAnimationActive={false}
-                      />
-                    ) : null}
-                  </LineChart>
-                </ResponsiveContainer>
-              )}
-            </div>
+                        {chartSeriesVisibility.speed && combinedChart.has.speed ? (
+                          <Line
+                            type="monotone"
+                            dataKey="speedPlot"
+                            stroke={CHART_LINE_COLORS.speed}
+                            strokeWidth={2}
+                            dot={false}
+                            connectNulls
+                            activeDot={{ r: 3, strokeWidth: 0 }}
+                            isAnimationActive={false}
+                          />
+                        ) : null}
+                      </LineChart>
+                    </ResponsiveContainer>
+                  )}
+                </div>
 
-            <p className="mt-3 text-xs text-muted">
-              Series are normalized into visual bands for overlay plotting; hover to view exact values.
-            </p>
+                <p className="mt-3 text-xs text-muted">
+                  Series are normalized into visual bands for overlay plotting; hover to view exact values.
+                </p>
+              </>
+            ) : (
+              <div className="mt-4 space-y-4">
+                <p className="text-xs text-muted">
+                  Split charts are synchronized by distance, so hovering one chart aligns the cursor across the others.
+                </p>
+                <SplitMetricChart
+                  title="Pace"
+                  unitLabel="min/km"
+                  data={combinedChart.data}
+                  hasData={combinedChart.has.pace}
+                  dataKey="paceSecondsPerKm"
+                  color={CHART_LINE_COLORS.pace}
+                  valueLabel="Pace"
+                  valueFormatter={formatPaceSeconds}
+                  yTickFormatter={formatPaceTick}
+                  maxDistanceKm={combinedChart.maxDistanceKm}
+                />
+                <SplitMetricChart
+                  title="Speed"
+                  unitLabel="km/h"
+                  data={combinedChart.data}
+                  hasData={combinedChart.has.speed}
+                  dataKey="speedKmh"
+                  color={CHART_LINE_COLORS.speed}
+                  valueLabel="Speed"
+                  valueFormatter={(value) =>
+                    value == null ? 'n/a' : `${formatNumberTick(value, 1)} km/h`
+                  }
+                  yTickFormatter={(value) => formatNumberTick(value, 1)}
+                  maxDistanceKm={combinedChart.maxDistanceKm}
+                />
+                <SplitMetricChart
+                  title="Heart Rate"
+                  unitLabel="bpm"
+                  data={combinedChart.data}
+                  hasData={combinedChart.has.heartRate}
+                  dataKey="heartRate"
+                  color={CHART_LINE_COLORS.heartRate}
+                  valueLabel="Heart rate"
+                  valueFormatter={(value) => (value == null ? 'n/a' : `${Math.round(value)} bpm`)}
+                  yTickFormatter={(value) => `${Math.round(value)}`}
+                  maxDistanceKm={combinedChart.maxDistanceKm}
+                />
+                <SplitMetricChart
+                  title="Elevation"
+                  unitLabel="m"
+                  data={combinedChart.data}
+                  hasData={combinedChart.has.elevation}
+                  dataKey="elevationM"
+                  color={CHART_LINE_COLORS.elevation}
+                  valueLabel="Elevation"
+                  valueFormatter={(value) => (value == null ? 'n/a' : `${Math.round(value)} m`)}
+                  yTickFormatter={(value) => `${Math.round(value)}`}
+                  maxDistanceKm={combinedChart.maxDistanceKm}
+                  variant="area"
+                />
+              </div>
+            )}
           </section>
         </div>
 
