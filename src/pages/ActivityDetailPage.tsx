@@ -5,7 +5,6 @@ import {
   CartesianGrid,
   ComposedChart,
   Line,
-  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -131,42 +130,6 @@ function formatNumberTick(value: number, digits = 1): string {
 
 function formatDistanceAxisTick(km: number): string {
   return `${formatNumberTick(km, km >= 10 ? 0 : 1)} km`;
-}
-
-function toNumber(value: unknown): number | null {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return value;
-  }
-
-  if (typeof value === 'string') {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-
-  return null;
-}
-
-function extractHoveredDistanceKm(state: unknown): number | null {
-  if (!state || typeof state !== 'object') {
-    return null;
-  }
-
-  const payload = state as {
-    isTooltipActive?: boolean;
-    activeLabel?: unknown;
-    activePayload?: Array<{ payload?: CombinedChartPoint }>;
-  };
-
-  if (payload.isTooltipActive === false) {
-    return null;
-  }
-
-  const activeLabel = toNumber(payload.activeLabel);
-  if (activeLabel != null) {
-    return activeLabel;
-  }
-
-  return toNumber(payload.activePayload?.[0]?.payload?.distanceKm);
 }
 
 function formatElapsedTooltip(seconds: number): string {
@@ -399,8 +362,6 @@ function SplitMetricChart({
   valueFormatter,
   yTickFormatter,
   maxDistanceKm,
-  hoverDistanceKm,
-  onHoverDistanceChange,
   variant = 'line'
 }: {
   title: string;
@@ -413,8 +374,6 @@ function SplitMetricChart({
   valueFormatter: (value: number | null) => string;
   yTickFormatter: (value: number) => string;
   maxDistanceKm: number;
-  hoverDistanceKm: number | null;
-  onHoverDistanceChange: (distanceKm: number | null) => void;
   variant?: 'line' | 'area';
 }) {
   return (
@@ -432,8 +391,6 @@ function SplitMetricChart({
               data={data}
               syncId="activity-distance-split-charts"
               margin={{ top: 8, right: 8, left: -6, bottom: 2 }}
-              onMouseMove={(state) => onHoverDistanceChange(extractHoveredDistanceKm(state))}
-              onMouseLeave={() => onHoverDistanceChange(null)}
             >
               <CartesianGrid stroke={CHART_GRID_STROKE} strokeDasharray="3 3" vertical={false} />
               <XAxis
@@ -452,7 +409,7 @@ function SplitMetricChart({
                 width={58}
               />
               <Tooltip
-                cursor={false}
+                cursor={{ stroke: '#000000', strokeWidth: 1 }}
                 content={
                   <SplitMetricTooltip
                     metricKey={dataKey}
@@ -463,9 +420,6 @@ function SplitMetricChart({
                 wrapperStyle={CHART_TOOLTIP_WRAPPER_STYLE}
                 isAnimationActive={false}
               />
-              {hoverDistanceKm != null ? (
-                <ReferenceLine x={hoverDistanceKm} stroke="#000000" strokeWidth={1} isFront />
-              ) : null}
               {variant === 'area' ? (
                 <Area
                   type="monotone"
@@ -676,7 +630,6 @@ export function ActivityDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [reducedMapComplexity, setReducedMapComplexity] = useState(false);
   const [chartMode, setChartMode] = useState<ChartMode>('combined');
-  const [hoverDistanceKm, setHoverDistanceKm] = useState<number | null>(null);
   const [chartSeriesVisibility, setChartSeriesVisibility] = useState<ChartSeriesVisibility>(() =>
     defaultChartSeriesVisibility()
   );
@@ -912,8 +865,6 @@ export function ActivityDetailPage() {
                       <ComposedChart
                         data={combinedChart.data}
                         margin={{ top: 8, right: 8, left: 8, bottom: 8 }}
-                        onMouseMove={(state) => setHoverDistanceKm(extractHoveredDistanceKm(state))}
-                        onMouseLeave={() => setHoverDistanceKm(null)}
                       >
                         <CartesianGrid stroke={CHART_GRID_STROKE} strokeDasharray="3 3" horizontal={false} />
                         <XAxis
@@ -927,14 +878,11 @@ export function ActivityDetailPage() {
                         />
                         <YAxis hide type="number" domain={COMBINED_CHART_DOMAIN} />
                         <Tooltip
-                          cursor={false}
+                          cursor={{ stroke: '#000000', strokeWidth: 1 }}
                           content={<CombinedChartTooltip />}
                           wrapperStyle={CHART_TOOLTIP_WRAPPER_STYLE}
                           isAnimationActive={false}
                         />
-                        {hoverDistanceKm != null ? (
-                          <ReferenceLine x={hoverDistanceKm} stroke="#000000" strokeWidth={1} isFront />
-                        ) : null}
 
                         {chartSeriesVisibility.elevation && combinedChart.has.elevation ? (
                           <Area
@@ -1014,8 +962,6 @@ export function ActivityDetailPage() {
                   valueFormatter={formatPaceSeconds}
                   yTickFormatter={formatPaceTick}
                   maxDistanceKm={combinedChart.maxDistanceKm}
-                  hoverDistanceKm={hoverDistanceKm}
-                  onHoverDistanceChange={setHoverDistanceKm}
                 />
                 <SplitMetricChart
                   title="Speed"
@@ -1030,8 +976,6 @@ export function ActivityDetailPage() {
                   }
                   yTickFormatter={(value) => formatNumberTick(value, 1)}
                   maxDistanceKm={combinedChart.maxDistanceKm}
-                  hoverDistanceKm={hoverDistanceKm}
-                  onHoverDistanceChange={setHoverDistanceKm}
                 />
                 <SplitMetricChart
                   title="Heart Rate"
@@ -1044,8 +988,6 @@ export function ActivityDetailPage() {
                   valueFormatter={(value) => (value == null ? 'n/a' : `${Math.round(value)} bpm`)}
                   yTickFormatter={(value) => `${Math.round(value)}`}
                   maxDistanceKm={combinedChart.maxDistanceKm}
-                  hoverDistanceKm={hoverDistanceKm}
-                  onHoverDistanceChange={setHoverDistanceKm}
                 />
                 <SplitMetricChart
                   title="Elevation"
@@ -1058,8 +1000,6 @@ export function ActivityDetailPage() {
                   valueFormatter={(value) => (value == null ? 'n/a' : `${Math.round(value)} m`)}
                   yTickFormatter={(value) => `${Math.round(value)}`}
                   maxDistanceKm={combinedChart.maxDistanceKm}
-                  hoverDistanceKm={hoverDistanceKm}
-                  onHoverDistanceChange={setHoverDistanceKm}
                   variant="area"
                 />
               </div>
