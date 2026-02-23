@@ -236,6 +236,22 @@ function metricRange(values: Array<number | null | undefined>): [number, number]
   return [min, max];
 }
 
+function metricRangeForVisibleDomain<T>(
+  items: T[],
+  xDomain: ChartZoomDomain,
+  getX: (item: T) => number,
+  getValue: (item: T) => number | null | undefined
+): [number, number] | null {
+  const visibleRange = metricRange(
+    items.filter((item) => {
+      const x = getX(item);
+      return Number.isFinite(x) && x >= xDomain[0] && x <= xDomain[1];
+    }).map(getValue)
+  );
+
+  return visibleRange ?? metricRange(items.map(getValue));
+}
+
 function normalizeToBand(
   value: number | null,
   range: [number, number] | null,
@@ -460,9 +476,14 @@ function SplitMetricChart({
   variant?: 'line' | 'area';
 }) {
   const yDomain = useMemo<[number, number] | undefined>(() => {
-    const range = metricRange(data.map((point) => point[dataKey] as number | null));
+    const range = metricRangeForVisibleDomain(
+      data,
+      xDomain,
+      (point) => point.distanceKm,
+      (point) => point[dataKey] as number | null
+    );
     return range ?? undefined;
-  }, [data, dataKey]);
+  }, [data, dataKey, xDomain]);
 
   return (
     <div className="rounded-lg border border-border/80 bg-bg/30 p-3">
@@ -882,6 +903,50 @@ export function ActivityDetailPage() {
 
   const activeChartXAxisDomain = chartZoomDomain ?? fullChartXAxisDomain;
 
+  const combinedChartDisplayData = useMemo<CombinedChartPoint[]>(() => {
+    if (combinedChart.data.length === 0) {
+      return combinedChart.data;
+    }
+
+    const visibleSeries = COMBINED_CHART_SERIES_ORDER.filter(
+      (key) => combinedChart.has[key] && chartSeriesVisibility[key]
+    );
+    const bands = buildCombinedChartBands(visibleSeries);
+
+    const paceRange = metricRangeForVisibleDomain(
+      combinedChart.data,
+      activeChartXAxisDomain,
+      (point) => point.distanceKm,
+      (point) => point.paceSecondsPerKm
+    );
+    const speedRange = metricRangeForVisibleDomain(
+      combinedChart.data,
+      activeChartXAxisDomain,
+      (point) => point.distanceKm,
+      (point) => point.speedKmh
+    );
+    const heartRateRange = metricRangeForVisibleDomain(
+      combinedChart.data,
+      activeChartXAxisDomain,
+      (point) => point.distanceKm,
+      (point) => point.heartRate
+    );
+    const elevationRange = metricRangeForVisibleDomain(
+      combinedChart.data,
+      activeChartXAxisDomain,
+      (point) => point.distanceKm,
+      (point) => point.elevationM
+    );
+
+    return combinedChart.data.map((point) => ({
+      ...point,
+      pacePlot: normalizeToBand(point.paceSecondsPerKm, paceRange, bands.pace, true),
+      speedPlot: normalizeToBand(point.speedKmh, speedRange, bands.speed),
+      heartRatePlot: normalizeToBand(point.heartRate, heartRateRange, bands.heartRate),
+      elevationPlot: normalizeToBand(point.elevationM, elevationRange, bands.elevation)
+    }));
+  }, [activeChartXAxisDomain, chartSeriesVisibility, combinedChart.data, combinedChart.has]);
+
   const cancelChartSelectionFrame = () => {
     if (chartSelectionFrameRef.current == null) {
       return;
@@ -1057,7 +1122,7 @@ export function ActivityDetailPage() {
               <div>
                 <h3 className="text-lg font-semibold text-foreground">Performance vs Distance</h3>
                 <p className="mt-1 text-xs text-muted">
-                  X-axis uses kilometers. Drag across a region to zoom. Click once on a chart to reset the zoom.
+                  X-axis uses kilometers. Drag across a region to zoom. Y-scales auto-resize to the visible range. Click once on a chart to reset the zoom.
                 </p>
               </div>
               <div className="flex flex-wrap items-center justify-end gap-2">
@@ -1109,7 +1174,7 @@ export function ActivityDetailPage() {
                   ) : (
                     <ResponsiveContainer width="100%" height="100%">
                       <ComposedChart
-                        data={combinedChart.data}
+                        data={combinedChartDisplayData}
                         margin={{ top: 8, right: 8, left: 8, bottom: 8 }}
                         onMouseDown={handleChartMouseDown}
                         onMouseMove={handleChartMouseMove}
@@ -1203,7 +1268,7 @@ export function ActivityDetailPage() {
                 </div>
 
                 <p className="mt-3 text-xs text-muted">
-                  Visible series are normalized into adaptive visual bands for overlay plotting; hover to view exact values.
+                  Visible series are normalized into adaptive visual bands and re-scaled to the current zoom window; hover to view exact values.
                 </p>
               </>
             ) : (
