@@ -64,6 +64,43 @@ type ChartMode = 'combined' | 'split';
 
 type ChartSeriesVisibility = Record<ChartSeriesKey, boolean>;
 
+function defaultChartSeriesVisibility(sportType?: string): ChartSeriesVisibility {
+  const normalizedSport = (sportType ?? '').trim().toLowerCase();
+
+  const isRunning =
+    normalizedSport.includes('run') || normalizedSport.includes('jog') || normalizedSport.includes('trail run');
+  const isCycling =
+    normalizedSport.includes('bike') ||
+    normalizedSport.includes('cycle') ||
+    normalizedSport.includes('ride') ||
+    normalizedSport.includes('cycling');
+
+  if (isRunning) {
+    return {
+      pace: true,
+      speed: false,
+      heartRate: true,
+      elevation: true
+    };
+  }
+
+  if (isCycling) {
+    return {
+      pace: false,
+      speed: true,
+      heartRate: true,
+      elevation: true
+    };
+  }
+
+  return {
+    pace: true,
+    speed: true,
+    heartRate: true,
+    elevation: true
+  };
+}
+
 interface CombinedChartPoint {
   distanceKm: number;
   distanceM: number;
@@ -593,12 +630,9 @@ export function ActivityDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [reducedMapComplexity, setReducedMapComplexity] = useState(false);
   const [chartMode, setChartMode] = useState<ChartMode>('combined');
-  const [chartSeriesVisibility, setChartSeriesVisibility] = useState<ChartSeriesVisibility>({
-    pace: true,
-    speed: false,
-    heartRate: true,
-    elevation: true
-  });
+  const [chartSeriesVisibility, setChartSeriesVisibility] = useState<ChartSeriesVisibility>(() =>
+    defaultChartSeriesVisibility()
+  );
   const accentTheme = useAppStore((state) => state.settings?.accentTheme);
   const accentPalette = useMemo(() => getAccentThemePalette(accentTheme), [accentTheme]);
 
@@ -622,6 +656,14 @@ export function ActivityDetailPage() {
 
     void load();
   }, [id]);
+
+  useEffect(() => {
+    if (!detail) {
+      return;
+    }
+
+    setChartSeriesVisibility(defaultChartSeriesVisibility(detail.summary.sportType));
+  }, [detail?.summary.id, detail?.summary.sportType]);
 
   const combinedChart = useMemo<CombinedChartModel>(() => {
     if (!detail) {
