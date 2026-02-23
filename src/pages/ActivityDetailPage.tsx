@@ -21,9 +21,11 @@ import {
   formatSpeedKmh
 } from '@/lib/format';
 import { US_DEFAULT_CENTER, US_DEFAULT_ZOOM } from '@/lib/mapStyles';
+import { getAccentThemePalette } from '@/lib/theme';
 import { useManagedMapLibre } from '@/lib/useManagedMapLibre';
 import { MaximizableMapFrame } from '@/components/MaximizableMapFrame';
 import { MetricCard } from '@/components/MetricCard';
+import { useAppStore } from '@/store/useAppStore';
 import type { ActivityDetail, TrackPoint } from '@/types';
 
 const ACTIVITY_ROUTE_SOURCE_ID = 'activity-route-source';
@@ -84,10 +86,12 @@ function fitMapToTrack(map: maplibregl.Map, track: TrackPoint[]) {
 
 function ActivityRouteMap({
   track,
-  reducedComplexity
+  reducedComplexity,
+  routeLineColorHex
 }: {
   track: TrackPoint[];
   reducedComplexity: boolean;
+  routeLineColorHex: string;
 }) {
   const { containerRef, mapRef } = useManagedMapLibre({
     reducedComplexity,
@@ -118,7 +122,7 @@ function ActivityRouteMap({
           type: 'line',
           source: ACTIVITY_ROUTE_SOURCE_ID,
           paint: {
-            'line-color': '#FC4C02',
+            'line-color': routeLineColorHex,
             'line-width': 4,
             'line-opacity': 0.95
           },
@@ -129,6 +133,7 @@ function ActivityRouteMap({
         });
       }
 
+      map.setPaintProperty(ACTIVITY_ROUTE_LAYER_ID, 'line-color', routeLineColorHex);
     };
 
     if (map.isStyleLoaded()) {
@@ -140,7 +145,7 @@ function ActivityRouteMap({
     return () => {
       map.off('load', syncTrack);
     };
-  }, [track, trackSource, reducedComplexity]);
+  }, [track, trackSource, reducedComplexity, routeLineColorHex]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -202,6 +207,8 @@ export function ActivityDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reducedMapComplexity, setReducedMapComplexity] = useState(false);
+  const accentTheme = useAppStore((state) => state.settings?.accentTheme);
+  const accentPalette = useMemo(() => getAccentThemePalette(accentTheme), [accentTheme]);
 
   useEffect(() => {
     if (!id) {
@@ -324,7 +331,11 @@ export function ActivityDetailPage() {
               No GPS track available
             </div>
           ) : (
-            <ActivityRouteMap track={detail.track} reducedComplexity={reducedMapComplexity} />
+            <ActivityRouteMap
+              track={detail.track}
+              reducedComplexity={reducedMapComplexity}
+              routeLineColorHex={accentPalette.routeLineHex}
+            />
           )}
         </MaximizableMapFrame>
       </section>
@@ -342,7 +353,12 @@ export function ActivityDetailPage() {
                   <XAxis dataKey="elapsedMin" stroke="#9EA4AE" />
                   <YAxis stroke="#9EA4AE" />
                   <Tooltip />
-                  <Line type="monotone" dataKey="speedKmh" stroke="#FC4C02" dot={false} />
+                  <Line
+                    type="monotone"
+                    dataKey="speedKmh"
+                    stroke={accentPalette.speedChartLineHex}
+                    dot={false}
+                  />
                 </LineChart>
               </ResponsiveContainer>
             )}

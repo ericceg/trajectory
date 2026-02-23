@@ -3,11 +3,13 @@ import { create } from 'zustand';
 import {
   getSettings,
   scanImportFolder,
+  setAccentTheme,
   setDarkMode,
   setHeatmapFullOpacity,
   setImportFolder,
   onScanProgress
 } from '@/lib/tauri';
+import type { AccentThemeId } from '@/lib/theme';
 import type { ActivitySummary, ScanDoneEvent, ScanProgressEvent, Settings } from '@/types';
 
 interface AppState {
@@ -21,6 +23,7 @@ interface AppState {
   updateImportFolder: (path: string, recursive: boolean) => Promise<void>;
   setScanRecursive: (recursive: boolean) => Promise<void>;
   updateDarkMode: (darkMode: boolean) => Promise<void>;
+  updateAccentTheme: (accentTheme: AccentThemeId) => Promise<void>;
   updateHeatmapFullOpacity: (heatmapFullOpacity: boolean) => Promise<void>;
   runScan: (fullRescan?: boolean) => Promise<void>;
   getCachedActivities: (cacheKey: string) => ActivitySummary[] | null;
@@ -64,6 +67,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   updateDarkMode: async (darkMode) => {
     const settings = await setDarkMode(darkMode);
+    set({ settings });
+  },
+  updateAccentTheme: async (accentTheme) => {
+    const settings = await setAccentTheme(accentTheme);
     set({ settings });
   },
   updateHeatmapFullOpacity: async (heatmapFullOpacity) => {

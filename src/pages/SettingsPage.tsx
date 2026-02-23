@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 
 import { ScanStatusCard } from '@/components/ScanStatusCard';
+import { ACCENT_THEME_OPTIONS, DEFAULT_ACCENT_THEME_ID } from '@/lib/theme';
 import { useAppStore } from '@/store/useAppStore';
 import { useUiStateStore } from '@/store/useUiStateStore';
 
@@ -13,6 +14,7 @@ export function SettingsPage() {
   const updateImportFolder = useAppStore((state) => state.updateImportFolder);
   const setScanRecursive = useAppStore((state) => state.setScanRecursive);
   const updateDarkMode = useAppStore((state) => state.updateDarkMode);
+  const updateAccentTheme = useAppStore((state) => state.updateAccentTheme);
   const updateHeatmapFullOpacity = useAppStore((state) => state.updateHeatmapFullOpacity);
   const runScan = useAppStore((state) => state.runScan);
   const activeTab = useUiStateStore((state) => state.settingsActiveTab);
@@ -193,7 +195,7 @@ export function SettingsPage() {
       ) : (
         <section className="rounded-xl border border-border bg-panel p-5">
           <h3 className="text-lg font-semibold text-foreground">Theme</h3>
-          <div className="mt-4 space-y-4">
+          <div className="mt-4 space-y-5">
             <label className="flex items-center gap-2 text-sm text-muted">
               <input
                 type="checkbox"
@@ -203,6 +205,48 @@ export function SettingsPage() {
               />
               Dark mode
             </label>
+
+            <div>
+              <p className="text-sm font-medium text-foreground">Accent color</p>
+              <p className="mt-1 text-xs text-muted">
+                Applies to buttons, highlights, route overlays, and accent-based charts.
+              </p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                {ACCENT_THEME_OPTIONS.map((theme) => {
+                  const selected = (settings?.accentTheme ?? DEFAULT_ACCENT_THEME_ID) === theme.id;
+
+                  return (
+                    <button
+                      key={theme.id}
+                      type="button"
+                      onClick={() => void updateAccentTheme(theme.id)}
+                      aria-pressed={selected}
+                      className={`flex items-center justify-between rounded-md border px-3 py-2 text-left transition ${
+                        selected
+                          ? 'border-accent bg-accent/10 text-foreground'
+                          : 'border-border bg-bg/40 text-muted hover:border-accent/40 hover:text-foreground'
+                      }`}
+                    >
+                      <span className="text-sm font-medium">{theme.label}</span>
+                      <span className="flex items-center gap-1.5">
+                        <span
+                          className="h-3 w-3 rounded-full border border-white/20"
+                          style={{ backgroundColor: theme.accentTintHex }}
+                        />
+                        <span
+                          className="h-3 w-3 rounded-full border border-white/20"
+                          style={{ backgroundColor: theme.accentSoftHex }}
+                        />
+                        <span
+                          className="h-3 w-3 rounded-full border border-white/20"
+                          style={{ backgroundColor: theme.accentHex }}
+                        />
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
 
           <div className="mt-6 border-t border-border pt-5">

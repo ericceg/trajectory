@@ -2,6 +2,7 @@ import { Suspense, lazy, useEffect, useRef } from 'react';
 import { HashRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 
 import { Sidebar } from '@/components/Sidebar';
+import { applyAccentThemeToDocument } from '@/lib/theme';
 import { useAppStore } from '@/store/useAppStore';
 import { useUiStateStore } from '@/store/useUiStateStore';
 
@@ -98,6 +99,10 @@ export default function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = settings?.darkMode ? 'dark' : 'light';
   }, [settings?.darkMode]);
+
+  useEffect(() => {
+    applyAccentThemeToDocument(settings?.accentTheme);
+  }, [settings?.accentTheme]);
 
   useEffect(() => {
     const importFolderPath = settings?.importFolderPath;
