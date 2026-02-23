@@ -46,6 +46,13 @@ interface SummaryTotals {
   activityCount: number;
 }
 
+type WeeklyStreakStatus = 'active' | 'pending' | 'none';
+
+interface WeeklyStreakDisplay {
+  count: number;
+  status: WeeklyStreakStatus;
+}
+
 const ZERO_TOTALS: AggregateTotals = {
   durationHours: 0,
   distanceKm: 0,
@@ -89,26 +96,42 @@ const summarizeActivities = (activities: ActivitySummary[]): SummaryTotals =>
     }
   );
 
-const computeWeeklyStreak = (activities: ActivitySummary[]) => {
+const computeWeeklyStreak = (activities: ActivitySummary[]): WeeklyStreakDisplay => {
   const activeWeeks = new Set<string>();
+  const weekKey = (date: Date) => format(startOfWeek(date, { weekStartsOn: 1 }), 'yyyy-MM-dd');
 
   for (const activity of activities) {
     const activityDate = parseISO(activity.activityStart);
     if (Number.isNaN(activityDate.getTime())) {
       continue;
     }
-    activeWeeks.add(format(startOfWeek(activityDate, { weekStartsOn: 1 }), 'yyyy-MM-dd'));
+    activeWeeks.add(weekKey(activityDate));
   }
 
-  let streak = 0;
-  let cursor = startOfWeek(startOfToday(), { weekStartsOn: 1 });
+  const countFromWeek = (weekStart: Date) => {
+    let streak = 0;
+    let cursor = weekStart;
 
-  while (activeWeeks.has(format(cursor, 'yyyy-MM-dd'))) {
-    streak += 1;
-    cursor = subWeeks(cursor, 1);
+    while (activeWeeks.has(format(cursor, 'yyyy-MM-dd'))) {
+      streak += 1;
+      cursor = subWeeks(cursor, 1);
+    }
+
+    return streak;
+  };
+
+  const currentWeekStart = startOfWeek(startOfToday(), { weekStartsOn: 1 });
+  const previousWeekStart = subWeeks(currentWeekStart, 1);
+
+  if (activeWeeks.has(format(currentWeekStart, 'yyyy-MM-dd'))) {
+    return { count: countFromWeek(currentWeekStart), status: 'active' };
   }
 
-  return streak;
+  if (activeWeeks.has(format(previousWeekStart, 'yyyy-MM-dd'))) {
+    return { count: countFromWeek(previousWeekStart), status: 'pending' };
+  }
+
+  return { count: 0, status: 'none' };
 };
 
 const metricValue = (totals: AggregateTotals, metric: CalendarBarMetric) => totals[metric];
@@ -292,7 +315,7 @@ export function DashboardPage() {
 
   const [weeklySummary, setWeeklySummary] = useState<SummaryTotals | null>(null);
   const [yearlySummary, setYearlySummary] = useState<SummaryTotals | null>(null);
-  const [weeklyStreak, setWeeklyStreak] = useState(0);
+  const [weeklyStreak, setWeeklyStreak] = useState<WeeklyStreakDisplay>({ count: 0, status: 'none' });
   const [summaryError, setSummaryError] = useState<string | null>(null);
 
   const selectedMonthDate = useMemo(
@@ -612,13 +635,18 @@ export function DashboardPage() {
           <p className="text-xs uppercase tracking-[0.18em] text-muted">Weekly Streak</p>
           <div className="mt-2 flex items-center gap-3">
             <div className="min-w-0">
-              <p className="text-2xl font-semibold leading-none text-foreground">{weeklyStreak}</p>
+              <p className="text-2xl font-semibold leading-none text-foreground">{weeklyStreak.count}</p>
               <p className="mt-1 text-xs text-muted">
-                {weeklyStreak === 1 ? 'consecutive week' : 'consecutive weeks'}
+                {weeklyStreak.count === 1 ? 'consecutive week' : 'consecutive weeks'}
               </p>
             </div>
-            {weeklyStreak > 0 ? (
-              <span className="grid h-9 w-9 place-items-center text-accent" aria-hidden="true">
+            {weeklyStreak.status !== 'none' ? (
+              <span
+                className={`grid h-9 w-9 place-items-center ${
+                  weeklyStreak.status === 'active' ? 'text-accent' : 'text-muted'
+                }`}
+                aria-hidden="true"
+              >
                 <svg
                   viewBox="0 0 24 24"
                   className="h-4.5 w-4.5"
@@ -634,7 +662,11 @@ export function DashboardPage() {
             ) : null}
           </div>
           <p className="mt-2 text-xs text-muted">
-            {weeklyStreak > 0 ? 'At least one activity each week.' : 'No activity recorded this week yet.'}
+            {weeklyStreak.status === 'active'
+              ? 'At least one activity each week.'
+              : weeklyStreak.status === 'pending'
+                ? 'No activity recorded this week yet.'
+                : 'No current weekly streak.'}
           </p>
         </article>
       </div>
