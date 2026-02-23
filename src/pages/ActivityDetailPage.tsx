@@ -457,7 +457,11 @@ export function ActivityDetailPage() {
                 <p className="text-sm text-muted">No elevation data available.</p>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={elevationChart.data} margin={{ top: 8, right: 8, left: -8, bottom: 2 }}>
+                  <LineChart
+                    data={elevationChart.data}
+                    syncId="activity-time-charts"
+                    margin={{ top: 8, right: 8, left: -8, bottom: 2 }}
+                  >
                     <CartesianGrid stroke={CHART_GRID_STROKE} strokeDasharray="3 3" vertical={false} />
                     <XAxis
                       type="number"
