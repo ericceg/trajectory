@@ -3,8 +3,8 @@ import { Link, useParams } from 'react-router-dom';
 import {
   Area,
   CartesianGrid,
+  ComposedChart,
   Line,
-  LineChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -346,7 +346,11 @@ function SplitMetricChart({
           <p className="text-sm text-muted">No {title.toLowerCase()} data available.</p>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data} syncId="activity-distance-split-charts" margin={{ top: 8, right: 8, left: -6, bottom: 2 }}>
+            <ComposedChart
+              data={data}
+              syncId="activity-distance-split-charts"
+              margin={{ top: 8, right: 8, left: -6, bottom: 2 }}
+            >
               <CartesianGrid stroke={CHART_GRID_STROKE} strokeDasharray="3 3" vertical={false} />
               <XAxis
                 type="number"
@@ -399,7 +403,7 @@ function SplitMetricChart({
                   isAnimationActive={false}
                 />
               )}
-            </LineChart>
+            </ComposedChart>
           </ResponsiveContainer>
         )}
       </div>
@@ -811,7 +815,7 @@ export function ActivityDetailPage() {
                     <p className="text-sm text-muted">No chart samples available.</p>
                   ) : (
                     <ResponsiveContainer width="100%" height="100%">
-                      <LineChart
+                      <ComposedChart
                         data={combinedChart.data}
                         margin={{ top: 8, right: 8, left: 8, bottom: 8 }}
                       >
@@ -885,7 +889,7 @@ export function ActivityDetailPage() {
                             isAnimationActive={false}
                           />
                         ) : null}
-                      </LineChart>
+                      </ComposedChart>
                     </ResponsiveContainer>
                   )}
                 </div>
