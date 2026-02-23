@@ -4,10 +4,8 @@ import type { FeatureCollection, LineString } from 'geojson';
 import maplibregl, { type GeoJSONSource } from 'maplibre-gl';
 
 import { getHeatmapData, listActivities } from '@/lib/tauri';
-import {
-  US_DEFAULT_CENTER,
-  US_DEFAULT_ZOOM
-} from '@/lib/mapStyles';
+import { US_DEFAULT_CENTER, US_DEFAULT_ZOOM } from '@/lib/mapStyles';
+import { type AccentThemePalette, getAccentThemePalette } from '@/lib/theme';
 import { useManagedMapLibre } from '@/lib/useManagedMapLibre';
 import { MaximizableMapFrame } from '@/components/MaximizableMapFrame';
 import { useAppStore } from '@/store/useAppStore';
@@ -191,12 +189,14 @@ function HeatmapMap({
   tracks,
   boundsPoints,
   heatStyle,
-  reducedComplexity
+  reducedComplexity,
+  accentPalette
 }: {
   tracks: TrackPoint[][];
   boundsPoints: TrackPoint[];
   heatStyle: { baseOpacity: number; topOpacity: number; weight: number };
   reducedComplexity: boolean;
+  accentPalette: AccentThemePalette;
 }) {
   const { containerRef, mapRef } = useManagedMapLibre({
     reducedComplexity,
@@ -223,7 +223,7 @@ function HeatmapMap({
           type: 'line',
           source: HEATMAP_SOURCE_ID,
           paint: {
-            'line-color': '#ff9a47',
+            'line-color': accentPalette.heatmapBaseLineHex,
             'line-opacity': heatStyle.baseOpacity,
             'line-width': heatStyle.weight + 3
           },
@@ -240,7 +240,7 @@ function HeatmapMap({
           type: 'line',
           source: HEATMAP_SOURCE_ID,
           paint: {
-            'line-color': '#fc4c02',
+            'line-color': accentPalette.heatmapTopLineHex,
             'line-opacity': heatStyle.topOpacity,
             'line-width': heatStyle.weight
           },
@@ -251,12 +251,21 @@ function HeatmapMap({
         });
       }
 
+      map.setPaintProperty(HEATMAP_BASE_LAYER_ID, 'line-color', accentPalette.heatmapBaseLineHex);
       map.setPaintProperty(HEATMAP_BASE_LAYER_ID, 'line-opacity', heatStyle.baseOpacity);
       map.setPaintProperty(HEATMAP_BASE_LAYER_ID, 'line-width', heatStyle.weight + 3);
+      map.setPaintProperty(HEATMAP_TOP_LAYER_ID, 'line-color', accentPalette.heatmapTopLineHex);
       map.setPaintProperty(HEATMAP_TOP_LAYER_ID, 'line-opacity', heatStyle.topOpacity);
       map.setPaintProperty(HEATMAP_TOP_LAYER_ID, 'line-width', heatStyle.weight);
     },
-    [heatStyle.baseOpacity, heatStyle.topOpacity, heatStyle.weight, sourceData]
+    [
+      accentPalette.heatmapBaseLineHex,
+      accentPalette.heatmapTopLineHex,
+      heatStyle.baseOpacity,
+      heatStyle.topOpacity,
+      heatStyle.weight,
+      sourceData
+    ]
   );
 
   useEffect(() => {
@@ -306,10 +315,12 @@ function HeatmapMap({
 
 function HeatmapMapOverlayControls({
   reducedMapComplexity,
-  onReducedMapComplexityChange
+  onReducedMapComplexityChange,
+  accentPalette
 }: {
   reducedMapComplexity: boolean;
   onReducedMapComplexityChange: (checked: boolean) => void;
+  accentPalette: AccentThemePalette;
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -336,7 +347,12 @@ function HeatmapMapOverlayControls({
       </button>
       <div className="flex items-center gap-2 rounded-md border border-border bg-panel/80 px-2.5 py-1.5 text-xs text-muted backdrop-blur">
         <span>Low</span>
-        <span className="h-2 w-24 rounded-full bg-gradient-to-r from-[#ffccaa] via-[#ff8c42] to-[#fc4c02]" />
+        <span
+          className="h-2 w-24 rounded-full"
+          style={{
+            backgroundImage: `linear-gradient(to right, ${accentPalette.accentTintHex}, ${accentPalette.accentSoftHex}, ${accentPalette.accentHex})`
+          }}
+        />
         <span>High</span>
       </div>
     </div>
@@ -345,6 +361,7 @@ function HeatmapMapOverlayControls({
 
 export function HeatmapPage() {
   const heatmapFullOpacity = useAppStore((state) => state.settings?.heatmapFullOpacity ?? false);
+  const accentTheme = useAppStore((state) => state.settings?.accentTheme);
   const timeSpan = useUiStateStore((state) => state.heatmapTimeSpan) as TimeSpan;
   const setTimeSpan = useUiStateStore((state) => state.setHeatmapTimeSpan);
   const customStartDate = useUiStateStore((state) => state.heatmapCustomStartDate);
@@ -362,6 +379,7 @@ export function HeatmapPage() {
   const [heatmapLoading, setHeatmapLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [heatmapData, setHeatmapData] = useState<HeatmapData | null>(null);
+  const accentPalette = useMemo(() => getAccentThemePalette(accentTheme), [accentTheme]);
 
   const resolvedRange = useMemo(
     () => resolveDateRange(timeSpan, customStartDate, customEndDate),
@@ -590,6 +608,7 @@ export function HeatmapPage() {
             <HeatmapMapOverlayControls
               reducedMapComplexity={reducedMapComplexity}
               onReducedMapComplexityChange={setReducedMapComplexity}
+              accentPalette={accentPalette}
             />
           }
         >
@@ -605,6 +624,7 @@ export function HeatmapPage() {
               boundsPoints={heatBoundsPoints}
               heatStyle={heatStyle}
               reducedComplexity={reducedMapComplexity}
+              accentPalette={accentPalette}
             />
           )}
         </MaximizableMapFrame>

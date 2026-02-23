@@ -21,6 +21,18 @@ struct AppState {
     settings_path: PathBuf,
 }
 
+fn is_supported_accent_theme(value: &str) -> bool {
+    matches!(
+        value,
+        "strava-orange"
+            | "pacific-blue"
+            | "alpine-green"
+            | "crimson-rose"
+            | "flamingo-pink"
+            | "violet-indigo"
+    )
+}
+
 fn init_state(app: &AppHandle) -> Result<AppState> {
     let data_dir = app
         .path()
@@ -100,6 +112,21 @@ async fn set_import_folder(
 async fn set_dark_mode(dark_mode: bool, state: State<'_, AppState>) -> Result<Settings, String> {
     update_app_settings(state.inner(), |settings| {
         settings.dark_mode = dark_mode;
+        Ok(())
+    })
+}
+
+#[tauri::command]
+async fn set_accent_theme(
+    accent_theme: String,
+    state: State<'_, AppState>,
+) -> Result<Settings, String> {
+    if !is_supported_accent_theme(&accent_theme) {
+        return Err(format!("unsupported accent theme: {accent_theme}"));
+    }
+
+    update_app_settings(state.inner(), move |settings| {
+        settings.accent_theme = accent_theme;
         Ok(())
     })
 }
@@ -189,6 +216,7 @@ fn main() {
             get_settings,
             set_import_folder,
             set_dark_mode,
+            set_accent_theme,
             set_heatmap_full_opacity,
             scan_import_folder,
             list_activities,
