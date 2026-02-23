@@ -25,6 +25,7 @@ Prototype (actively evolving).
 - Settings tabs for Import and Appearance
 - UI view/filter state is remembered across navigation (e.g. Settings tab, Dashboard calendar view, Heatmap filters); sidebar sections reopen the last route for Dashboard/Heatmap/Settings, while `Activities` always opens the list page
 - Dashboard with a drill-down training calendar (year view -> month view -> activity links)
+- Dashboard top summary cards include a weekly activity streak tile (consecutive active weeks)
 - Calendar bars can switch between hours, kilometers, and activity count
 - Hovering month or year bars uses horizontal cursor position (full-height hit area) and highlights the corresponding calendar day/month workout context with a quick pop animation
 - Filterable/sortable activities table
@@ -73,7 +74,7 @@ npm run tauri dev
    - **Clear Cache + Full Rescan** when you want to wipe cached activities and re-import everything.
    - **Appearance** tab for theme + heatmap rendering preferences (including optional 100% heatmap opacity).
 5. Explore:
-   - **Dashboard** for yearly calendar overview, month drill-down, and clickable activity entries
+   - **Dashboard** for yearly calendar overview, month drill-down, clickable activity entries, and a weekly streak indicator
    - Use dashboard arrows to move between years/months, click metric cards to switch bar mode (hours/km/activities), click year bars to drill into a month, and click month bars to open an activity from that day
    - In month view, move horizontally across daily bars to see a quick popover and auto-highlight the corresponding workout day and all visible workout cards
    - In year view, move horizontally across weekly bars to preview that week and auto-highlight all matching days in that week across month/day mini-bars
