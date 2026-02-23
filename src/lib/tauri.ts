@@ -1,6 +1,7 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 
+import type { AccentThemeId } from '@/lib/theme';
 import {
   type ActivityDetail,
   type ActivityFilters,
@@ -19,6 +20,9 @@ export const setImportFolder = (path: string, recursive: boolean) =>
 
 export const setDarkMode = (darkMode: boolean) =>
   invoke<Settings>('set_dark_mode', { darkMode });
+
+export const setAccentTheme = (accentTheme: AccentThemeId) =>
+  invoke<Settings>('set_accent_theme', { accentTheme });
 
 export const setHeatmapFullOpacity = (heatmapFullOpacity: boolean) =>
   invoke<Settings>('set_heatmap_full_opacity', { heatmapFullOpacity });
