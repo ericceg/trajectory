@@ -42,10 +42,14 @@ const CHART_LINE_COLORS = {
 const CHART_TOOLTIP_STYLE = {
   borderRadius: 10,
   border: '1px solid rgba(var(--color-border), 0.9)',
-  background: 'rgba(var(--color-panel), 0.96)',
+  background: 'rgb(var(--color-panel))',
   color: 'rgb(var(--color-foreground))',
   boxShadow: '0 8px 24px rgba(0, 0, 0, 0.12)'
 };
+const CHART_TOOLTIP_WRAPPER_STYLE = {
+  zIndex: 20,
+  pointerEvents: 'none'
+} as const;
 const COMBINED_CHART_DOMAIN: [number, number] = [0, 100];
 const COMBINED_CHART_BANDS = {
   elevation: { min: 0, max: 14 },
@@ -376,6 +380,7 @@ function SplitMetricChart({
                     formatValue={valueFormatter}
                   />
                 }
+                wrapperStyle={CHART_TOOLTIP_WRAPPER_STYLE}
                 isAnimationActive={false}
               />
               {variant === 'area' ? (
@@ -833,6 +838,7 @@ export function ActivityDetailPage() {
                         <Tooltip
                           cursor={{ stroke: 'rgba(var(--color-border), 0.95)', strokeWidth: 1 }}
                           content={<CombinedChartTooltip />}
+                          wrapperStyle={CHART_TOOLTIP_WRAPPER_STYLE}
                           isAnimationActive={false}
                         />
 
