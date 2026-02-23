@@ -631,7 +631,13 @@ export function DashboardPage() {
           value={`${Math.round(yearlySummary?.totalElevationM ?? 0)} m`}
         />
         <article className="relative overflow-hidden rounded-xl border border-border bg-panel p-4">
-          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-amber-300/0 via-amber-300/70 to-accent/0" />
+          <div
+            className="absolute inset-x-0 top-0 h-px"
+            style={{
+              backgroundImage:
+                'linear-gradient(to right, rgb(var(--color-accent-soft) / 0), rgb(var(--color-accent-soft) / 0.7), rgb(var(--color-accent) / 0))'
+            }}
+          />
           <p className="text-xs uppercase tracking-[0.18em] text-muted">Weekly Streak</p>
           <div className="mt-2 flex items-center gap-3">
             <div className="min-w-0">

@@ -22,6 +22,7 @@ Prototype (actively evolving).
 - Single visible workout category in UI (used for filtering)
 - Activities filters auto-apply on change (no Apply button)
 - Light mode by default with optional dark mode toggle in Settings
+- Accent color themes selectable in Settings (applies across UI + route overlays/charts)
 - Settings tabs for Import and Appearance
 - UI view/filter state is remembered across navigation (e.g. Settings tab, Dashboard calendar view, Heatmap filters); sidebar sections reopen the last route for Dashboard/Heatmap/Settings, while `Activities` always opens the list page
 - Dashboard with a drill-down training calendar (year view -> month view -> activity links)
@@ -37,7 +38,7 @@ Prototype (actively evolving).
 - Map views support in-place maximize/minimize (with `Esc` to close expanded view)
 - Global path-based heatmap page that overlays all matching GPS tracks
 - Heatmap filters for time span (presets + custom), category, and sport type
-- Appearance setting for optional full-opacity heatmap routes (100% opacity)
+- Appearance settings for accent theme selection and optional full-opacity heatmap routes (100% opacity)
 - "Reduced complexity" toggle on map views for a grayscale, lower-noise basemap with stronger route contrast
 - Map controls (including reduced-complexity toggles/legend) are overlaid on maps so they remain visible in maximized map mode
 
@@ -72,7 +73,7 @@ npm run tauri dev
 4. Open **Settings** any time to run:
    - **Rescan** for a normal incremental pass.
    - **Clear Cache + Full Rescan** when you want to wipe cached activities and re-import everything.
-   - **Appearance** tab for theme + heatmap rendering preferences (including optional 100% heatmap opacity).
+   - **Appearance** tab for dark mode, accent color theme, and heatmap rendering preferences (including optional 100% heatmap opacity).
 5. Explore:
    - **Dashboard** for yearly calendar overview, month drill-down, clickable activity entries, and a weekly streak indicator
    - Use dashboard arrows to move between years/months, click metric cards to switch bar mode (hours/km/activities), click year bars to drill into a month, and click month bars to open an activity from that day
@@ -165,6 +166,7 @@ Implemented commands:
 - `get_settings()`
 - `set_import_folder(path, recursive)`
 - `set_dark_mode(dark_mode)`
+- `set_accent_theme(accent_theme)`
 - `set_heatmap_full_opacity(heatmap_full_opacity)`
 - `scan_import_folder(full_rescan?)`
 - `list_activities(filters)`
