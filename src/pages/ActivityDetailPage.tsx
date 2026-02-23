@@ -336,7 +336,7 @@ export function ActivityDetailPage() {
             </div>
             <MaximizableMapFrame
               label="route map"
-              collapsedHeightClassName="h-80"
+              collapsedHeightClassName="h-96"
               topLeftActions={
                 detail.track.length > 0 ? (
                   <ReducedComplexityMapToggle
@@ -365,7 +365,7 @@ export function ActivityDetailPage() {
               <h3 className="text-lg font-semibold text-foreground">Speed vs Time</h3>
               <p className="text-xs text-muted">km/h</p>
             </div>
-            <div className="mt-3 h-64">
+            <div className="mt-3 h-56">
               {speedData.length === 0 ? (
                 <p className="text-sm text-muted">No speed samples available.</p>
               ) : (
@@ -411,7 +411,7 @@ export function ActivityDetailPage() {
               <h3 className="text-lg font-semibold text-foreground">Heart Rate vs Time</h3>
               <p className="text-xs text-muted">bpm</p>
             </div>
-            <div className="mt-3 h-64">
+            <div className="mt-3 h-56">
               {heartRateData.length === 0 ? (
                 <p className="text-sm text-muted">No heart rate data available.</p>
               ) : (
@@ -459,7 +459,7 @@ export function ActivityDetailPage() {
                 {elevationChart.useDistanceAxis ? 'x-axis: km' : 'x-axis: time'}
               </p>
             </div>
-            <div className="mt-3 h-64">
+            <div className="mt-3 h-56">
               {elevationChart.data.length === 0 ? (
                 <p className="text-sm text-muted">No elevation data available.</p>
               ) : (
