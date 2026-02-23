@@ -32,7 +32,7 @@ Prototype (actively evolving).
 - Filterable/sortable activities table
 - Active sort direction indicators (`▲`/`▼`) in activities table headers
 - In-memory activities list caching for snappy return navigation (no refetch unless filters/data change)
-- Activity detail with a right-side metric rail, route map, and switchable distance-based charts (combined overlay or split plots, shared hover cursor/stats, elevation background in combined mode)
+- Activity detail with a right-side metric rail, route map, and switchable distance-based charts (combined overlay or split plots, shared hover cursor/stats, elevation background in combined mode, adaptive vertical scaling for visible series)
 - Continuous, Google Maps-style smooth zooming/panning on map views
 - Toggling "Reduced complexity" preserves the current map viewport (pan/zoom)
 - Map views support in-place maximize/minimize (with `Esc` to close expanded view)
