@@ -1,9 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
+  Area,
   CartesianGrid,
+  ComposedChart,
   Line,
-  LineChart,
+  ReferenceArea,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -30,6 +32,551 @@ import type { ActivityDetail, TrackPoint } from '@/types';
 
 const ACTIVITY_ROUTE_SOURCE_ID = 'activity-route-source';
 const ACTIVITY_ROUTE_LAYER_ID = 'activity-route-layer';
+const CHART_GRID_STROKE = 'rgba(var(--color-border), 0.75)';
+const CHART_AXIS_STROKE = 'rgb(var(--color-muted))';
+const CHART_LINE_COLORS = {
+  speed: '#0B1F5E', // navy blue
+  pace: '#2563EB', // blue
+  heartRate: '#DC2626', // red
+  elevation: '#77C043' // alpine green
+} as const;
+const CHART_TOOLTIP_STYLE = {
+  borderRadius: 10,
+  border: '1px solid rgba(var(--color-border), 0.9)',
+  background: 'rgb(var(--color-panel))',
+  color: 'rgb(var(--color-foreground))',
+  boxShadow: '0 8px 24px rgba(0, 0, 0, 0.12)'
+};
+const CHART_TOOLTIP_WRAPPER_STYLE = {
+  zIndex: 20,
+  pointerEvents: 'none'
+} as const;
+const COMBINED_CHART_DOMAIN: [number, number] = [0, 100];
+const COMBINED_CHART_SERIES_ORDER: ChartSeriesKey[] = ['speed', 'heartRate', 'pace', 'elevation'];
+const COMBINED_CHART_OUTER_PADDING = 3;
+const COMBINED_CHART_BAND_GAP = 4;
+const CHART_DRAG_CLICK_THRESHOLD_PX = 4;
+const CHART_MIN_ZOOM_SPAN_KM = 0.01;
+
+type ChartSeriesKey = 'pace' | 'speed' | 'heartRate' | 'elevation';
+type SplitMetricKey = 'paceSecondsPerKm' | 'speedKmh' | 'heartRate' | 'elevationM';
+type ChartMode = 'combined' | 'split';
+
+type ChartSeriesVisibility = Record<ChartSeriesKey, boolean>;
+type ChartBand = { min: number; max: number };
+type ChartZoomDomain = [number, number];
+type ChartPointer = { valueKm: number; chartX: number };
+
+function defaultChartSeriesVisibility(sportType?: string): ChartSeriesVisibility {
+  const normalizedSport = (sportType ?? '').trim().toLowerCase();
+
+  const isRunning =
+    normalizedSport.includes('run') || normalizedSport.includes('jog') || normalizedSport.includes('trail run');
+  const isCycling =
+    normalizedSport.includes('bike') ||
+    normalizedSport.includes('cycle') ||
+    normalizedSport.includes('ride') ||
+    normalizedSport.includes('cycling');
+
+  if (isRunning) {
+    return {
+      pace: true,
+      speed: false,
+      heartRate: true,
+      elevation: true
+    };
+  }
+
+  if (isCycling) {
+    return {
+      pace: false,
+      speed: true,
+      heartRate: true,
+      elevation: true
+    };
+  }
+
+  return {
+    pace: true,
+    speed: true,
+    heartRate: true,
+    elevation: true
+  };
+}
+
+interface CombinedChartPoint {
+  distanceKm: number;
+  distanceM: number;
+  elapsedSeconds: number;
+  speedKmh: number | null;
+  paceSecondsPerKm: number | null;
+  heartRate: number | null;
+  elevationM: number | null;
+  gradePct: number | null;
+  pacePlot: number | null;
+  speedPlot: number | null;
+  heartRatePlot: number | null;
+  elevationPlot: number | null;
+}
+
+interface CombinedChartModel {
+  data: CombinedChartPoint[];
+  has: Record<ChartSeriesKey, boolean>;
+  maxDistanceKm: number;
+}
+
+function readChartPointer(event: unknown): ChartPointer | null {
+  if (!event || typeof event !== 'object') {
+    return null;
+  }
+
+  const maybePointer = event as { activeLabel?: unknown; chartX?: unknown };
+  const valueKm = Number(maybePointer.activeLabel);
+  const chartX = Number(maybePointer.chartX);
+
+  if (!Number.isFinite(valueKm) || !Number.isFinite(chartX)) {
+    return null;
+  }
+
+  return { valueKm, chartX };
+}
+
+function chartDomainsEqual(a: ChartZoomDomain | null, b: ChartZoomDomain | null): boolean {
+  if (a === b) {
+    return true;
+  }
+
+  if (!a || !b) {
+    return false;
+  }
+
+  return Math.abs(a[0] - b[0]) < 1e-6 && Math.abs(a[1] - b[1]) < 1e-6;
+}
+
+function buildSelectionDomain(
+  anchor: ChartPointer | null,
+  current: ChartPointer | null,
+  maxDomainKm: number
+): ChartZoomDomain | null {
+  if (!anchor || !current) {
+    return null;
+  }
+
+  const min = Math.max(0, Math.min(anchor.valueKm, current.valueKm));
+  const max = Math.min(maxDomainKm, Math.max(anchor.valueKm, current.valueKm));
+
+  if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
+    return null;
+  }
+
+  return [min, max];
+}
+
+function formatNumberTick(value: number, digits = 1): string {
+  return new Intl.NumberFormat(undefined, {
+    maximumFractionDigits: digits
+  }).format(value);
+}
+
+function formatDistanceAxisTick(km: number): string {
+  return `${formatNumberTick(km, km >= 10 ? 0 : 1)} km`;
+}
+
+function formatElapsedTooltip(seconds: number): string {
+  const rounded = Math.max(0, Math.round(seconds));
+  const hours = Math.floor(rounded / 3600);
+  const minutes = Math.floor((rounded % 3600) / 60);
+  const secs = rounded % 60;
+
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  }
+
+  return `${minutes}:${String(secs).padStart(2, '0')}`;
+}
+
+function formatPaceSeconds(secondsPerKm: number | null): string {
+  if (secondsPerKm == null || !Number.isFinite(secondsPerKm) || secondsPerKm <= 0) {
+    return 'n/a';
+  }
+
+  const rounded = Math.round(secondsPerKm);
+  const minutes = Math.floor(rounded / 60);
+  const seconds = rounded % 60;
+  return `${minutes}:${String(seconds).padStart(2, '0')} /km`;
+}
+
+function formatPaceTick(secondsPerKm: number): string {
+  if (!Number.isFinite(secondsPerKm) || secondsPerKm <= 0) {
+    return 'n/a';
+  }
+
+  const rounded = Math.round(secondsPerKm);
+  const minutes = Math.floor(rounded / 60);
+  const seconds = rounded % 60;
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
+function metricRange(values: Array<number | null | undefined>): [number, number] | null {
+  const numeric = values.filter((value): value is number => value != null && Number.isFinite(value));
+  if (numeric.length === 0) {
+    return null;
+  }
+
+  let min = Math.min(...numeric);
+  let max = Math.max(...numeric);
+  if (min === max) {
+    const pad = Math.max(Math.abs(min) * 0.08, 1);
+    return [min - pad, max + pad];
+  }
+
+  const padding = (max - min) * 0.08;
+  min -= padding;
+  max += padding;
+  return [min, max];
+}
+
+function metricRangeForVisibleDomain<T>(
+  items: T[],
+  xDomain: ChartZoomDomain,
+  getX: (item: T) => number,
+  getValue: (item: T) => number | null | undefined
+): [number, number] | null {
+  const visibleRange = metricRange(
+    items.filter((item) => {
+      const x = getX(item);
+      return Number.isFinite(x) && x >= xDomain[0] && x <= xDomain[1];
+    }).map(getValue)
+  );
+
+  return visibleRange ?? metricRange(items.map(getValue));
+}
+
+function normalizeToBand(
+  value: number | null,
+  range: [number, number] | null,
+  band: ChartBand | null | undefined,
+  invert = false
+): number | null {
+  if (value == null || range == null || band == null) {
+    return null;
+  }
+
+  const [rangeMin, rangeMax] = range;
+  const ratio = Math.min(1, Math.max(0, (value - rangeMin) / (rangeMax - rangeMin)));
+  const adjustedRatio = invert ? 1 - ratio : ratio;
+  return band.min + adjustedRatio * (band.max - band.min);
+}
+
+function buildCombinedChartBands(visibleSeries: ChartSeriesKey[]): Partial<Record<ChartSeriesKey, ChartBand>> {
+  if (visibleSeries.length === 0) {
+    return {};
+  }
+
+  const [domainMin, domainMax] = COMBINED_CHART_DOMAIN;
+  const domainHeight = domainMax - domainMin;
+  const outerPadding = visibleSeries.length === 1 ? 2 : COMBINED_CHART_OUTER_PADDING;
+  const bandGap = visibleSeries.length <= 1 ? 0 : COMBINED_CHART_BAND_GAP;
+  const totalGapHeight = bandGap * Math.max(0, visibleSeries.length - 1);
+  const usableHeight = Math.max(visibleSeries.length, domainHeight - outerPadding * 2 - totalGapHeight);
+  const bandHeight = usableHeight / visibleSeries.length;
+  const bands: Partial<Record<ChartSeriesKey, ChartBand>> = {};
+  let currentTop = domainMax - outerPadding;
+
+  for (const key of visibleSeries) {
+    const bandMax = currentTop;
+    const bandMin = currentTop - bandHeight;
+    bands[key] = { min: bandMin, max: bandMax };
+    currentTop = bandMin - bandGap;
+  }
+
+  return bands;
+}
+
+function SeriesToggle({
+  label,
+  color,
+  enabled,
+  disabled,
+  onToggle
+}: {
+  label: string;
+  color: string;
+  enabled: boolean;
+  disabled?: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      disabled={disabled}
+      aria-pressed={enabled}
+      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs transition-colors ${
+        disabled
+          ? 'cursor-not-allowed border-border/60 text-muted/60'
+          : enabled
+            ? 'border-accent/50 bg-accent/10 text-foreground'
+            : 'border-border text-muted hover:text-foreground'
+      }`}
+    >
+      <span
+        className="h-2.5 w-2.5 rounded-full"
+        style={{
+          backgroundColor: color,
+          opacity: disabled ? 0.35 : 1
+        }}
+      />
+      {label}
+    </button>
+  );
+}
+
+function ChartModeToggle({
+  mode,
+  onChange
+}: {
+  mode: ChartMode;
+  onChange: (mode: ChartMode) => void;
+}) {
+  return (
+    <div className="inline-flex rounded-lg border border-border bg-bg/40 p-1">
+      <button
+        type="button"
+        onClick={() => onChange('combined')}
+        aria-pressed={mode === 'combined'}
+        className={`rounded-md px-2.5 py-1 text-xs transition-colors ${
+          mode === 'combined' ? 'bg-panel text-foreground shadow-sm' : 'text-muted hover:text-foreground'
+        }`}
+      >
+        Combined
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange('split')}
+        aria-pressed={mode === 'split'}
+        className={`rounded-md px-2.5 py-1 text-xs transition-colors ${
+          mode === 'split' ? 'bg-panel text-foreground shadow-sm' : 'text-muted hover:text-foreground'
+        }`}
+      >
+        Split
+      </button>
+    </div>
+  );
+}
+
+function CombinedChartTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload?: CombinedChartPoint }> }) {
+  if (!active || !payload || payload.length === 0 || !payload[0]?.payload) {
+    return null;
+  }
+
+  const point = payload[0].payload;
+
+  return (
+    <div style={CHART_TOOLTIP_STYLE} className="min-w-[13rem] p-3 text-sm leading-tight">
+      <p className="font-semibold text-foreground">{formatElapsedTooltip(point.elapsedSeconds)}</p>
+      <div className="mt-2 space-y-1 text-foreground">
+        <p>
+          Dist: <span className="font-semibold">{formatNumberTick(point.distanceKm, 2)} km</span>
+        </p>
+        <p>
+          Pace: <span className="font-semibold">{formatPaceSeconds(point.paceSecondsPerKm)}</span>
+        </p>
+        <p>
+          Speed:{' '}
+          <span className="font-semibold">
+            {point.speedKmh == null ? 'n/a' : `${formatNumberTick(point.speedKmh, 1)} km/h`}
+          </span>
+        </p>
+        <p>
+          Heart rate:{' '}
+          <span className="font-semibold">{point.heartRate == null ? 'n/a' : `${Math.round(point.heartRate)} bpm`}</span>
+        </p>
+        <p>
+          Elevation:{' '}
+          <span className="font-semibold">{point.elevationM == null ? 'n/a' : `${Math.round(point.elevationM)} m`}</span>
+        </p>
+        <p>
+          Grade:{' '}
+          <span className="font-semibold">
+            {point.gradePct == null ? 'n/a' : `${point.gradePct >= 0 ? '+' : ''}${formatNumberTick(point.gradePct, 1)}%`}
+          </span>
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function SplitMetricTooltip({
+  active,
+  payload,
+  metricKey,
+  metricLabel,
+  formatValue
+}: {
+  active?: boolean;
+  payload?: Array<{ payload?: CombinedChartPoint }>;
+  metricKey: SplitMetricKey;
+  metricLabel: string;
+  formatValue: (value: number | null) => string;
+}) {
+  if (!active || !payload || payload.length === 0 || !payload[0]?.payload) {
+    return null;
+  }
+
+  const point = payload[0].payload;
+  const rawValue = point[metricKey] as number | null;
+
+  return (
+    <div style={CHART_TOOLTIP_STYLE} className="min-w-[12rem] p-3 text-sm leading-tight">
+      <p className="font-semibold text-foreground">{formatElapsedTooltip(point.elapsedSeconds)}</p>
+      <div className="mt-2 space-y-1 text-foreground">
+        <p>
+          Dist: <span className="font-semibold">{formatNumberTick(point.distanceKm, 2)} km</span>
+        </p>
+        <p>
+          {metricLabel}: <span className="font-semibold">{formatValue(rawValue)}</span>
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function SplitMetricChart({
+  title,
+  unitLabel,
+  data,
+  hasData,
+  dataKey,
+  color,
+  valueLabel,
+  valueFormatter,
+  yTickFormatter,
+  xDomain,
+  selectionDomain,
+  onChartMouseDown,
+  onChartMouseMove,
+  onChartMouseUp,
+  variant = 'line'
+}: {
+  title: string;
+  unitLabel: string;
+  data: CombinedChartPoint[];
+  hasData: boolean;
+  dataKey: SplitMetricKey;
+  color: string;
+  valueLabel: string;
+  valueFormatter: (value: number | null) => string;
+  yTickFormatter: (value: number) => string;
+  xDomain: ChartZoomDomain;
+  selectionDomain?: ChartZoomDomain | null;
+  onChartMouseDown?: (event: unknown) => void;
+  onChartMouseMove?: (event: unknown) => void;
+  onChartMouseUp?: (event: unknown) => void;
+  variant?: 'line' | 'area';
+}) {
+  const yDomain = useMemo<[number, number] | undefined>(() => {
+    const range = metricRangeForVisibleDomain(
+      data,
+      xDomain,
+      (point) => point.distanceKm,
+      (point) => point[dataKey] as number | null
+    );
+    return range ?? undefined;
+  }, [data, dataKey, xDomain]);
+
+  return (
+    <div className="rounded-lg border border-border/80 bg-bg/30 p-3">
+      <div className="flex items-baseline justify-between gap-3">
+        <h4 className="text-sm font-semibold text-foreground">{title}</h4>
+        <p className="text-[11px] text-muted">{unitLabel}</p>
+      </div>
+      <div className="mt-2 h-40">
+        {!hasData ? (
+          <p className="text-sm text-muted">No {title.toLowerCase()} data available.</p>
+        ) : (
+          <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart
+              data={data}
+              syncId="activity-distance-split-charts"
+              margin={{ top: 8, right: 8, left: -6, bottom: 2 }}
+              onMouseDown={onChartMouseDown}
+              onMouseMove={onChartMouseMove}
+              onMouseUp={onChartMouseUp}
+            >
+              <CartesianGrid stroke={CHART_GRID_STROKE} strokeDasharray="3 3" vertical={false} />
+              <XAxis
+                type="number"
+                dataKey="distanceKm"
+                stroke={CHART_AXIS_STROKE}
+                tickFormatter={(value) => formatDistanceAxisTick(Number(value))}
+                tickMargin={8}
+                minTickGap={24}
+                domain={xDomain}
+                allowDataOverflow
+              />
+              <YAxis
+                stroke={CHART_AXIS_STROKE}
+                tickFormatter={(value) => yTickFormatter(Number(value))}
+                tickMargin={8}
+                width={58}
+                domain={yDomain ?? ['auto', 'auto']}
+                allowDataOverflow={Boolean(yDomain)}
+              />
+              <Tooltip
+                cursor={{ stroke: '#000000', strokeWidth: 1 }}
+                content={
+                  <SplitMetricTooltip
+                    metricKey={dataKey}
+                    metricLabel={valueLabel}
+                    formatValue={valueFormatter}
+                  />
+                }
+                wrapperStyle={CHART_TOOLTIP_WRAPPER_STYLE}
+                isAnimationActive={false}
+              />
+              {selectionDomain ? (
+                <ReferenceArea
+                  x1={selectionDomain[0]}
+                  x2={selectionDomain[1]}
+                  fill="rgba(var(--color-accent), 0.14)"
+                  stroke="rgba(var(--color-accent), 0.5)"
+                  strokeOpacity={0.9}
+                  ifOverflow="extendDomain"
+                />
+              ) : null}
+              {variant === 'area' ? (
+                <Area
+                  type="monotone"
+                  dataKey={dataKey}
+                  stroke={color}
+                  fill={color}
+                  fillOpacity={0.18}
+                  strokeWidth={1.5}
+                  dot={false}
+                  connectNulls
+                  activeDot={{ r: 3, strokeWidth: 0 }}
+                  isAnimationActive={false}
+                />
+              ) : (
+                <Line
+                  type="monotone"
+                  dataKey={dataKey}
+                  stroke={color}
+                  strokeWidth={2}
+                  dot={false}
+                  connectNulls
+                  activeDot={{ r: 3, strokeWidth: 0 }}
+                  isAnimationActive={false}
+                />
+              )}
+            </ComposedChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function toRouteFeatureCollection(track: TrackPoint[]): FeatureCollection<LineString> {
   const coordinates = track.map((point) => [point.lon, point.lat] as [number, number]);
@@ -207,6 +754,15 @@ export function ActivityDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reducedMapComplexity, setReducedMapComplexity] = useState(false);
+  const [chartMode, setChartMode] = useState<ChartMode>('combined');
+  const [chartSeriesVisibility, setChartSeriesVisibility] = useState<ChartSeriesVisibility>(() =>
+    defaultChartSeriesVisibility()
+  );
+  const [chartZoomDomain, setChartZoomDomain] = useState<ChartZoomDomain | null>(null);
+  const [chartSelectionDomain, setChartSelectionDomain] = useState<ChartZoomDomain | null>(null);
+  const chartDragAnchorRef = useRef<ChartPointer | null>(null);
+  const chartDragCurrentRef = useRef<ChartPointer | null>(null);
+  const chartSelectionFrameRef = useRef<number | null>(null);
   const accentTheme = useAppStore((state) => state.settings?.accentTheme);
   const accentPalette = useMemo(() => getAccentThemePalette(accentTheme), [accentTheme]);
 
@@ -231,38 +787,273 @@ export function ActivityDetailPage() {
     void load();
   }, [id]);
 
-  const speedData = useMemo(
-    () =>
-      (detail?.samples ?? [])
-        .filter((sample) => sample.speedMps != null)
-        .map((sample) => ({
-          elapsedMin: sample.elapsedSeconds / 60,
-          speedKmh: (sample.speedMps ?? 0) * 3.6
-        })),
-    [detail?.samples]
+  useEffect(() => {
+    if (!detail) {
+      return;
+    }
+
+    setChartSeriesVisibility(defaultChartSeriesVisibility(detail.summary.sportType));
+    setChartZoomDomain(null);
+    setChartSelectionDomain(null);
+    chartDragAnchorRef.current = null;
+    chartDragCurrentRef.current = null;
+  }, [detail?.summary.id, detail?.summary.sportType]);
+
+  const combinedChart = useMemo<CombinedChartModel>(() => {
+    if (!detail) {
+      return {
+        data: [],
+        has: { pace: false, speed: false, heartRate: false, elevation: false },
+        maxDistanceKm: 0
+      };
+    }
+
+    const totalDistanceM = Math.max(detail.summary.distanceM, 0);
+    const totalDurationSeconds = Math.max(detail.summary.durationSeconds, 1);
+    let lastDistanceM = 0;
+    let previousElevationPoint: { distanceM: number; elevationM: number } | null = null;
+
+    const basePoints: Array<Omit<CombinedChartPoint, 'pacePlot' | 'speedPlot' | 'heartRatePlot' | 'elevationPlot'>> =
+      detail.samples.map((sample) => {
+        const estimatedDistanceM =
+          totalDistanceM > 0 ? (sample.elapsedSeconds / totalDurationSeconds) * totalDistanceM : lastDistanceM;
+        const distanceM = Math.max(lastDistanceM, sample.distanceM ?? estimatedDistanceM);
+        lastDistanceM = distanceM;
+
+        const speedKmh = sample.speedMps != null ? sample.speedMps * 3.6 : null;
+        const paceSecondsPerKm =
+          sample.speedMps != null && sample.speedMps > 0 ? 1000 / sample.speedMps : null;
+
+        let gradePct: number | null = null;
+        if (
+          sample.altitudeM != null &&
+          previousElevationPoint != null &&
+          distanceM - previousElevationPoint.distanceM >= 5
+        ) {
+          gradePct = ((sample.altitudeM - previousElevationPoint.elevationM) / (distanceM - previousElevationPoint.distanceM)) * 100;
+        }
+        if (sample.altitudeM != null) {
+          previousElevationPoint = { distanceM, elevationM: sample.altitudeM };
+        }
+
+        return {
+          distanceKm: distanceM / 1000,
+          distanceM,
+          elapsedSeconds: sample.elapsedSeconds,
+          speedKmh,
+          paceSecondsPerKm,
+          heartRate: sample.heartRate,
+          elevationM: sample.altitudeM,
+          gradePct
+        };
+      });
+
+    const paceRange = metricRange(basePoints.map((point) => point.paceSecondsPerKm));
+    const speedRange = metricRange(basePoints.map((point) => point.speedKmh));
+    const heartRateRange = metricRange(basePoints.map((point) => point.heartRate));
+    const elevationRange = metricRange(basePoints.map((point) => point.elevationM));
+    const has = {
+      pace: paceRange != null,
+      speed: speedRange != null,
+      heartRate: heartRateRange != null,
+      elevation: elevationRange != null
+    } satisfies Record<ChartSeriesKey, boolean>;
+    const visibleSeries = COMBINED_CHART_SERIES_ORDER.filter(
+      (key) => has[key] && chartSeriesVisibility[key]
+    );
+    const bands = buildCombinedChartBands(visibleSeries);
+
+    const data: CombinedChartPoint[] = basePoints.map((point) => ({
+      ...point,
+      pacePlot: normalizeToBand(point.paceSecondsPerKm, paceRange, bands.pace, true),
+      speedPlot: normalizeToBand(point.speedKmh, speedRange, bands.speed),
+      heartRatePlot: normalizeToBand(point.heartRate, heartRateRange, bands.heartRate),
+      elevationPlot: normalizeToBand(point.elevationM, elevationRange, bands.elevation)
+    }));
+
+    const maxDistanceKm = Math.max(
+      ...data.map((point) => point.distanceKm),
+      totalDistanceM > 0 ? totalDistanceM / 1000 : 0
+    );
+
+    return {
+      data,
+      has,
+      maxDistanceKm
+    };
+  }, [detail, chartSeriesVisibility]);
+
+  const fullChartXAxisDomain = useMemo<ChartZoomDomain>(
+    () => [0, Math.max(0.1, combinedChart.maxDistanceKm)],
+    [combinedChart.maxDistanceKm]
   );
 
-  const heartRateData = useMemo(
-    () =>
-      (detail?.samples ?? [])
-        .filter((sample) => sample.heartRate != null)
-        .map((sample) => ({
-          elapsedMin: sample.elapsedSeconds / 60,
-          heartRate: sample.heartRate ?? 0
-        })),
-    [detail?.samples]
-  );
+  useEffect(() => {
+    if (!chartZoomDomain) {
+      return;
+    }
 
-  const elevationData = useMemo(
-    () =>
-      (detail?.samples ?? [])
-        .filter((sample) => sample.altitudeM != null)
-        .map((sample) => ({
-          x: sample.distanceM ? sample.distanceM / 1000 : sample.elapsedSeconds / 60,
-          elevationM: sample.altitudeM ?? 0
-        })),
-    [detail?.samples]
-  );
+    const [, zoomMax] = chartZoomDomain;
+    if (zoomMax <= fullChartXAxisDomain[1]) {
+      return;
+    }
+
+    setChartZoomDomain(null);
+  }, [chartZoomDomain, fullChartXAxisDomain]);
+
+  const activeChartXAxisDomain = chartZoomDomain ?? fullChartXAxisDomain;
+
+  const combinedChartDisplayData = useMemo<CombinedChartPoint[]>(() => {
+    if (combinedChart.data.length === 0) {
+      return combinedChart.data;
+    }
+
+    const visibleSeries = COMBINED_CHART_SERIES_ORDER.filter(
+      (key) => combinedChart.has[key] && chartSeriesVisibility[key]
+    );
+    const bands = buildCombinedChartBands(visibleSeries);
+
+    const paceRange = metricRangeForVisibleDomain(
+      combinedChart.data,
+      activeChartXAxisDomain,
+      (point) => point.distanceKm,
+      (point) => point.paceSecondsPerKm
+    );
+    const speedRange = metricRangeForVisibleDomain(
+      combinedChart.data,
+      activeChartXAxisDomain,
+      (point) => point.distanceKm,
+      (point) => point.speedKmh
+    );
+    const heartRateRange = metricRangeForVisibleDomain(
+      combinedChart.data,
+      activeChartXAxisDomain,
+      (point) => point.distanceKm,
+      (point) => point.heartRate
+    );
+    const elevationRange = metricRangeForVisibleDomain(
+      combinedChart.data,
+      activeChartXAxisDomain,
+      (point) => point.distanceKm,
+      (point) => point.elevationM
+    );
+
+    return combinedChart.data.map((point) => ({
+      ...point,
+      pacePlot: normalizeToBand(point.paceSecondsPerKm, paceRange, bands.pace, true),
+      speedPlot: normalizeToBand(point.speedKmh, speedRange, bands.speed),
+      heartRatePlot: normalizeToBand(point.heartRate, heartRateRange, bands.heartRate),
+      elevationPlot: normalizeToBand(point.elevationM, elevationRange, bands.elevation)
+    }));
+  }, [activeChartXAxisDomain, chartSeriesVisibility, combinedChart.data, combinedChart.has]);
+
+  const cancelChartSelectionFrame = () => {
+    if (chartSelectionFrameRef.current == null) {
+      return;
+    }
+    cancelAnimationFrame(chartSelectionFrameRef.current);
+    chartSelectionFrameRef.current = null;
+  };
+
+  useEffect(() => () => cancelChartSelectionFrame(), []);
+
+  const syncChartSelectionDomain = () => {
+    const nextDomain = buildSelectionDomain(
+      chartDragAnchorRef.current,
+      chartDragCurrentRef.current,
+      fullChartXAxisDomain[1]
+    );
+
+    setChartSelectionDomain((current) => (chartDomainsEqual(current, nextDomain) ? current : nextDomain));
+  };
+
+  const scheduleChartSelectionSync = () => {
+    if (chartSelectionFrameRef.current != null) {
+      return;
+    }
+
+    chartSelectionFrameRef.current = requestAnimationFrame(() => {
+      chartSelectionFrameRef.current = null;
+      syncChartSelectionDomain();
+    });
+  };
+
+  const clearChartSelection = () => {
+    chartDragAnchorRef.current = null;
+    chartDragCurrentRef.current = null;
+    cancelChartSelectionFrame();
+    setChartSelectionDomain(null);
+  };
+
+  const handleChartMouseDown = (event: unknown) => {
+    const pointer = readChartPointer(event);
+    if (!pointer) {
+      clearChartSelection();
+      return;
+    }
+
+    chartDragAnchorRef.current = pointer;
+    chartDragCurrentRef.current = pointer;
+    setChartSelectionDomain(null);
+  };
+
+  const handleChartMouseMove = (event: unknown) => {
+    if (!chartDragAnchorRef.current) {
+      return;
+    }
+
+    const pointer = readChartPointer(event);
+    if (!pointer) {
+      return;
+    }
+
+    const previousPointer = chartDragCurrentRef.current;
+    if (
+      previousPointer &&
+      Math.abs(previousPointer.chartX - pointer.chartX) < 1 &&
+      Math.abs(previousPointer.valueKm - pointer.valueKm) < 1e-6
+    ) {
+      return;
+    }
+
+    chartDragCurrentRef.current = pointer;
+    scheduleChartSelectionSync();
+  };
+
+  const handleChartMouseUp = (event: unknown) => {
+    const anchor = chartDragAnchorRef.current;
+    if (!anchor) {
+      return;
+    }
+
+    const pointer = readChartPointer(event) ?? chartDragCurrentRef.current ?? anchor;
+    const pixelDelta = Math.abs(pointer.chartX - anchor.chartX);
+    const min = Math.max(0, Math.min(anchor.valueKm, pointer.valueKm));
+    const max = Math.min(fullChartXAxisDomain[1], Math.max(anchor.valueKm, pointer.valueKm));
+
+    clearChartSelection();
+
+    if (pixelDelta < CHART_DRAG_CLICK_THRESHOLD_PX) {
+      if (chartZoomDomain) {
+        setChartZoomDomain(null);
+      }
+      return;
+    }
+
+    if (!Number.isFinite(min) || !Number.isFinite(max) || max - min < CHART_MIN_ZOOM_SPAN_KM) {
+      return;
+    }
+
+    const currentMin = activeChartXAxisDomain[0];
+    const currentMax = activeChartXAxisDomain[1];
+    const sameAsCurrent =
+      Math.abs(min - currentMin) < Number.EPSILON * 100 &&
+      Math.abs(max - currentMax) < Number.EPSILON * 100;
+
+    if (!sameAsCurrent) {
+      setChartZoomDomain([min, max]);
+    }
+  };
 
   if (loading) {
     return <p className="text-sm text-muted">Loading activity...</p>;
@@ -294,119 +1085,298 @@ export function ActivityDetailPage() {
         </Link>
       </header>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Distance" value={formatDistanceKm(detail.summary.distanceM)} />
-        <MetricCard label="Duration" value={formatDuration(detail.summary.durationSeconds)} />
-        <MetricCard
-          label="Avg Speed / Pace"
-          value={`${formatSpeedKmh(detail.summary.avgSpeedMps)} · ${formatPaceMinKm(detail.summary.avgSpeedMps)}`}
-        />
-        <MetricCard
-          label="Elevation Gain"
-          value={`${Math.round(detail.summary.elevationGainM)} m`}
-          subLabel={`Avg HR ${detail.summary.avgHr ? Math.round(detail.summary.avgHr) : 'n/a'} · Max HR ${
-            detail.summary.maxHr ? Math.round(detail.summary.maxHr) : 'n/a'
-          }`}
-        />
-      </div>
-
-      <section className="overflow-hidden rounded-xl border border-border bg-panel">
-        <div className="border-b border-border px-4 py-3">
-          <h3 className="text-lg font-semibold text-foreground">Route</h3>
-        </div>
-        <MaximizableMapFrame
-          label="route map"
-          collapsedHeightClassName="h-80"
-          topLeftActions={
-            detail.track.length > 0 ? (
-              <ReducedComplexityMapToggle
-                enabled={reducedMapComplexity}
-                onChange={setReducedMapComplexity}
-              />
-            ) : null
-          }
-        >
-          {detail.track.length === 0 ? (
-            <div className="flex h-full items-center justify-center text-sm text-muted">
-              No GPS track available
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
+        <div className="order-2 space-y-6 xl:order-1">
+          <section className="overflow-hidden rounded-xl border border-border bg-panel">
+            <div className="border-b border-border px-4 py-3">
+              <h3 className="text-lg font-semibold text-foreground">Route</h3>
             </div>
-          ) : (
-            <ActivityRouteMap
-              track={detail.track}
-              reducedComplexity={reducedMapComplexity}
-              routeLineColorHex={accentPalette.routeLineHex}
-            />
-          )}
-        </MaximizableMapFrame>
-      </section>
-
-      <div className="grid gap-6 xl:grid-cols-3">
-        <section className="rounded-xl border border-border bg-panel p-4">
-          <h3 className="text-lg font-semibold text-foreground">Speed vs Time</h3>
-          <div className="mt-3 h-64">
-            {speedData.length === 0 ? (
-              <p className="text-sm text-muted">No speed samples available.</p>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={speedData}>
-                  <CartesianGrid stroke="#2B313A" />
-                  <XAxis dataKey="elapsedMin" stroke="#9EA4AE" />
-                  <YAxis stroke="#9EA4AE" />
-                  <Tooltip />
-                  <Line
-                    type="monotone"
-                    dataKey="speedKmh"
-                    stroke={accentPalette.speedChartLineHex}
-                    dot={false}
+            <MaximizableMapFrame
+              label="route map"
+              collapsedHeightClassName="h-96"
+              topLeftActions={
+                detail.track.length > 0 ? (
+                  <ReducedComplexityMapToggle
+                    enabled={reducedMapComplexity}
+                    onChange={setReducedMapComplexity}
                   />
-                </LineChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </section>
+                ) : null
+              }
+            >
+              {detail.track.length === 0 ? (
+                <div className="flex h-full items-center justify-center text-sm text-muted">
+                  No GPS track available
+                </div>
+              ) : (
+                <ActivityRouteMap
+                  track={detail.track}
+                  reducedComplexity={reducedMapComplexity}
+                  routeLineColorHex={accentPalette.routeLineHex}
+                />
+              )}
+            </MaximizableMapFrame>
+          </section>
 
-        <section className="rounded-xl border border-border bg-panel p-4">
-          <h3 className="text-lg font-semibold text-foreground">Heart Rate vs Time</h3>
-          <div className="mt-3 h-64">
-            {heartRateData.length === 0 ? (
-              <p className="text-sm text-muted">No heart rate data available.</p>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={heartRateData}>
-                  <CartesianGrid stroke="#2B313A" />
-                  <XAxis dataKey="elapsedMin" stroke="#9EA4AE" />
-                  <YAxis stroke="#9EA4AE" />
-                  <Tooltip />
-                  <Line type="monotone" dataKey="heartRate" stroke="#FF8C42" dot={false} />
-                </LineChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </section>
+          <section className="rounded-xl border border-border bg-panel p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold text-foreground">Performance vs Distance</h3>
+                <p className="mt-1 text-xs text-muted">
+                  X-axis uses kilometers. Drag across a region to zoom. Y-scales auto-resize to the visible range. Click once on a chart to reset the zoom.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                {chartMode === 'combined' ? (
+                  <>
+                    <SeriesToggle
+                      label="Elevation"
+                      color={CHART_LINE_COLORS.elevation}
+                      enabled={chartSeriesVisibility.elevation}
+                      disabled={!combinedChart.has.elevation}
+                      onToggle={() =>
+                        setChartSeriesVisibility((current) => ({ ...current, elevation: !current.elevation }))
+                      }
+                    />
+                    <SeriesToggle
+                      label="Pace"
+                      color={CHART_LINE_COLORS.pace}
+                      enabled={chartSeriesVisibility.pace}
+                      disabled={!combinedChart.has.pace}
+                      onToggle={() => setChartSeriesVisibility((current) => ({ ...current, pace: !current.pace }))}
+                    />
+                    <SeriesToggle
+                      label="Heart Rate"
+                      color={CHART_LINE_COLORS.heartRate}
+                      enabled={chartSeriesVisibility.heartRate}
+                      disabled={!combinedChart.has.heartRate}
+                      onToggle={() =>
+                        setChartSeriesVisibility((current) => ({ ...current, heartRate: !current.heartRate }))
+                      }
+                    />
+                    <SeriesToggle
+                      label="Speed"
+                      color={CHART_LINE_COLORS.speed}
+                      enabled={chartSeriesVisibility.speed}
+                      disabled={!combinedChart.has.speed}
+                      onToggle={() => setChartSeriesVisibility((current) => ({ ...current, speed: !current.speed }))}
+                    />
+                  </>
+                ) : null}
+                <ChartModeToggle mode={chartMode} onChange={setChartMode} />
+              </div>
+            </div>
 
-        <section className="rounded-xl border border-border bg-panel p-4">
-          <h3 className="text-lg font-semibold text-foreground">Elevation</h3>
-          <div className="mt-3 h-64">
-            {elevationData.length === 0 ? (
-              <p className="text-sm text-muted">No elevation data available.</p>
+            {chartMode === 'combined' ? (
+              <>
+                <div className="mt-3 h-72">
+                  {combinedChart.data.length === 0 ? (
+                    <p className="text-sm text-muted">No chart samples available.</p>
+                  ) : (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <ComposedChart
+                        data={combinedChartDisplayData}
+                        margin={{ top: 8, right: 8, left: 8, bottom: 8 }}
+                        onMouseDown={handleChartMouseDown}
+                        onMouseMove={handleChartMouseMove}
+                        onMouseUp={handleChartMouseUp}
+                      >
+                        <CartesianGrid stroke={CHART_GRID_STROKE} strokeDasharray="3 3" horizontal={false} />
+                        <XAxis
+                          type="number"
+                          dataKey="distanceKm"
+                          stroke={CHART_AXIS_STROKE}
+                          tickFormatter={(value) => formatDistanceAxisTick(Number(value))}
+                          tickMargin={8}
+                          minTickGap={24}
+                          domain={activeChartXAxisDomain}
+                          allowDataOverflow
+                        />
+                        <YAxis hide type="number" domain={COMBINED_CHART_DOMAIN} />
+                        <Tooltip
+                          cursor={{ stroke: '#000000', strokeWidth: 1 }}
+                          content={<CombinedChartTooltip />}
+                          wrapperStyle={CHART_TOOLTIP_WRAPPER_STYLE}
+                          isAnimationActive={false}
+                        />
+                        {chartSelectionDomain ? (
+                          <ReferenceArea
+                            x1={chartSelectionDomain[0]}
+                            x2={chartSelectionDomain[1]}
+                            fill="rgba(var(--color-accent), 0.14)"
+                            stroke="rgba(var(--color-accent), 0.5)"
+                            strokeOpacity={0.9}
+                            ifOverflow="extendDomain"
+                          />
+                        ) : null}
+
+                        {chartSeriesVisibility.elevation && combinedChart.has.elevation ? (
+                          <Area
+                            type="monotone"
+                            dataKey="elevationPlot"
+                            stroke="rgba(119, 192, 67, 0.45)"
+                            fill="rgba(148, 163, 184, 0.24)"
+                            fillOpacity={1}
+                            strokeWidth={1}
+                            dot={false}
+                            activeDot={false}
+                            connectNulls
+                            isAnimationActive={false}
+                          />
+                        ) : null}
+
+                        {chartSeriesVisibility.pace && combinedChart.has.pace ? (
+                          <Line
+                            type="monotone"
+                            dataKey="pacePlot"
+                            stroke={CHART_LINE_COLORS.pace}
+                            strokeWidth={2}
+                            dot={false}
+                            connectNulls
+                            activeDot={{ r: 3, strokeWidth: 0 }}
+                            isAnimationActive={false}
+                          />
+                        ) : null}
+
+                        {chartSeriesVisibility.heartRate && combinedChart.has.heartRate ? (
+                          <Line
+                            type="monotone"
+                            dataKey="heartRatePlot"
+                            stroke={CHART_LINE_COLORS.heartRate}
+                            strokeWidth={2}
+                            dot={false}
+                            connectNulls
+                            activeDot={{ r: 3, strokeWidth: 0 }}
+                            isAnimationActive={false}
+                          />
+                        ) : null}
+
+                        {chartSeriesVisibility.speed && combinedChart.has.speed ? (
+                          <Line
+                            type="monotone"
+                            dataKey="speedPlot"
+                            stroke={CHART_LINE_COLORS.speed}
+                            strokeWidth={2}
+                            dot={false}
+                            connectNulls
+                            activeDot={{ r: 3, strokeWidth: 0 }}
+                            isAnimationActive={false}
+                          />
+                        ) : null}
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                  )}
+                </div>
+
+                <p className="mt-3 text-xs text-muted">
+                  Visible series are normalized into adaptive visual bands and re-scaled to the current zoom window; hover to view exact values.
+                </p>
+              </>
             ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={elevationData}>
-                  <CartesianGrid stroke="#2B313A" />
-                  <XAxis dataKey="x" stroke="#9EA4AE" />
-                  <YAxis stroke="#9EA4AE" />
-                  <Tooltip />
-                  <Line type="monotone" dataKey="elevationM" stroke="#77C043" dot={false} />
-                </LineChart>
-              </ResponsiveContainer>
+              <div className="mt-4 space-y-4">
+                <p className="text-xs text-muted">
+                  Split charts are synchronized by distance, so hovering one chart aligns the cursor across the others.
+                </p>
+                <SplitMetricChart
+                  title="Pace"
+                  unitLabel="min/km"
+                  data={combinedChart.data}
+                  hasData={combinedChart.has.pace}
+                  dataKey="paceSecondsPerKm"
+                  color={CHART_LINE_COLORS.pace}
+                  valueLabel="Pace"
+                  valueFormatter={formatPaceSeconds}
+                  yTickFormatter={formatPaceTick}
+                  xDomain={activeChartXAxisDomain}
+                  selectionDomain={chartSelectionDomain}
+                  onChartMouseDown={handleChartMouseDown}
+                  onChartMouseMove={handleChartMouseMove}
+                  onChartMouseUp={handleChartMouseUp}
+                />
+                <SplitMetricChart
+                  title="Speed"
+                  unitLabel="km/h"
+                  data={combinedChart.data}
+                  hasData={combinedChart.has.speed}
+                  dataKey="speedKmh"
+                  color={CHART_LINE_COLORS.speed}
+                  valueLabel="Speed"
+                  valueFormatter={(value) =>
+                    value == null ? 'n/a' : `${formatNumberTick(value, 1)} km/h`
+                  }
+                  yTickFormatter={(value) => formatNumberTick(value, 1)}
+                  xDomain={activeChartXAxisDomain}
+                  selectionDomain={chartSelectionDomain}
+                  onChartMouseDown={handleChartMouseDown}
+                  onChartMouseMove={handleChartMouseMove}
+                  onChartMouseUp={handleChartMouseUp}
+                />
+                <SplitMetricChart
+                  title="Heart Rate"
+                  unitLabel="bpm"
+                  data={combinedChart.data}
+                  hasData={combinedChart.has.heartRate}
+                  dataKey="heartRate"
+                  color={CHART_LINE_COLORS.heartRate}
+                  valueLabel="Heart rate"
+                  valueFormatter={(value) => (value == null ? 'n/a' : `${Math.round(value)} bpm`)}
+                  yTickFormatter={(value) => `${Math.round(value)}`}
+                  xDomain={activeChartXAxisDomain}
+                  selectionDomain={chartSelectionDomain}
+                  onChartMouseDown={handleChartMouseDown}
+                  onChartMouseMove={handleChartMouseMove}
+                  onChartMouseUp={handleChartMouseUp}
+                />
+                <SplitMetricChart
+                  title="Elevation"
+                  unitLabel="m"
+                  data={combinedChart.data}
+                  hasData={combinedChart.has.elevation}
+                  dataKey="elevationM"
+                  color={CHART_LINE_COLORS.elevation}
+                  valueLabel="Elevation"
+                  valueFormatter={(value) => (value == null ? 'n/a' : `${Math.round(value)} m`)}
+                  yTickFormatter={(value) => `${Math.round(value)}`}
+                  xDomain={activeChartXAxisDomain}
+                  selectionDomain={chartSelectionDomain}
+                  onChartMouseDown={handleChartMouseDown}
+                  onChartMouseMove={handleChartMouseMove}
+                  onChartMouseUp={handleChartMouseUp}
+                  variant="area"
+                />
+              </div>
             )}
+          </section>
+        </div>
+
+        <aside className="order-1 xl:order-2">
+          <div className="space-y-4 xl:sticky xl:top-4">
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
+              <MetricCard label="Distance" value={formatDistanceKm(detail.summary.distanceM)} />
+              <MetricCard label="Duration" value={formatDuration(detail.summary.durationSeconds)} />
+              <MetricCard
+                label="Avg Speed / Pace"
+                value={`${formatSpeedKmh(detail.summary.avgSpeedMps)} · ${formatPaceMinKm(detail.summary.avgSpeedMps)}`}
+              />
+              <MetricCard
+                label="Elevation Gain"
+                value={`${Math.round(detail.summary.elevationGainM)} m`}
+                subLabel={`Avg HR ${detail.summary.avgHr ? Math.round(detail.summary.avgHr) : 'n/a'} · Max HR ${
+                  detail.summary.maxHr ? Math.round(detail.summary.maxHr) : 'n/a'
+                }`}
+              />
+            </div>
+
+            <section className="rounded-xl border border-border bg-panel p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-muted">Samples</p>
+              <p className="mt-2 text-2xl font-semibold text-foreground">
+                {detail.samples.length}
+                <span className="ml-1 text-base font-medium text-muted">shown</span>
+              </p>
+              <p className="mt-1 text-xs text-muted">Original samples: {detail.originalSampleCount}</p>
+            </section>
           </div>
-        </section>
+        </aside>
       </div>
-
-      <p className="text-xs text-muted">
-        Samples shown: {detail.samples.length} / original {detail.originalSampleCount}
-      </p>
     </div>
   );
 }
