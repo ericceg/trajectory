@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
+  Area,
   CartesianGrid,
   Line,
   LineChart,
@@ -34,6 +35,7 @@ const CHART_GRID_STROKE = 'rgba(var(--color-border), 0.75)';
 const CHART_AXIS_STROKE = 'rgb(var(--color-muted))';
 const CHART_LINE_COLORS = {
   speed: '#0B1F5E', // navy blue
+  pace: '#2563EB', // blue
   heartRate: '#DC2626', // red
   elevation: '#77C043' // alpine green
 } as const;
@@ -44,24 +46,187 @@ const CHART_TOOLTIP_STYLE = {
   color: 'rgb(var(--color-foreground))',
   boxShadow: '0 8px 24px rgba(0, 0, 0, 0.12)'
 };
+const COMBINED_CHART_DOMAIN: [number, number] = [0, 100];
+const COMBINED_CHART_BANDS = {
+  elevation: { min: 0, max: 14 },
+  pace: { min: 18, max: 46 },
+  heartRate: { min: 50, max: 78 },
+  speed: { min: 82, max: 98 }
+} as const;
 
-function formatElapsedTick(seconds: number): string {
-  const rounded = Math.max(0, Math.round(seconds));
-  const hours = Math.floor(rounded / 3600);
-  const minutes = Math.floor((rounded % 3600) / 60);
-  const secs = rounded % 60;
+type ChartSeriesKey = 'pace' | 'speed' | 'heartRate' | 'elevation';
 
-  if (hours > 0) {
-    return `${hours}:${String(minutes).padStart(2, '0')}`;
-  }
+type ChartSeriesVisibility = Record<ChartSeriesKey, boolean>;
 
-  return `${minutes}:${String(secs).padStart(2, '0')}`;
+interface CombinedChartPoint {
+  distanceKm: number;
+  distanceM: number;
+  elapsedSeconds: number;
+  speedKmh: number | null;
+  paceSecondsPerKm: number | null;
+  heartRate: number | null;
+  elevationM: number | null;
+  gradePct: number | null;
+  pacePlot: number | null;
+  speedPlot: number | null;
+  heartRatePlot: number | null;
+  elevationPlot: number | null;
+}
+
+interface CombinedChartModel {
+  data: CombinedChartPoint[];
+  has: Record<ChartSeriesKey, boolean>;
+  maxDistanceKm: number;
 }
 
 function formatNumberTick(value: number, digits = 1): string {
   return new Intl.NumberFormat(undefined, {
     maximumFractionDigits: digits
   }).format(value);
+}
+
+function formatDistanceAxisTick(km: number): string {
+  return `${formatNumberTick(km, km >= 10 ? 0 : 1)} km`;
+}
+
+function formatElapsedTooltip(seconds: number): string {
+  const rounded = Math.max(0, Math.round(seconds));
+  const hours = Math.floor(rounded / 3600);
+  const minutes = Math.floor((rounded % 3600) / 60);
+  const secs = rounded % 60;
+
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  }
+
+  return `${minutes}:${String(secs).padStart(2, '0')}`;
+}
+
+function formatPaceSeconds(secondsPerKm: number | null): string {
+  if (secondsPerKm == null || !Number.isFinite(secondsPerKm) || secondsPerKm <= 0) {
+    return 'n/a';
+  }
+
+  const rounded = Math.round(secondsPerKm);
+  const minutes = Math.floor(rounded / 60);
+  const seconds = rounded % 60;
+  return `${minutes}:${String(seconds).padStart(2, '0')} /km`;
+}
+
+function metricRange(values: Array<number | null | undefined>): [number, number] | null {
+  const numeric = values.filter((value): value is number => value != null && Number.isFinite(value));
+  if (numeric.length === 0) {
+    return null;
+  }
+
+  let min = Math.min(...numeric);
+  let max = Math.max(...numeric);
+  if (min === max) {
+    const pad = Math.max(Math.abs(min) * 0.08, 1);
+    return [min - pad, max + pad];
+  }
+
+  const padding = (max - min) * 0.08;
+  min -= padding;
+  max += padding;
+  return [min, max];
+}
+
+function normalizeToBand(
+  value: number | null,
+  range: [number, number] | null,
+  band: { min: number; max: number },
+  invert = false
+): number | null {
+  if (value == null || range == null) {
+    return null;
+  }
+
+  const [rangeMin, rangeMax] = range;
+  const ratio = Math.min(1, Math.max(0, (value - rangeMin) / (rangeMax - rangeMin)));
+  const adjustedRatio = invert ? 1 - ratio : ratio;
+  return band.min + adjustedRatio * (band.max - band.min);
+}
+
+function SeriesToggle({
+  label,
+  color,
+  enabled,
+  disabled,
+  onToggle
+}: {
+  label: string;
+  color: string;
+  enabled: boolean;
+  disabled?: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      disabled={disabled}
+      aria-pressed={enabled}
+      className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs transition-colors ${
+        disabled
+          ? 'cursor-not-allowed border-border/60 text-muted/60'
+          : enabled
+            ? 'border-accent/50 bg-accent/10 text-foreground'
+            : 'border-border text-muted hover:text-foreground'
+      }`}
+    >
+      <span
+        className="h-2.5 w-2.5 rounded-full"
+        style={{
+          backgroundColor: color,
+          opacity: disabled ? 0.35 : 1
+        }}
+      />
+      {label}
+    </button>
+  );
+}
+
+function CombinedChartTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload?: CombinedChartPoint }> }) {
+  if (!active || !payload || payload.length === 0 || !payload[0]?.payload) {
+    return null;
+  }
+
+  const point = payload[0].payload;
+
+  return (
+    <div style={CHART_TOOLTIP_STYLE} className="min-w-[13rem] p-3 text-sm leading-tight">
+      <p className="font-semibold text-foreground">{formatElapsedTooltip(point.elapsedSeconds)}</p>
+      <div className="mt-2 space-y-1 text-foreground">
+        <p>
+          Dist: <span className="font-semibold">{formatNumberTick(point.distanceKm, 2)} km</span>
+        </p>
+        <p>
+          Pace: <span className="font-semibold">{formatPaceSeconds(point.paceSecondsPerKm)}</span>
+        </p>
+        <p>
+          Speed:{' '}
+          <span className="font-semibold">
+            {point.speedKmh == null ? 'n/a' : `${formatNumberTick(point.speedKmh, 1)} km/h`}
+          </span>
+        </p>
+        <p>
+          Heart rate:{' '}
+          <span className="font-semibold">{point.heartRate == null ? 'n/a' : `${Math.round(point.heartRate)} bpm`}</span>
+        </p>
+        <p>
+          Elevation:{' '}
+          <span className="font-semibold">{point.elevationM == null ? 'n/a' : `${Math.round(point.elevationM)} m`}</span>
+        </p>
+        <p>
+          Grade:{' '}
+          <span className="font-semibold">
+            {point.gradePct == null ? 'n/a' : `${point.gradePct >= 0 ? '+' : ''}${formatNumberTick(point.gradePct, 1)}%`}
+          </span>
+        </p>
+      </div>
+    </div>
+  );
 }
 
 function toRouteFeatureCollection(track: TrackPoint[]): FeatureCollection<LineString> {
@@ -240,6 +405,12 @@ export function ActivityDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reducedMapComplexity, setReducedMapComplexity] = useState(false);
+  const [chartSeriesVisibility, setChartSeriesVisibility] = useState<ChartSeriesVisibility>({
+    pace: true,
+    speed: false,
+    heartRate: true,
+    elevation: true
+  });
   const accentTheme = useAppStore((state) => state.settings?.accentTheme);
   const accentPalette = useMemo(() => getAccentThemePalette(accentTheme), [accentTheme]);
 
@@ -264,39 +435,84 @@ export function ActivityDetailPage() {
     void load();
   }, [id]);
 
-  const speedData = useMemo(
-    () =>
-      (detail?.samples ?? [])
-        .filter((sample) => sample.speedMps != null)
-        .map((sample) => ({
-          elapsedSeconds: sample.elapsedSeconds,
-          speedKmh: (sample.speedMps ?? 0) * 3.6
-        })),
-    [detail?.samples]
-  );
+  const combinedChart = useMemo<CombinedChartModel>(() => {
+    if (!detail) {
+      return {
+        data: [],
+        has: { pace: false, speed: false, heartRate: false, elevation: false },
+        maxDistanceKm: 0
+      };
+    }
 
-  const heartRateData = useMemo(
-    () =>
-      (detail?.samples ?? [])
-        .filter((sample) => sample.heartRate != null)
-        .map((sample) => ({
-          elapsedSeconds: sample.elapsedSeconds,
-          heartRate: sample.heartRate ?? 0
-        })),
-    [detail?.samples]
-  );
+    const totalDistanceM = Math.max(detail.summary.distanceM, 0);
+    const totalDurationSeconds = Math.max(detail.summary.durationSeconds, 1);
+    let lastDistanceM = 0;
+    let previousElevationPoint: { distanceM: number; elevationM: number } | null = null;
 
-  const elevationChart = useMemo(
-    () => ({
-      data: (detail?.samples ?? [])
-        .filter((sample) => sample.altitudeM != null)
-        .map((sample) => ({
+    const basePoints: Array<Omit<CombinedChartPoint, 'pacePlot' | 'speedPlot' | 'heartRatePlot' | 'elevationPlot'>> =
+      detail.samples.map((sample) => {
+        const estimatedDistanceM =
+          totalDistanceM > 0 ? (sample.elapsedSeconds / totalDurationSeconds) * totalDistanceM : lastDistanceM;
+        const distanceM = Math.max(lastDistanceM, sample.distanceM ?? estimatedDistanceM);
+        lastDistanceM = distanceM;
+
+        const speedKmh = sample.speedMps != null ? sample.speedMps * 3.6 : null;
+        const paceSecondsPerKm =
+          sample.speedMps != null && sample.speedMps > 0 ? 1000 / sample.speedMps : null;
+
+        let gradePct: number | null = null;
+        if (
+          sample.altitudeM != null &&
+          previousElevationPoint != null &&
+          distanceM - previousElevationPoint.distanceM >= 5
+        ) {
+          gradePct = ((sample.altitudeM - previousElevationPoint.elevationM) / (distanceM - previousElevationPoint.distanceM)) * 100;
+        }
+        if (sample.altitudeM != null) {
+          previousElevationPoint = { distanceM, elevationM: sample.altitudeM };
+        }
+
+        return {
+          distanceKm: distanceM / 1000,
+          distanceM,
           elapsedSeconds: sample.elapsedSeconds,
-          elevationM: sample.altitudeM ?? 0
-        }))
-    }),
-    [detail?.samples]
-  );
+          speedKmh,
+          paceSecondsPerKm,
+          heartRate: sample.heartRate,
+          elevationM: sample.altitudeM,
+          gradePct
+        };
+      });
+
+    const paceRange = metricRange(basePoints.map((point) => point.paceSecondsPerKm));
+    const speedRange = metricRange(basePoints.map((point) => point.speedKmh));
+    const heartRateRange = metricRange(basePoints.map((point) => point.heartRate));
+    const elevationRange = metricRange(basePoints.map((point) => point.elevationM));
+
+    const data: CombinedChartPoint[] = basePoints.map((point) => ({
+      ...point,
+      pacePlot: normalizeToBand(point.paceSecondsPerKm, paceRange, COMBINED_CHART_BANDS.pace, true),
+      speedPlot: normalizeToBand(point.speedKmh, speedRange, COMBINED_CHART_BANDS.speed),
+      heartRatePlot: normalizeToBand(point.heartRate, heartRateRange, COMBINED_CHART_BANDS.heartRate),
+      elevationPlot: normalizeToBand(point.elevationM, elevationRange, COMBINED_CHART_BANDS.elevation)
+    }));
+
+    const maxDistanceKm = Math.max(
+      ...data.map((point) => point.distanceKm),
+      totalDistanceM > 0 ? totalDistanceM / 1000 : 0
+    );
+
+    return {
+      data,
+      has: {
+        pace: paceRange != null,
+        speed: speedRange != null,
+        heartRate: heartRateRange != null,
+        elevation: elevationRange != null
+      },
+      maxDistanceKm
+    };
+  }, [detail]);
 
   if (loading) {
     return <p className="text-sm text-muted">Loading activity...</p>;
@@ -361,145 +577,136 @@ export function ActivityDetailPage() {
           </section>
 
           <section className="rounded-xl border border-border bg-panel p-4">
-            <div className="flex items-baseline justify-between gap-3">
-              <h3 className="text-lg font-semibold text-foreground">Speed vs Time</h3>
-              <p className="text-xs text-muted">km/h</p>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold text-foreground">Performance vs Distance</h3>
+                <p className="mt-1 text-xs text-muted">
+                  One shared plot (x-axis in kilometers) with hover cursor and point stats.
+                </p>
+              </div>
+              <div className="flex flex-wrap justify-end gap-2">
+                <SeriesToggle
+                  label="Elevation"
+                  color={CHART_LINE_COLORS.elevation}
+                  enabled={chartSeriesVisibility.elevation}
+                  disabled={!combinedChart.has.elevation}
+                  onToggle={() =>
+                    setChartSeriesVisibility((current) => ({ ...current, elevation: !current.elevation }))
+                  }
+                />
+                <SeriesToggle
+                  label="Pace"
+                  color={CHART_LINE_COLORS.pace}
+                  enabled={chartSeriesVisibility.pace}
+                  disabled={!combinedChart.has.pace}
+                  onToggle={() => setChartSeriesVisibility((current) => ({ ...current, pace: !current.pace }))}
+                />
+                <SeriesToggle
+                  label="Heart Rate"
+                  color={CHART_LINE_COLORS.heartRate}
+                  enabled={chartSeriesVisibility.heartRate}
+                  disabled={!combinedChart.has.heartRate}
+                  onToggle={() =>
+                    setChartSeriesVisibility((current) => ({ ...current, heartRate: !current.heartRate }))
+                  }
+                />
+                <SeriesToggle
+                  label="Speed"
+                  color={CHART_LINE_COLORS.speed}
+                  enabled={chartSeriesVisibility.speed}
+                  disabled={!combinedChart.has.speed}
+                  onToggle={() => setChartSeriesVisibility((current) => ({ ...current, speed: !current.speed }))}
+                />
+              </div>
             </div>
-            <div className="mt-3 h-56">
-              {speedData.length === 0 ? (
-                <p className="text-sm text-muted">No speed samples available.</p>
-              ) : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={speedData} syncId="activity-time-charts" margin={{ top: 8, right: 8, left: -8, bottom: 2 }}>
-                    <CartesianGrid stroke={CHART_GRID_STROKE} strokeDasharray="3 3" vertical={false} />
-                    <XAxis
-                      type="number"
-                      dataKey="elapsedSeconds"
-                      stroke={CHART_AXIS_STROKE}
-                      tickFormatter={formatElapsedTick}
-                      tickMargin={8}
-                      minTickGap={28}
-                    />
-                    <YAxis
-                      stroke={CHART_AXIS_STROKE}
-                      tickFormatter={(value) => formatNumberTick(value, 1)}
-                      tickMargin={8}
-                      width={44}
-                    />
-                    <Tooltip
-                      contentStyle={CHART_TOOLTIP_STYLE}
-                      cursor={{ stroke: 'rgba(var(--color-border), 0.95)', strokeWidth: 1 }}
-                      labelFormatter={(value) => `Time ${formatElapsedTick(Number(value))}`}
-                      formatter={(value) => [`${formatNumberTick(Number(value), 1)} km/h`, 'Speed']}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="speedKmh"
-                      stroke={CHART_LINE_COLORS.speed}
-                      strokeWidth={2}
-                      dot={false}
-                      activeDot={{ r: 3, strokeWidth: 0 }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              )}
-            </div>
-          </section>
 
-          <section className="rounded-xl border border-border bg-panel p-4">
-            <div className="flex items-baseline justify-between gap-3">
-              <h3 className="text-lg font-semibold text-foreground">Heart Rate vs Time</h3>
-              <p className="text-xs text-muted">bpm</p>
-            </div>
-            <div className="mt-3 h-56">
-              {heartRateData.length === 0 ? (
-                <p className="text-sm text-muted">No heart rate data available.</p>
-              ) : (
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={heartRateData} syncId="activity-time-charts" margin={{ top: 8, right: 8, left: -8, bottom: 2 }}>
-                    <CartesianGrid stroke={CHART_GRID_STROKE} strokeDasharray="3 3" vertical={false} />
-                    <XAxis
-                      type="number"
-                      dataKey="elapsedSeconds"
-                      stroke={CHART_AXIS_STROKE}
-                      tickFormatter={formatElapsedTick}
-                      tickMargin={8}
-                      minTickGap={28}
-                    />
-                    <YAxis
-                      stroke={CHART_AXIS_STROKE}
-                      tickFormatter={(value) => formatNumberTick(value, 0)}
-                      tickMargin={8}
-                      width={44}
-                    />
-                    <Tooltip
-                      contentStyle={CHART_TOOLTIP_STYLE}
-                      cursor={{ stroke: 'rgba(var(--color-border), 0.95)', strokeWidth: 1 }}
-                      labelFormatter={(value) => `Time ${formatElapsedTick(Number(value))}`}
-                      formatter={(value) => [`${Math.round(Number(value))} bpm`, 'Heart rate']}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="heartRate"
-                      stroke={CHART_LINE_COLORS.heartRate}
-                      strokeWidth={2}
-                      dot={false}
-                      activeDot={{ r: 3, strokeWidth: 0 }}
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              )}
-            </div>
-          </section>
-
-          <section className="rounded-xl border border-border bg-panel p-4">
-            <div className="flex items-baseline justify-between gap-3">
-              <h3 className="text-lg font-semibold text-foreground">Elevation</h3>
-              <p className="text-xs text-muted">x-axis: time</p>
-            </div>
-            <div className="mt-3 h-56">
-              {elevationChart.data.length === 0 ? (
-                <p className="text-sm text-muted">No elevation data available.</p>
+            <div className="mt-3 h-72">
+              {combinedChart.data.length === 0 ? (
+                <p className="text-sm text-muted">No chart samples available.</p>
               ) : (
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart
-                    data={elevationChart.data}
-                    syncId="activity-time-charts"
-                    margin={{ top: 8, right: 8, left: -8, bottom: 2 }}
+                    data={combinedChart.data}
+                    margin={{ top: 8, right: 8, left: 8, bottom: 8 }}
                   >
-                    <CartesianGrid stroke={CHART_GRID_STROKE} strokeDasharray="3 3" vertical={false} />
+                    <CartesianGrid stroke={CHART_GRID_STROKE} strokeDasharray="3 3" horizontal={false} />
                     <XAxis
                       type="number"
-                      dataKey="elapsedSeconds"
+                      dataKey="distanceKm"
                       stroke={CHART_AXIS_STROKE}
-                      tickFormatter={(value) => formatElapsedTick(Number(value))}
+                      tickFormatter={(value) => formatDistanceAxisTick(Number(value))}
                       tickMargin={8}
-                      minTickGap={28}
+                      minTickGap={24}
+                      domain={[0, Math.max(0.1, combinedChart.maxDistanceKm)]}
                     />
-                    <YAxis
-                      stroke={CHART_AXIS_STROKE}
-                      tickFormatter={(value) => formatNumberTick(value, 0)}
-                      tickMargin={8}
-                      width={52}
-                    />
+                    <YAxis hide type="number" domain={COMBINED_CHART_DOMAIN} />
                     <Tooltip
-                      contentStyle={CHART_TOOLTIP_STYLE}
                       cursor={{ stroke: 'rgba(var(--color-border), 0.95)', strokeWidth: 1 }}
-                      labelFormatter={(value) => `Time ${formatElapsedTick(Number(value))}`}
-                      formatter={(value) => [`${Math.round(Number(value))} m`, 'Elevation']}
+                      content={<CombinedChartTooltip />}
+                      isAnimationActive={false}
                     />
-                    <Line
-                      type="monotone"
-                      dataKey="elevationM"
-                      stroke={CHART_LINE_COLORS.elevation}
-                      strokeWidth={2}
-                      dot={false}
-                      activeDot={{ r: 3, strokeWidth: 0 }}
-                    />
+
+                    {chartSeriesVisibility.elevation && combinedChart.has.elevation ? (
+                      <Area
+                        type="monotone"
+                        dataKey="elevationPlot"
+                        stroke="rgba(119, 192, 67, 0.45)"
+                        fill="rgba(148, 163, 184, 0.24)"
+                        fillOpacity={1}
+                        strokeWidth={1}
+                        dot={false}
+                        activeDot={false}
+                        connectNulls
+                        isAnimationActive={false}
+                      />
+                    ) : null}
+
+                    {chartSeriesVisibility.pace && combinedChart.has.pace ? (
+                      <Line
+                        type="monotone"
+                        dataKey="pacePlot"
+                        stroke={CHART_LINE_COLORS.pace}
+                        strokeWidth={2}
+                        dot={false}
+                        connectNulls
+                        activeDot={{ r: 3, strokeWidth: 0 }}
+                        isAnimationActive={false}
+                      />
+                    ) : null}
+
+                    {chartSeriesVisibility.heartRate && combinedChart.has.heartRate ? (
+                      <Line
+                        type="monotone"
+                        dataKey="heartRatePlot"
+                        stroke={CHART_LINE_COLORS.heartRate}
+                        strokeWidth={2}
+                        dot={false}
+                        connectNulls
+                        activeDot={{ r: 3, strokeWidth: 0 }}
+                        isAnimationActive={false}
+                      />
+                    ) : null}
+
+                    {chartSeriesVisibility.speed && combinedChart.has.speed ? (
+                      <Line
+                        type="monotone"
+                        dataKey="speedPlot"
+                        stroke={CHART_LINE_COLORS.speed}
+                        strokeWidth={2}
+                        dot={false}
+                        connectNulls
+                        activeDot={{ r: 3, strokeWidth: 0 }}
+                        isAnimationActive={false}
+                      />
+                    ) : null}
                   </LineChart>
                 </ResponsiveContainer>
               )}
             </div>
+
+            <p className="mt-3 text-xs text-muted">
+              Series are normalized into visual bands for overlay plotting; hover to view exact values.
+            </p>
           </section>
         </div>
 

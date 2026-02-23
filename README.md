@@ -32,7 +32,7 @@ Prototype (actively evolving).
 - Filterable/sortable activities table
 - Active sort direction indicators (`▲`/`▼`) in activities table headers
 - In-memory activities list caching for snappy return navigation (no refetch unless filters/data change)
-- Activity detail with a right-side metric rail, route map, and full-width stacked charts
+- Activity detail with a right-side metric rail, route map, and a full-width combined overlay chart (km x-axis, series toggles, shared hover stats, elevation background)
 - Continuous, Google Maps-style smooth zooming/panning on map views
 - Toggling "Reduced complexity" preserves the current map viewport (pan/zoom)
 - Map views support in-place maximize/minimize (with `Esc` to close expanded view)
@@ -82,7 +82,7 @@ npm run tauri dev
    - **Activities** for filtering/sorting workouts (category + distance filters auto-apply)
    - **Heatmap** for a global path heatmap (overlapping GPS tracks; filter by time span/category/sport)
    - Enable **Reduced complexity (grayscale)** in Heatmap to declutter the map and emphasize route overlap
-   - **Activity Detail** for metrics/map/charts
+   - **Activity Detail** for metrics/map plus a combined distance-based chart with toggleable series and shared hover stats
    - Use the **Maximize** button on maps (Route + Heatmap) to expand them, then press **Esc** or **Minimize** to close
 
 
