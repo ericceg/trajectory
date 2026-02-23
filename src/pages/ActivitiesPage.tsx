@@ -73,6 +73,9 @@ export function ActivitiesPage() {
 
   const columns = useMemo(
     () => [
+      columnHelper.accessor('title', {
+        header: 'Title'
+      }),
       columnHelper.accessor('activityStart', {
         header: 'Date/Time',
         cell: (info) => formatDateTime(info.getValue())

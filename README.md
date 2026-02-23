@@ -1,6 +1,6 @@
 # Trajectory
 
-Trajectory is a macOS-first desktop app for local TCX activity analysis.
+Trajectory is a macOS-first desktop app for local TCX/FIT activity analysis.
 It is inspired by Strava-style training dashboards, but runs fully offline: no server, no cloud sync, no account required.
 
 ## Status
@@ -10,18 +10,20 @@ Prototype (actively evolving).
 ## Highlights
 
 - Local-only app (Tauri + Rust + React)
-- Import an existing folder of `.tcx` files (optionally recursive)
+- Import an existing folder of `.tcx` and/or `.fit` files (optionally recursive)
 - Incremental rescans using file path + mtime + size
 - Normal rescans prune deleted files from the database cache
 - Optional "Clear Cache + Full Rescan" for a full rebuild from disk
 - Background parsing with progress events
+- Summary-only `.fit` exports (no per-point records) are imported when session/activity totals exist, with no map/track charts
 - Route-level lazy loading for faster initial app startup
-- Workout category derivation (`Running`, `Biking`, `Strength`, etc.) from TCX sport + notes
+- Workout category derivation (`Running`, `Biking`, `Strength`, etc.) from TCX/FIT sport + notes
+- Workout titles stored for every activity (FIT session/workout names when available, otherwise generated fallback titles)
 - Single visible workout category in UI (used for filtering)
 - Activities filters auto-apply on change (no Apply button)
 - Light mode by default with optional dark mode toggle in Settings
 - Settings tabs for Import and Appearance
-- UI view/filter state is remembered across navigation (e.g. Settings tab, Dashboard calendar view, Heatmap filters), and sidebar sections reopen the last route you visited in that section (e.g. `Activities` detail page)
+- UI view/filter state is remembered across navigation (e.g. Settings tab, Dashboard calendar view, Heatmap filters); sidebar sections reopen the last route for Dashboard/Heatmap/Settings, while `Activities` always opens the list page
 - Dashboard with a drill-down training calendar (year view -> month view -> activity links)
 - Calendar bars can switch between hours, kilometers, and activity count
 - Hovering month or year bars uses horizontal cursor position (full-height hit area) and highlights the corresponding calendar day/month workout context with a quick pop animation
@@ -41,7 +43,7 @@ Prototype (actively evolving).
 ## Tech Stack
 
 - Shell: Tauri v2
-- Backend: Rust, `quick-xml`, `rusqlite`, `chrono`, `serde`
+- Backend: Rust, `quick-xml`, `fitparser`, `rusqlite`, `chrono`, `serde`
 - Frontend: React + TypeScript + Vite + TailwindCSS
 - UI/Data libs: React Router, Zustand, TanStack Table, Recharts, date-fns, MapLibre GL JS
 - Storage: SQLite + JSON settings in OS app data/config directories
@@ -64,7 +66,7 @@ npm run tauri dev
 ## Usage
 
 1. Launch Trajectory.
-2. On first launch, select an existing import folder containing `.tcx` files.
+2. On first launch, select an existing import folder containing `.tcx` and/or `.fit` files.
 3. After selecting a folder (and on every app startup), Trajectory automatically runs a background scan.
 4. Open **Settings** any time to run:
    - **Rescan** for a normal incremental pass.
@@ -146,7 +148,7 @@ User workaround (expected):
 ## Architecture
 
 - `src/`: React frontend (routes/pages/components/store)
-- `src-tauri/src/`: Rust backend (TCX parser, scan pipeline, DB, commands)
+- `src-tauri/src/`: Rust backend (TCX/FIT parsers, scan pipeline, DB, commands)
 - `src-tauri/tauri.conf.json`: Tauri app/bundle configuration
 
 ## Developer Documentation
@@ -191,5 +193,5 @@ Progress events:
 - Strava API integration
 - Cloud sync
 - User accounts/login
-- Editing TCX files
+- Editing activity source files (`.tcx` / `.fit`)
 - Mobile app

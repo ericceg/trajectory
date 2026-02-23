@@ -54,6 +54,7 @@ pub struct ActivitySummary {
     pub id: i64,
     pub source_path: String,
     pub activity_start: String,
+    pub title: String,
     pub category: String,
     pub sport_type: String,
     pub duration_seconds: f64,
@@ -148,6 +149,7 @@ pub struct ScanDoneEvent {
 #[derive(Debug, Clone)]
 pub struct ParsedActivity {
     pub start_time: String,
+    pub title: String,
     pub category: String,
     pub sport_type: String,
     pub duration_seconds: f64,

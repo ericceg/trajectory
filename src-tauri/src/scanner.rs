@@ -21,7 +21,7 @@ fn is_activity_file(path: &Path) -> bool {
         .and_then(|ext| ext.to_str())
         .map(|ext| {
             let lower = ext.to_ascii_lowercase();
-            lower == "tcx" || lower == "txc"
+            lower == "tcx" || lower == "txc" || lower == "fit"
         })
         .unwrap_or(false)
 }
@@ -170,13 +170,17 @@ pub fn scan_import_folder(
             continue;
         }
 
-        match parser::parse_tcx_file(&canonical_path).and_then(|parsed| {
+        match parser::parse_activity_file(&canonical_path).and_then(|parsed| {
             db::upsert_activity(&mut conn, &source_path, source_mtime, source_size, &parsed)
         }) {
             Ok(UpsertResult::Added) => added += 1,
             Ok(UpsertResult::Updated) => updated += 1,
             Err(err) => {
-                errors.push(format!("{}: {}", canonical_path.display(), err));
+                if parser::is_no_trackpoints_error(&err) {
+                    skipped += 1;
+                } else {
+                    errors.push(format!("{}: {}", canonical_path.display(), err));
+                }
             }
         }
 
