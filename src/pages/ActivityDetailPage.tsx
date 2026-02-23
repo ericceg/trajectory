@@ -32,6 +32,11 @@ const ACTIVITY_ROUTE_SOURCE_ID = 'activity-route-source';
 const ACTIVITY_ROUTE_LAYER_ID = 'activity-route-layer';
 const CHART_GRID_STROKE = 'rgba(var(--color-border), 0.75)';
 const CHART_AXIS_STROKE = 'rgb(var(--color-muted))';
+const CHART_LINE_COLORS = {
+  speed: '#0B1F5E', // navy blue
+  heartRate: '#DC2626', // red
+  elevation: '#77C043' // alpine green
+} as const;
 const CHART_TOOLTIP_STYLE = {
   borderRadius: 10,
   border: '1px solid rgba(var(--color-border), 0.9)',
@@ -390,7 +395,7 @@ export function ActivityDetailPage() {
                     <Line
                       type="monotone"
                       dataKey="speedKmh"
-                      stroke={accentPalette.speedChartLineHex}
+                      stroke={CHART_LINE_COLORS.speed}
                       strokeWidth={2}
                       dot={false}
                       activeDot={{ r: 3, strokeWidth: 0 }}
@@ -436,7 +441,7 @@ export function ActivityDetailPage() {
                     <Line
                       type="monotone"
                       dataKey="heartRate"
-                      stroke="#FF8C42"
+                      stroke={CHART_LINE_COLORS.heartRate}
                       strokeWidth={2}
                       dot={false}
                       activeDot={{ r: 3, strokeWidth: 0 }}
@@ -486,7 +491,7 @@ export function ActivityDetailPage() {
                     <Line
                       type="monotone"
                       dataKey="elevationM"
-                      stroke="#77C043"
+                      stroke={CHART_LINE_COLORS.elevation}
                       strokeWidth={2}
                       dot={false}
                       activeDot={{ r: 3, strokeWidth: 0 }}
