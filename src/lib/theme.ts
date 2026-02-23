@@ -1,4 +1,10 @@
-export type AccentThemeId = 'strava-orange' | 'pacific-blue' | 'alpine-green' | 'crimson-rose' | 'flamingo-pink';
+export type AccentThemeId =
+  | 'strava-orange'
+  | 'pacific-blue'
+  | 'alpine-green'
+  | 'crimson-rose'
+  | 'flamingo-pink'
+  | 'violet-indigo';
 
 interface AccentThemeDefinition {
   id: AccentThemeId;
@@ -74,6 +80,16 @@ const ACCENT_THEME_DEFINITIONS: AccentThemeDefinition[] = [
     accentSoftHex: '#ff80ed',
     accentTintRgb: '255 205 243',
     accentTintHex: '#ffcdf3'
+  },
+  {
+    id: 'violet-indigo',
+    label: 'Navy Blue',
+    accentRgb: '30 64 175',
+    accentHex: '#1E40AF',
+    accentSoftRgb: '59 130 246',
+    accentSoftHex: '#3B82F6',
+    accentTintRgb: '191 219 254',
+    accentTintHex: '#BFDBFE'
   }
 ];
 
