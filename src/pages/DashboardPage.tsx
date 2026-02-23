@@ -13,6 +13,7 @@ import {
   startOfMonth,
   startOfWeek,
   startOfYear,
+  subWeeks,
   subDays
 } from 'date-fns';
 
@@ -87,6 +88,28 @@ const summarizeActivities = (activities: ActivitySummary[]): SummaryTotals =>
       activityCount: 0
     }
   );
+
+const computeWeeklyStreak = (activities: ActivitySummary[]) => {
+  const activeWeeks = new Set<string>();
+
+  for (const activity of activities) {
+    const activityDate = parseISO(activity.activityStart);
+    if (Number.isNaN(activityDate.getTime())) {
+      continue;
+    }
+    activeWeeks.add(format(startOfWeek(activityDate, { weekStartsOn: 1 }), 'yyyy-MM-dd'));
+  }
+
+  let streak = 0;
+  let cursor = startOfWeek(startOfToday(), { weekStartsOn: 1 });
+
+  while (activeWeeks.has(format(cursor, 'yyyy-MM-dd'))) {
+    streak += 1;
+    cursor = subWeeks(cursor, 1);
+  }
+
+  return streak;
+};
 
 const metricValue = (totals: AggregateTotals, metric: CalendarBarMetric) => totals[metric];
 
@@ -269,6 +292,7 @@ export function DashboardPage() {
 
   const [weeklySummary, setWeeklySummary] = useState<SummaryTotals | null>(null);
   const [yearlySummary, setYearlySummary] = useState<SummaryTotals | null>(null);
+  const [weeklyStreak, setWeeklyStreak] = useState(0);
   const [summaryError, setSummaryError] = useState<string | null>(null);
 
   const selectedMonthDate = useMemo(
@@ -290,7 +314,7 @@ export function DashboardPage() {
         const today = startOfToday();
         const weekStart = subDays(today, 6);
         const yearStart = new Date(today.getFullYear(), 0, 1);
-        const [weekActivities, yearActivities] = await Promise.all([
+        const [weekActivities, yearActivities, allActivities] = await Promise.all([
           listActivities({
             startDate: format(weekStart, 'yyyy-MM-dd'),
             endDate: format(today, 'yyyy-MM-dd')
@@ -298,12 +322,14 @@ export function DashboardPage() {
           listActivities({
             startDate: format(yearStart, 'yyyy-MM-dd'),
             endDate: format(today, 'yyyy-MM-dd')
-          })
+          }),
+          listActivities()
         ]);
 
         if (!cancelled) {
           setWeeklySummary(summarizeActivities(weekActivities));
           setYearlySummary(summarizeActivities(yearActivities));
+          setWeeklyStreak(computeWeeklyStreak(allActivities));
         }
       } catch (err) {
         if (!cancelled) {
@@ -561,7 +587,7 @@ export function DashboardPage() {
       {summaryError ? <p className="rounded-lg bg-accent/20 p-3 text-sm text-accent">{summaryError}</p> : null}
       {calendarError ? <p className="rounded-lg bg-accent/20 p-3 text-sm text-accent">{calendarError}</p> : null}
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <MetricCard
           label="Weekly Distance"
           value={formatDistanceKm(weeklySummary?.totalDistanceM ?? 0)}
@@ -581,6 +607,36 @@ export function DashboardPage() {
           label="Year-to-Date Elevation"
           value={`${Math.round(yearlySummary?.totalElevationM ?? 0)} m`}
         />
+        <article className="relative overflow-hidden rounded-xl border border-border bg-panel p-4">
+          <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-amber-300/0 via-amber-300/70 to-accent/0" />
+          <p className="text-xs uppercase tracking-[0.18em] text-muted">Weekly Streak</p>
+          <div className="mt-2 flex items-center gap-3">
+            <div className="min-w-0">
+              <p className="text-2xl font-semibold leading-none text-foreground">{weeklyStreak}</p>
+              <p className="mt-1 text-xs text-muted">
+                {weeklyStreak === 1 ? 'consecutive week' : 'consecutive weeks'}
+              </p>
+            </div>
+            {weeklyStreak > 0 ? (
+              <span className="grid h-9 w-9 place-items-center text-accent" aria-hidden="true">
+                <svg
+                  viewBox="0 0 24 24"
+                  className="h-4.5 w-4.5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.8"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="M13 2 6.5 12h4.8L10.8 22 18 11.5h-5Z" />
+                </svg>
+              </span>
+            ) : null}
+          </div>
+          <p className="mt-2 text-xs text-muted">
+            {weeklyStreak > 0 ? 'At least one activity each week.' : 'No activity recorded this week yet.'}
+          </p>
+        </article>
       </div>
 
       <section className="rounded-xl border border-border bg-panel p-5">
