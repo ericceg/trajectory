@@ -282,19 +282,14 @@ export function ActivityDetailPage() {
   );
 
   const elevationChart = useMemo(
-    () => {
-      const altitudeSamples = (detail?.samples ?? []).filter((sample) => sample.altitudeM != null);
-      const useDistanceAxis =
-        altitudeSamples.length > 0 && altitudeSamples.every((sample) => sample.distanceM != null);
-
-      return {
-        useDistanceAxis,
-        data: altitudeSamples.map((sample) => ({
-          x: useDistanceAxis ? (sample.distanceM ?? 0) / 1000 : sample.elapsedSeconds,
+    () => ({
+      data: (detail?.samples ?? [])
+        .filter((sample) => sample.altitudeM != null)
+        .map((sample) => ({
+          elapsedSeconds: sample.elapsedSeconds,
           elevationM: sample.altitudeM ?? 0
         }))
-      };
-    },
+    }),
     [detail?.samples]
   );
 
@@ -455,9 +450,7 @@ export function ActivityDetailPage() {
           <section className="rounded-xl border border-border bg-panel p-4">
             <div className="flex items-baseline justify-between gap-3">
               <h3 className="text-lg font-semibold text-foreground">Elevation</h3>
-              <p className="text-xs text-muted">
-                {elevationChart.useDistanceAxis ? 'x-axis: km' : 'x-axis: time'}
-              </p>
+              <p className="text-xs text-muted">x-axis: time</p>
             </div>
             <div className="mt-3 h-56">
               {elevationChart.data.length === 0 ? (
@@ -468,13 +461,9 @@ export function ActivityDetailPage() {
                     <CartesianGrid stroke={CHART_GRID_STROKE} strokeDasharray="3 3" vertical={false} />
                     <XAxis
                       type="number"
-                      dataKey="x"
+                      dataKey="elapsedSeconds"
                       stroke={CHART_AXIS_STROKE}
-                      tickFormatter={(value) =>
-                        elevationChart.useDistanceAxis
-                          ? formatNumberTick(Number(value), 1)
-                          : formatElapsedTick(Number(value))
-                      }
+                      tickFormatter={(value) => formatElapsedTick(Number(value))}
                       tickMargin={8}
                       minTickGap={28}
                     />
@@ -487,11 +476,7 @@ export function ActivityDetailPage() {
                     <Tooltip
                       contentStyle={CHART_TOOLTIP_STYLE}
                       cursor={{ stroke: 'rgba(var(--color-border), 0.95)', strokeWidth: 1 }}
-                      labelFormatter={(value) =>
-                        elevationChart.useDistanceAxis
-                          ? `Distance ${formatNumberTick(Number(value), 2)} km`
-                          : `Time ${formatElapsedTick(Number(value))}`
-                      }
+                      labelFormatter={(value) => `Time ${formatElapsedTick(Number(value))}`}
                       formatter={(value) => [`${Math.round(Number(value))} m`, 'Elevation']}
                     />
                     <Line
