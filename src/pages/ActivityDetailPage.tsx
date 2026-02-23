@@ -51,18 +51,16 @@ const CHART_TOOLTIP_WRAPPER_STYLE = {
   pointerEvents: 'none'
 } as const;
 const COMBINED_CHART_DOMAIN: [number, number] = [0, 100];
-const COMBINED_CHART_BANDS = {
-  elevation: { min: 0, max: 14 },
-  pace: { min: 18, max: 46 },
-  heartRate: { min: 50, max: 78 },
-  speed: { min: 82, max: 98 }
-} as const;
+const COMBINED_CHART_SERIES_ORDER: ChartSeriesKey[] = ['speed', 'heartRate', 'pace', 'elevation'];
+const COMBINED_CHART_OUTER_PADDING = 3;
+const COMBINED_CHART_BAND_GAP = 4;
 
 type ChartSeriesKey = 'pace' | 'speed' | 'heartRate' | 'elevation';
 type SplitMetricKey = 'paceSecondsPerKm' | 'speedKmh' | 'heartRate' | 'elevationM';
 type ChartMode = 'combined' | 'split';
 
 type ChartSeriesVisibility = Record<ChartSeriesKey, boolean>;
+type ChartBand = { min: number; max: number };
 
 function defaultChartSeriesVisibility(sportType?: string): ChartSeriesVisibility {
   const normalizedSport = (sportType ?? '').trim().toLowerCase();
@@ -189,10 +187,10 @@ function metricRange(values: Array<number | null | undefined>): [number, number]
 function normalizeToBand(
   value: number | null,
   range: [number, number] | null,
-  band: { min: number; max: number },
+  band: ChartBand | null | undefined,
   invert = false
 ): number | null {
-  if (value == null || range == null) {
+  if (value == null || range == null || band == null) {
     return null;
   }
 
@@ -200,6 +198,31 @@ function normalizeToBand(
   const ratio = Math.min(1, Math.max(0, (value - rangeMin) / (rangeMax - rangeMin)));
   const adjustedRatio = invert ? 1 - ratio : ratio;
   return band.min + adjustedRatio * (band.max - band.min);
+}
+
+function buildCombinedChartBands(visibleSeries: ChartSeriesKey[]): Partial<Record<ChartSeriesKey, ChartBand>> {
+  if (visibleSeries.length === 0) {
+    return {};
+  }
+
+  const [domainMin, domainMax] = COMBINED_CHART_DOMAIN;
+  const domainHeight = domainMax - domainMin;
+  const outerPadding = visibleSeries.length === 1 ? 2 : COMBINED_CHART_OUTER_PADDING;
+  const bandGap = visibleSeries.length <= 1 ? 0 : COMBINED_CHART_BAND_GAP;
+  const totalGapHeight = bandGap * Math.max(0, visibleSeries.length - 1);
+  const usableHeight = Math.max(visibleSeries.length, domainHeight - outerPadding * 2 - totalGapHeight);
+  const bandHeight = usableHeight / visibleSeries.length;
+  const bands: Partial<Record<ChartSeriesKey, ChartBand>> = {};
+  let currentTop = domainMax - outerPadding;
+
+  for (const key of visibleSeries) {
+    const bandMax = currentTop;
+    const bandMin = currentTop - bandHeight;
+    bands[key] = { min: bandMin, max: bandMax };
+    currentTop = bandMin - bandGap;
+  }
+
+  return bands;
 }
 
 function SeriesToggle({
@@ -376,6 +399,11 @@ function SplitMetricChart({
   maxDistanceKm: number;
   variant?: 'line' | 'area';
 }) {
+  const yDomain = useMemo<[number, number] | undefined>(() => {
+    const range = metricRange(data.map((point) => point[dataKey] as number | null));
+    return range ?? undefined;
+  }, [data, dataKey]);
+
   return (
     <div className="rounded-lg border border-border/80 bg-bg/30 p-3">
       <div className="flex items-baseline justify-between gap-3">
@@ -407,6 +435,8 @@ function SplitMetricChart({
                 tickFormatter={(value) => yTickFormatter(Number(value))}
                 tickMargin={8}
                 width={58}
+                domain={yDomain ?? ['auto', 'auto']}
+                allowDataOverflow={Boolean(yDomain)}
               />
               <Tooltip
                 cursor={{ stroke: '#000000', strokeWidth: 1 }}
@@ -718,13 +748,23 @@ export function ActivityDetailPage() {
     const speedRange = metricRange(basePoints.map((point) => point.speedKmh));
     const heartRateRange = metricRange(basePoints.map((point) => point.heartRate));
     const elevationRange = metricRange(basePoints.map((point) => point.elevationM));
+    const has = {
+      pace: paceRange != null,
+      speed: speedRange != null,
+      heartRate: heartRateRange != null,
+      elevation: elevationRange != null
+    } satisfies Record<ChartSeriesKey, boolean>;
+    const visibleSeries = COMBINED_CHART_SERIES_ORDER.filter(
+      (key) => has[key] && chartSeriesVisibility[key]
+    );
+    const bands = buildCombinedChartBands(visibleSeries);
 
     const data: CombinedChartPoint[] = basePoints.map((point) => ({
       ...point,
-      pacePlot: normalizeToBand(point.paceSecondsPerKm, paceRange, COMBINED_CHART_BANDS.pace, true),
-      speedPlot: normalizeToBand(point.speedKmh, speedRange, COMBINED_CHART_BANDS.speed),
-      heartRatePlot: normalizeToBand(point.heartRate, heartRateRange, COMBINED_CHART_BANDS.heartRate),
-      elevationPlot: normalizeToBand(point.elevationM, elevationRange, COMBINED_CHART_BANDS.elevation)
+      pacePlot: normalizeToBand(point.paceSecondsPerKm, paceRange, bands.pace, true),
+      speedPlot: normalizeToBand(point.speedKmh, speedRange, bands.speed),
+      heartRatePlot: normalizeToBand(point.heartRate, heartRateRange, bands.heartRate),
+      elevationPlot: normalizeToBand(point.elevationM, elevationRange, bands.elevation)
     }));
 
     const maxDistanceKm = Math.max(
@@ -734,15 +774,10 @@ export function ActivityDetailPage() {
 
     return {
       data,
-      has: {
-        pace: paceRange != null,
-        speed: speedRange != null,
-        heartRate: heartRateRange != null,
-        elevation: elevationRange != null
-      },
+      has,
       maxDistanceKm
     };
-  }, [detail]);
+  }, [detail, chartSeriesVisibility]);
 
   if (loading) {
     return <p className="text-sm text-muted">Loading activity...</p>;
@@ -943,7 +978,7 @@ export function ActivityDetailPage() {
                 </div>
 
                 <p className="mt-3 text-xs text-muted">
-                  Series are normalized into visual bands for overlay plotting; hover to view exact values.
+                  Visible series are normalized into adaptive visual bands for overlay plotting; hover to view exact values.
                 </p>
               </>
             ) : (
