@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   Area,
   CartesianGrid,
   ComposedChart,
   Line,
+  ReferenceArea,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -54,6 +55,8 @@ const COMBINED_CHART_DOMAIN: [number, number] = [0, 100];
 const COMBINED_CHART_SERIES_ORDER: ChartSeriesKey[] = ['speed', 'heartRate', 'pace', 'elevation'];
 const COMBINED_CHART_OUTER_PADDING = 3;
 const COMBINED_CHART_BAND_GAP = 4;
+const CHART_DRAG_CLICK_THRESHOLD_PX = 4;
+const CHART_MIN_ZOOM_SPAN_KM = 0.01;
 
 type ChartSeriesKey = 'pace' | 'speed' | 'heartRate' | 'elevation';
 type SplitMetricKey = 'paceSecondsPerKm' | 'speedKmh' | 'heartRate' | 'elevationM';
@@ -61,6 +64,8 @@ type ChartMode = 'combined' | 'split';
 
 type ChartSeriesVisibility = Record<ChartSeriesKey, boolean>;
 type ChartBand = { min: number; max: number };
+type ChartZoomDomain = [number, number];
+type ChartPointer = { valueKm: number; chartX: number };
 
 function defaultChartSeriesVisibility(sportType?: string): ChartSeriesVisibility {
   const normalizedSport = (sportType ?? '').trim().toLowerCase();
@@ -118,6 +123,53 @@ interface CombinedChartModel {
   data: CombinedChartPoint[];
   has: Record<ChartSeriesKey, boolean>;
   maxDistanceKm: number;
+}
+
+function readChartPointer(event: unknown): ChartPointer | null {
+  if (!event || typeof event !== 'object') {
+    return null;
+  }
+
+  const maybePointer = event as { activeLabel?: unknown; chartX?: unknown };
+  const valueKm = Number(maybePointer.activeLabel);
+  const chartX = Number(maybePointer.chartX);
+
+  if (!Number.isFinite(valueKm) || !Number.isFinite(chartX)) {
+    return null;
+  }
+
+  return { valueKm, chartX };
+}
+
+function chartDomainsEqual(a: ChartZoomDomain | null, b: ChartZoomDomain | null): boolean {
+  if (a === b) {
+    return true;
+  }
+
+  if (!a || !b) {
+    return false;
+  }
+
+  return Math.abs(a[0] - b[0]) < 1e-6 && Math.abs(a[1] - b[1]) < 1e-6;
+}
+
+function buildSelectionDomain(
+  anchor: ChartPointer | null,
+  current: ChartPointer | null,
+  maxDomainKm: number
+): ChartZoomDomain | null {
+  if (!anchor || !current) {
+    return null;
+  }
+
+  const min = Math.max(0, Math.min(anchor.valueKm, current.valueKm));
+  const max = Math.min(maxDomainKm, Math.max(anchor.valueKm, current.valueKm));
+
+  if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
+    return null;
+  }
+
+  return [min, max];
 }
 
 function formatNumberTick(value: number, digits = 1): string {
@@ -384,7 +436,11 @@ function SplitMetricChart({
   valueLabel,
   valueFormatter,
   yTickFormatter,
-  maxDistanceKm,
+  xDomain,
+  selectionDomain,
+  onChartMouseDown,
+  onChartMouseMove,
+  onChartMouseUp,
   variant = 'line'
 }: {
   title: string;
@@ -396,7 +452,11 @@ function SplitMetricChart({
   valueLabel: string;
   valueFormatter: (value: number | null) => string;
   yTickFormatter: (value: number) => string;
-  maxDistanceKm: number;
+  xDomain: ChartZoomDomain;
+  selectionDomain?: ChartZoomDomain | null;
+  onChartMouseDown?: (event: unknown) => void;
+  onChartMouseMove?: (event: unknown) => void;
+  onChartMouseUp?: (event: unknown) => void;
   variant?: 'line' | 'area';
 }) {
   const yDomain = useMemo<[number, number] | undefined>(() => {
@@ -419,6 +479,9 @@ function SplitMetricChart({
               data={data}
               syncId="activity-distance-split-charts"
               margin={{ top: 8, right: 8, left: -6, bottom: 2 }}
+              onMouseDown={onChartMouseDown}
+              onMouseMove={onChartMouseMove}
+              onMouseUp={onChartMouseUp}
             >
               <CartesianGrid stroke={CHART_GRID_STROKE} strokeDasharray="3 3" vertical={false} />
               <XAxis
@@ -428,7 +491,8 @@ function SplitMetricChart({
                 tickFormatter={(value) => formatDistanceAxisTick(Number(value))}
                 tickMargin={8}
                 minTickGap={24}
-                domain={[0, Math.max(0.1, maxDistanceKm)]}
+                domain={xDomain}
+                allowDataOverflow
               />
               <YAxis
                 stroke={CHART_AXIS_STROKE}
@@ -450,6 +514,16 @@ function SplitMetricChart({
                 wrapperStyle={CHART_TOOLTIP_WRAPPER_STYLE}
                 isAnimationActive={false}
               />
+              {selectionDomain ? (
+                <ReferenceArea
+                  x1={selectionDomain[0]}
+                  x2={selectionDomain[1]}
+                  fill="rgba(var(--color-accent), 0.14)"
+                  stroke="rgba(var(--color-accent), 0.5)"
+                  strokeOpacity={0.9}
+                  ifOverflow="extendDomain"
+                />
+              ) : null}
               {variant === 'area' ? (
                 <Area
                   type="monotone"
@@ -663,6 +737,11 @@ export function ActivityDetailPage() {
   const [chartSeriesVisibility, setChartSeriesVisibility] = useState<ChartSeriesVisibility>(() =>
     defaultChartSeriesVisibility()
   );
+  const [chartZoomDomain, setChartZoomDomain] = useState<ChartZoomDomain | null>(null);
+  const [chartSelectionDomain, setChartSelectionDomain] = useState<ChartZoomDomain | null>(null);
+  const chartDragAnchorRef = useRef<ChartPointer | null>(null);
+  const chartDragCurrentRef = useRef<ChartPointer | null>(null);
+  const chartSelectionFrameRef = useRef<number | null>(null);
   const accentTheme = useAppStore((state) => state.settings?.accentTheme);
   const accentPalette = useMemo(() => getAccentThemePalette(accentTheme), [accentTheme]);
 
@@ -693,6 +772,10 @@ export function ActivityDetailPage() {
     }
 
     setChartSeriesVisibility(defaultChartSeriesVisibility(detail.summary.sportType));
+    setChartZoomDomain(null);
+    setChartSelectionDomain(null);
+    chartDragAnchorRef.current = null;
+    chartDragCurrentRef.current = null;
   }, [detail?.summary.id, detail?.summary.sportType]);
 
   const combinedChart = useMemo<CombinedChartModel>(() => {
@@ -779,6 +862,134 @@ export function ActivityDetailPage() {
     };
   }, [detail, chartSeriesVisibility]);
 
+  const fullChartXAxisDomain = useMemo<ChartZoomDomain>(
+    () => [0, Math.max(0.1, combinedChart.maxDistanceKm)],
+    [combinedChart.maxDistanceKm]
+  );
+
+  useEffect(() => {
+    if (!chartZoomDomain) {
+      return;
+    }
+
+    const [, zoomMax] = chartZoomDomain;
+    if (zoomMax <= fullChartXAxisDomain[1]) {
+      return;
+    }
+
+    setChartZoomDomain(null);
+  }, [chartZoomDomain, fullChartXAxisDomain]);
+
+  const activeChartXAxisDomain = chartZoomDomain ?? fullChartXAxisDomain;
+
+  const cancelChartSelectionFrame = () => {
+    if (chartSelectionFrameRef.current == null) {
+      return;
+    }
+    cancelAnimationFrame(chartSelectionFrameRef.current);
+    chartSelectionFrameRef.current = null;
+  };
+
+  useEffect(() => () => cancelChartSelectionFrame(), []);
+
+  const syncChartSelectionDomain = () => {
+    const nextDomain = buildSelectionDomain(
+      chartDragAnchorRef.current,
+      chartDragCurrentRef.current,
+      fullChartXAxisDomain[1]
+    );
+
+    setChartSelectionDomain((current) => (chartDomainsEqual(current, nextDomain) ? current : nextDomain));
+  };
+
+  const scheduleChartSelectionSync = () => {
+    if (chartSelectionFrameRef.current != null) {
+      return;
+    }
+
+    chartSelectionFrameRef.current = requestAnimationFrame(() => {
+      chartSelectionFrameRef.current = null;
+      syncChartSelectionDomain();
+    });
+  };
+
+  const clearChartSelection = () => {
+    chartDragAnchorRef.current = null;
+    chartDragCurrentRef.current = null;
+    cancelChartSelectionFrame();
+    setChartSelectionDomain(null);
+  };
+
+  const handleChartMouseDown = (event: unknown) => {
+    const pointer = readChartPointer(event);
+    if (!pointer) {
+      clearChartSelection();
+      return;
+    }
+
+    chartDragAnchorRef.current = pointer;
+    chartDragCurrentRef.current = pointer;
+    setChartSelectionDomain(null);
+  };
+
+  const handleChartMouseMove = (event: unknown) => {
+    if (!chartDragAnchorRef.current) {
+      return;
+    }
+
+    const pointer = readChartPointer(event);
+    if (!pointer) {
+      return;
+    }
+
+    const previousPointer = chartDragCurrentRef.current;
+    if (
+      previousPointer &&
+      Math.abs(previousPointer.chartX - pointer.chartX) < 1 &&
+      Math.abs(previousPointer.valueKm - pointer.valueKm) < 1e-6
+    ) {
+      return;
+    }
+
+    chartDragCurrentRef.current = pointer;
+    scheduleChartSelectionSync();
+  };
+
+  const handleChartMouseUp = (event: unknown) => {
+    const anchor = chartDragAnchorRef.current;
+    if (!anchor) {
+      return;
+    }
+
+    const pointer = readChartPointer(event) ?? chartDragCurrentRef.current ?? anchor;
+    const pixelDelta = Math.abs(pointer.chartX - anchor.chartX);
+    const min = Math.max(0, Math.min(anchor.valueKm, pointer.valueKm));
+    const max = Math.min(fullChartXAxisDomain[1], Math.max(anchor.valueKm, pointer.valueKm));
+
+    clearChartSelection();
+
+    if (pixelDelta < CHART_DRAG_CLICK_THRESHOLD_PX) {
+      if (chartZoomDomain) {
+        setChartZoomDomain(null);
+      }
+      return;
+    }
+
+    if (!Number.isFinite(min) || !Number.isFinite(max) || max - min < CHART_MIN_ZOOM_SPAN_KM) {
+      return;
+    }
+
+    const currentMin = activeChartXAxisDomain[0];
+    const currentMax = activeChartXAxisDomain[1];
+    const sameAsCurrent =
+      Math.abs(min - currentMin) < Number.EPSILON * 100 &&
+      Math.abs(max - currentMax) < Number.EPSILON * 100;
+
+    if (!sameAsCurrent) {
+      setChartZoomDomain([min, max]);
+    }
+  };
+
   if (loading) {
     return <p className="text-sm text-muted">Loading activity...</p>;
   }
@@ -846,11 +1057,10 @@ export function ActivityDetailPage() {
               <div>
                 <h3 className="text-lg font-semibold text-foreground">Performance vs Distance</h3>
                 <p className="mt-1 text-xs text-muted">
-                  X-axis uses kilometers. Switch between a combined overlay and synchronized split plots.
+                  X-axis uses kilometers. Drag across a region to zoom. Click once on a chart to reset the zoom.
                 </p>
               </div>
               <div className="flex flex-wrap items-center justify-end gap-2">
-                <ChartModeToggle mode={chartMode} onChange={setChartMode} />
                 {chartMode === 'combined' ? (
                   <>
                     <SeriesToggle
@@ -887,6 +1097,7 @@ export function ActivityDetailPage() {
                     />
                   </>
                 ) : null}
+                <ChartModeToggle mode={chartMode} onChange={setChartMode} />
               </div>
             </div>
 
@@ -900,6 +1111,9 @@ export function ActivityDetailPage() {
                       <ComposedChart
                         data={combinedChart.data}
                         margin={{ top: 8, right: 8, left: 8, bottom: 8 }}
+                        onMouseDown={handleChartMouseDown}
+                        onMouseMove={handleChartMouseMove}
+                        onMouseUp={handleChartMouseUp}
                       >
                         <CartesianGrid stroke={CHART_GRID_STROKE} strokeDasharray="3 3" horizontal={false} />
                         <XAxis
@@ -909,7 +1123,8 @@ export function ActivityDetailPage() {
                           tickFormatter={(value) => formatDistanceAxisTick(Number(value))}
                           tickMargin={8}
                           minTickGap={24}
-                          domain={[0, Math.max(0.1, combinedChart.maxDistanceKm)]}
+                          domain={activeChartXAxisDomain}
+                          allowDataOverflow
                         />
                         <YAxis hide type="number" domain={COMBINED_CHART_DOMAIN} />
                         <Tooltip
@@ -918,6 +1133,16 @@ export function ActivityDetailPage() {
                           wrapperStyle={CHART_TOOLTIP_WRAPPER_STYLE}
                           isAnimationActive={false}
                         />
+                        {chartSelectionDomain ? (
+                          <ReferenceArea
+                            x1={chartSelectionDomain[0]}
+                            x2={chartSelectionDomain[1]}
+                            fill="rgba(var(--color-accent), 0.14)"
+                            stroke="rgba(var(--color-accent), 0.5)"
+                            strokeOpacity={0.9}
+                            ifOverflow="extendDomain"
+                          />
+                        ) : null}
 
                         {chartSeriesVisibility.elevation && combinedChart.has.elevation ? (
                           <Area
@@ -996,7 +1221,11 @@ export function ActivityDetailPage() {
                   valueLabel="Pace"
                   valueFormatter={formatPaceSeconds}
                   yTickFormatter={formatPaceTick}
-                  maxDistanceKm={combinedChart.maxDistanceKm}
+                  xDomain={activeChartXAxisDomain}
+                  selectionDomain={chartSelectionDomain}
+                  onChartMouseDown={handleChartMouseDown}
+                  onChartMouseMove={handleChartMouseMove}
+                  onChartMouseUp={handleChartMouseUp}
                 />
                 <SplitMetricChart
                   title="Speed"
@@ -1010,7 +1239,11 @@ export function ActivityDetailPage() {
                     value == null ? 'n/a' : `${formatNumberTick(value, 1)} km/h`
                   }
                   yTickFormatter={(value) => formatNumberTick(value, 1)}
-                  maxDistanceKm={combinedChart.maxDistanceKm}
+                  xDomain={activeChartXAxisDomain}
+                  selectionDomain={chartSelectionDomain}
+                  onChartMouseDown={handleChartMouseDown}
+                  onChartMouseMove={handleChartMouseMove}
+                  onChartMouseUp={handleChartMouseUp}
                 />
                 <SplitMetricChart
                   title="Heart Rate"
@@ -1022,7 +1255,11 @@ export function ActivityDetailPage() {
                   valueLabel="Heart rate"
                   valueFormatter={(value) => (value == null ? 'n/a' : `${Math.round(value)} bpm`)}
                   yTickFormatter={(value) => `${Math.round(value)}`}
-                  maxDistanceKm={combinedChart.maxDistanceKm}
+                  xDomain={activeChartXAxisDomain}
+                  selectionDomain={chartSelectionDomain}
+                  onChartMouseDown={handleChartMouseDown}
+                  onChartMouseMove={handleChartMouseMove}
+                  onChartMouseUp={handleChartMouseUp}
                 />
                 <SplitMetricChart
                   title="Elevation"
@@ -1034,7 +1271,11 @@ export function ActivityDetailPage() {
                   valueLabel="Elevation"
                   valueFormatter={(value) => (value == null ? 'n/a' : `${Math.round(value)} m`)}
                   yTickFormatter={(value) => `${Math.round(value)}`}
-                  maxDistanceKm={combinedChart.maxDistanceKm}
+                  xDomain={activeChartXAxisDomain}
+                  selectionDomain={chartSelectionDomain}
+                  onChartMouseDown={handleChartMouseDown}
+                  onChartMouseMove={handleChartMouseMove}
+                  onChartMouseUp={handleChartMouseUp}
                   variant="area"
                 />
               </div>
