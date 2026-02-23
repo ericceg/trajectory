@@ -1118,14 +1118,14 @@ export function ActivityDetailPage() {
           </section>
 
           <section className="rounded-xl border border-border bg-panel p-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
+            <div className="flex flex-wrap items-start justify-between gap-3 sm:flex-nowrap">
+              <div className="min-w-0 flex-1">
                 <h3 className="text-lg font-semibold text-foreground">Performance vs Distance</h3>
                 <p className="mt-1 text-xs text-muted">
                   X-axis uses kilometers. Drag across a region to zoom. Y-scales auto-resize to the visible range. Click once on a chart to reset the zoom.
                 </p>
               </div>
-              <div className="flex flex-wrap items-center justify-end gap-2">
+              <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
                 {chartMode === 'combined' ? (
                   <>
                     <SeriesToggle
