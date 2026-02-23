@@ -57,15 +57,17 @@ const COMBINED_CHART_OUTER_PADDING = 3;
 const COMBINED_CHART_BAND_GAP = 4;
 const CHART_DRAG_CLICK_THRESHOLD_PX = 4;
 const CHART_MIN_ZOOM_SPAN_KM = 0.01;
+const CHART_MIN_ZOOM_SPAN_SECONDS = 5;
 
 type ChartSeriesKey = 'pace' | 'speed' | 'heartRate' | 'elevation';
 type SplitMetricKey = 'paceSecondsPerKm' | 'speedKmh' | 'heartRate' | 'elevationM';
 type ChartMode = 'combined' | 'split';
+type ChartXAxisDataKey = 'distanceKm' | 'elapsedSeconds';
 
 type ChartSeriesVisibility = Record<ChartSeriesKey, boolean>;
 type ChartBand = { min: number; max: number };
 type ChartZoomDomain = [number, number];
-type ChartPointer = { valueKm: number; chartX: number };
+type ChartPointer = { value: number; chartX: number };
 
 function defaultChartSeriesVisibility(sportType?: string): ChartSeriesVisibility {
   const normalizedSport = (sportType ?? '').trim().toLowerCase();
@@ -123,6 +125,7 @@ interface CombinedChartModel {
   data: CombinedChartPoint[];
   has: Record<ChartSeriesKey, boolean>;
   maxDistanceKm: number;
+  maxElapsedSeconds: number;
 }
 
 function readChartPointer(event: unknown): ChartPointer | null {
@@ -131,14 +134,14 @@ function readChartPointer(event: unknown): ChartPointer | null {
   }
 
   const maybePointer = event as { activeLabel?: unknown; chartX?: unknown };
-  const valueKm = Number(maybePointer.activeLabel);
+  const value = Number(maybePointer.activeLabel);
   const chartX = Number(maybePointer.chartX);
 
-  if (!Number.isFinite(valueKm) || !Number.isFinite(chartX)) {
+  if (!Number.isFinite(value) || !Number.isFinite(chartX)) {
     return null;
   }
 
-  return { valueKm, chartX };
+  return { value, chartX };
 }
 
 function chartDomainsEqual(a: ChartZoomDomain | null, b: ChartZoomDomain | null): boolean {
@@ -156,14 +159,14 @@ function chartDomainsEqual(a: ChartZoomDomain | null, b: ChartZoomDomain | null)
 function buildSelectionDomain(
   anchor: ChartPointer | null,
   current: ChartPointer | null,
-  maxDomainKm: number
+  maxDomainValue: number
 ): ChartZoomDomain | null {
   if (!anchor || !current) {
     return null;
   }
 
-  const min = Math.max(0, Math.min(anchor.valueKm, current.valueKm));
-  const max = Math.min(maxDomainKm, Math.max(anchor.valueKm, current.valueKm));
+  const min = Math.max(0, Math.min(anchor.value, current.value));
+  const max = Math.min(maxDomainValue, Math.max(anchor.value, current.value));
 
   if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
     return null;
@@ -180,6 +183,10 @@ function formatNumberTick(value: number, digits = 1): string {
 
 function formatDistanceAxisTick(km: number): string {
   return `${formatNumberTick(km, km >= 10 ? 0 : 1)} km`;
+}
+
+function formatElapsedAxisTick(seconds: number): string {
+  return formatElapsedTooltip(seconds);
 }
 
 function formatElapsedTooltip(seconds: number): string {
@@ -365,7 +372,15 @@ function ChartModeToggle({
   );
 }
 
-function CombinedChartTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload?: CombinedChartPoint }> }) {
+function CombinedChartTooltip({
+  active,
+  payload,
+  showDistance = true
+}: {
+  active?: boolean;
+  payload?: Array<{ payload?: CombinedChartPoint }>;
+  showDistance?: boolean;
+}) {
   if (!active || !payload || payload.length === 0 || !payload[0]?.payload) {
     return null;
   }
@@ -376,9 +391,11 @@ function CombinedChartTooltip({ active, payload }: { active?: boolean; payload?:
     <div style={CHART_TOOLTIP_STYLE} className="min-w-[13rem] p-3 text-sm leading-tight">
       <p className="font-semibold text-foreground">{formatElapsedTooltip(point.elapsedSeconds)}</p>
       <div className="mt-2 space-y-1 text-foreground">
-        <p>
-          Dist: <span className="font-semibold">{formatNumberTick(point.distanceKm, 2)} km</span>
-        </p>
+        {showDistance ? (
+          <p>
+            Dist: <span className="font-semibold">{formatNumberTick(point.distanceKm, 2)} km</span>
+          </p>
+        ) : null}
         <p>
           Pace: <span className="font-semibold">{formatPaceSeconds(point.paceSecondsPerKm)}</span>
         </p>
@@ -412,13 +429,15 @@ function SplitMetricTooltip({
   payload,
   metricKey,
   metricLabel,
-  formatValue
+  formatValue,
+  showDistance = true
 }: {
   active?: boolean;
   payload?: Array<{ payload?: CombinedChartPoint }>;
   metricKey: SplitMetricKey;
   metricLabel: string;
   formatValue: (value: number | null) => string;
+  showDistance?: boolean;
 }) {
   if (!active || !payload || payload.length === 0 || !payload[0]?.payload) {
     return null;
@@ -431,9 +450,11 @@ function SplitMetricTooltip({
     <div style={CHART_TOOLTIP_STYLE} className="min-w-[12rem] p-3 text-sm leading-tight">
       <p className="font-semibold text-foreground">{formatElapsedTooltip(point.elapsedSeconds)}</p>
       <div className="mt-2 space-y-1 text-foreground">
-        <p>
-          Dist: <span className="font-semibold">{formatNumberTick(point.distanceKm, 2)} km</span>
-        </p>
+        {showDistance ? (
+          <p>
+            Dist: <span className="font-semibold">{formatNumberTick(point.distanceKm, 2)} km</span>
+          </p>
+        ) : null}
         <p>
           {metricLabel}: <span className="font-semibold">{formatValue(rawValue)}</span>
         </p>
@@ -452,6 +473,9 @@ function SplitMetricChart({
   valueLabel,
   valueFormatter,
   yTickFormatter,
+  xAxisDataKey,
+  xTickFormatter,
+  showDistanceInTooltip = true,
   xDomain,
   selectionDomain,
   onChartMouseDown,
@@ -468,6 +492,9 @@ function SplitMetricChart({
   valueLabel: string;
   valueFormatter: (value: number | null) => string;
   yTickFormatter: (value: number) => string;
+  xAxisDataKey: ChartXAxisDataKey;
+  xTickFormatter: (value: number) => string;
+  showDistanceInTooltip?: boolean;
   xDomain: ChartZoomDomain;
   selectionDomain?: ChartZoomDomain | null;
   onChartMouseDown?: (event: unknown) => void;
@@ -479,11 +506,11 @@ function SplitMetricChart({
     const range = metricRangeForVisibleDomain(
       data,
       xDomain,
-      (point) => point.distanceKm,
+      (point) => point[xAxisDataKey],
       (point) => point[dataKey] as number | null
     );
     return range ?? undefined;
-  }, [data, dataKey, xDomain]);
+  }, [data, dataKey, xAxisDataKey, xDomain]);
 
   return (
     <div className="rounded-lg border border-border/80 bg-bg/30 p-3">
@@ -507,9 +534,9 @@ function SplitMetricChart({
               <CartesianGrid stroke={CHART_GRID_STROKE} strokeDasharray="3 3" vertical={false} />
               <XAxis
                 type="number"
-                dataKey="distanceKm"
+                dataKey={xAxisDataKey}
                 stroke={CHART_AXIS_STROKE}
-                tickFormatter={(value) => formatDistanceAxisTick(Number(value))}
+                tickFormatter={(value) => xTickFormatter(Number(value))}
                 tickMargin={8}
                 minTickGap={24}
                 domain={xDomain}
@@ -530,6 +557,7 @@ function SplitMetricChart({
                     metricKey={dataKey}
                     metricLabel={valueLabel}
                     formatValue={valueFormatter}
+                    showDistance={showDistanceInTooltip}
                   />
                 }
                 wrapperStyle={CHART_TOOLTIP_WRAPPER_STYLE}
@@ -804,7 +832,8 @@ export function ActivityDetailPage() {
       return {
         data: [],
         has: { pace: false, speed: false, heartRate: false, elevation: false },
-        maxDistanceKm: 0
+        maxDistanceKm: 0,
+        maxElapsedSeconds: 0
       };
     }
 
@@ -875,18 +904,28 @@ export function ActivityDetailPage() {
       ...data.map((point) => point.distanceKm),
       totalDistanceM > 0 ? totalDistanceM / 1000 : 0
     );
+    const maxElapsedSeconds = Math.max(0, ...data.map((point) => point.elapsedSeconds), detail.summary.durationSeconds);
 
     return {
       data,
       has,
-      maxDistanceKm
+      maxDistanceKm,
+      maxElapsedSeconds
     };
   }, [detail, chartSeriesVisibility]);
 
-  const fullChartXAxisDomain = useMemo<ChartZoomDomain>(
-    () => [0, Math.max(0.1, combinedChart.maxDistanceKm)],
-    [combinedChart.maxDistanceKm]
-  );
+  const chartUsesDistanceAxis = detail?.summary.hasGps ?? false;
+  const chartXAxisDataKey: ChartXAxisDataKey = chartUsesDistanceAxis ? 'distanceKm' : 'elapsedSeconds';
+  const chartXAxisTickFormatter = chartUsesDistanceAxis ? formatDistanceAxisTick : formatElapsedAxisTick;
+  const chartMinZoomSpan = chartUsesDistanceAxis ? CHART_MIN_ZOOM_SPAN_KM : CHART_MIN_ZOOM_SPAN_SECONDS;
+
+  const fullChartXAxisDomain = useMemo<ChartZoomDomain>(() => {
+    if (chartUsesDistanceAxis) {
+      return [0, Math.max(0.1, combinedChart.maxDistanceKm)];
+    }
+
+    return [0, Math.max(1, combinedChart.maxElapsedSeconds)];
+  }, [chartUsesDistanceAxis, combinedChart.maxDistanceKm, combinedChart.maxElapsedSeconds]);
 
   useEffect(() => {
     if (!chartZoomDomain) {
@@ -916,25 +955,25 @@ export function ActivityDetailPage() {
     const paceRange = metricRangeForVisibleDomain(
       combinedChart.data,
       activeChartXAxisDomain,
-      (point) => point.distanceKm,
+      (point) => point[chartXAxisDataKey],
       (point) => point.paceSecondsPerKm
     );
     const speedRange = metricRangeForVisibleDomain(
       combinedChart.data,
       activeChartXAxisDomain,
-      (point) => point.distanceKm,
+      (point) => point[chartXAxisDataKey],
       (point) => point.speedKmh
     );
     const heartRateRange = metricRangeForVisibleDomain(
       combinedChart.data,
       activeChartXAxisDomain,
-      (point) => point.distanceKm,
+      (point) => point[chartXAxisDataKey],
       (point) => point.heartRate
     );
     const elevationRange = metricRangeForVisibleDomain(
       combinedChart.data,
       activeChartXAxisDomain,
-      (point) => point.distanceKm,
+      (point) => point[chartXAxisDataKey],
       (point) => point.elevationM
     );
 
@@ -945,7 +984,7 @@ export function ActivityDetailPage() {
       heartRatePlot: normalizeToBand(point.heartRate, heartRateRange, bands.heartRate),
       elevationPlot: normalizeToBand(point.elevationM, elevationRange, bands.elevation)
     }));
-  }, [activeChartXAxisDomain, chartSeriesVisibility, combinedChart.data, combinedChart.has]);
+  }, [activeChartXAxisDomain, chartSeriesVisibility, chartXAxisDataKey, combinedChart.data, combinedChart.has]);
 
   const cancelChartSelectionFrame = () => {
     if (chartSelectionFrameRef.current == null) {
@@ -1011,7 +1050,7 @@ export function ActivityDetailPage() {
     if (
       previousPointer &&
       Math.abs(previousPointer.chartX - pointer.chartX) < 1 &&
-      Math.abs(previousPointer.valueKm - pointer.valueKm) < 1e-6
+      Math.abs(previousPointer.value - pointer.value) < 1e-6
     ) {
       return;
     }
@@ -1028,8 +1067,8 @@ export function ActivityDetailPage() {
 
     const pointer = readChartPointer(event) ?? chartDragCurrentRef.current ?? anchor;
     const pixelDelta = Math.abs(pointer.chartX - anchor.chartX);
-    const min = Math.max(0, Math.min(anchor.valueKm, pointer.valueKm));
-    const max = Math.min(fullChartXAxisDomain[1], Math.max(anchor.valueKm, pointer.valueKm));
+    const min = Math.max(0, Math.min(anchor.value, pointer.value));
+    const max = Math.min(fullChartXAxisDomain[1], Math.max(anchor.value, pointer.value));
 
     clearChartSelection();
 
@@ -1040,7 +1079,7 @@ export function ActivityDetailPage() {
       return;
     }
 
-    if (!Number.isFinite(min) || !Number.isFinite(max) || max - min < CHART_MIN_ZOOM_SPAN_KM) {
+    if (!Number.isFinite(min) || !Number.isFinite(max) || max - min < chartMinZoomSpan) {
       return;
     }
 
@@ -1087,42 +1126,40 @@ export function ActivityDetailPage() {
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="order-2 space-y-6 xl:order-1">
-          <section className="overflow-hidden rounded-xl border border-border bg-panel">
-            <div className="border-b border-border px-4 py-3">
-              <h3 className="text-lg font-semibold text-foreground">Route</h3>
-            </div>
-            <MaximizableMapFrame
-              label="route map"
-              collapsedHeightClassName="h-96"
-              topLeftActions={
-                detail.track.length > 0 ? (
+          {chartUsesDistanceAxis && detail.track.length > 0 ? (
+            <section className="overflow-hidden rounded-xl border border-border bg-panel">
+              <div className="border-b border-border px-4 py-3">
+                <h3 className="text-lg font-semibold text-foreground">Route</h3>
+              </div>
+              <MaximizableMapFrame
+                label="route map"
+                collapsedHeightClassName="h-96"
+                topLeftActions={
                   <ReducedComplexityMapToggle
                     enabled={reducedMapComplexity}
                     onChange={setReducedMapComplexity}
                   />
-                ) : null
-              }
-            >
-              {detail.track.length === 0 ? (
-                <div className="flex h-full items-center justify-center text-sm text-muted">
-                  No GPS track available
-                </div>
-              ) : (
+                }
+              >
                 <ActivityRouteMap
                   track={detail.track}
                   reducedComplexity={reducedMapComplexity}
                   routeLineColorHex={accentPalette.routeLineHex}
                 />
-              )}
-            </MaximizableMapFrame>
-          </section>
+              </MaximizableMapFrame>
+            </section>
+          ) : null}
 
           <section className="rounded-xl border border-border bg-panel p-4">
             <div className="flex flex-wrap items-start justify-between gap-3 sm:flex-nowrap">
               <div className="min-w-0 flex-1">
-                <h3 className="text-lg font-semibold text-foreground">Performance vs Distance</h3>
+                <h3 className="text-lg font-semibold text-foreground">
+                  {chartUsesDistanceAxis ? 'Performance vs Distance' : 'Performance vs Time'}
+                </h3>
                 <p className="mt-1 text-xs text-muted">
-                  X-axis uses kilometers. Drag across a region to zoom. Y-scales auto-resize to the visible range. Click once on a chart to reset the zoom.
+                  {chartUsesDistanceAxis
+                    ? 'X-axis uses kilometers. Drag across a region to zoom. Y-scales auto-resize to the visible range. Click once on a chart to reset the zoom.'
+                    : 'No GPS track detected, so charts use elapsed time on the X-axis. Drag across a region to zoom. Y-scales auto-resize to the visible range. Click once on a chart to reset the zoom.'}
                 </p>
               </div>
               <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
@@ -1183,9 +1220,9 @@ export function ActivityDetailPage() {
                         <CartesianGrid stroke={CHART_GRID_STROKE} strokeDasharray="3 3" horizontal={false} />
                         <XAxis
                           type="number"
-                          dataKey="distanceKm"
+                          dataKey={chartXAxisDataKey}
                           stroke={CHART_AXIS_STROKE}
-                          tickFormatter={(value) => formatDistanceAxisTick(Number(value))}
+                          tickFormatter={(value) => chartXAxisTickFormatter(Number(value))}
                           tickMargin={8}
                           minTickGap={24}
                           domain={activeChartXAxisDomain}
@@ -1194,7 +1231,7 @@ export function ActivityDetailPage() {
                         <YAxis hide type="number" domain={COMBINED_CHART_DOMAIN} />
                         <Tooltip
                           cursor={{ stroke: '#000000', strokeWidth: 1 }}
-                          content={<CombinedChartTooltip />}
+                          content={<CombinedChartTooltip showDistance={chartUsesDistanceAxis} />}
                           wrapperStyle={CHART_TOOLTIP_WRAPPER_STYLE}
                           isAnimationActive={false}
                         />
@@ -1274,7 +1311,7 @@ export function ActivityDetailPage() {
             ) : (
               <div className="mt-4 space-y-4">
                 <p className="text-xs text-muted">
-                  Split charts are synchronized by distance, so hovering one chart aligns the cursor across the others.
+                  Split charts are synchronized by {chartUsesDistanceAxis ? 'distance' : 'time'}, so hovering one chart aligns the cursor across the others.
                 </p>
                 <SplitMetricChart
                   title="Pace"
@@ -1286,6 +1323,9 @@ export function ActivityDetailPage() {
                   valueLabel="Pace"
                   valueFormatter={formatPaceSeconds}
                   yTickFormatter={formatPaceTick}
+                  xAxisDataKey={chartXAxisDataKey}
+                  xTickFormatter={chartXAxisTickFormatter}
+                  showDistanceInTooltip={chartUsesDistanceAxis}
                   xDomain={activeChartXAxisDomain}
                   selectionDomain={chartSelectionDomain}
                   onChartMouseDown={handleChartMouseDown}
@@ -1304,6 +1344,9 @@ export function ActivityDetailPage() {
                     value == null ? 'n/a' : `${formatNumberTick(value, 1)} km/h`
                   }
                   yTickFormatter={(value) => formatNumberTick(value, 1)}
+                  xAxisDataKey={chartXAxisDataKey}
+                  xTickFormatter={chartXAxisTickFormatter}
+                  showDistanceInTooltip={chartUsesDistanceAxis}
                   xDomain={activeChartXAxisDomain}
                   selectionDomain={chartSelectionDomain}
                   onChartMouseDown={handleChartMouseDown}
@@ -1320,6 +1363,9 @@ export function ActivityDetailPage() {
                   valueLabel="Heart rate"
                   valueFormatter={(value) => (value == null ? 'n/a' : `${Math.round(value)} bpm`)}
                   yTickFormatter={(value) => `${Math.round(value)}`}
+                  xAxisDataKey={chartXAxisDataKey}
+                  xTickFormatter={chartXAxisTickFormatter}
+                  showDistanceInTooltip={chartUsesDistanceAxis}
                   xDomain={activeChartXAxisDomain}
                   selectionDomain={chartSelectionDomain}
                   onChartMouseDown={handleChartMouseDown}
@@ -1336,6 +1382,9 @@ export function ActivityDetailPage() {
                   valueLabel="Elevation"
                   valueFormatter={(value) => (value == null ? 'n/a' : `${Math.round(value)} m`)}
                   yTickFormatter={(value) => `${Math.round(value)}`}
+                  xAxisDataKey={chartXAxisDataKey}
+                  xTickFormatter={chartXAxisTickFormatter}
+                  showDistanceInTooltip={chartUsesDistanceAxis}
                   xDomain={activeChartXAxisDomain}
                   selectionDomain={chartSelectionDomain}
                   onChartMouseDown={handleChartMouseDown}
