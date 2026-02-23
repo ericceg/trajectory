@@ -30,6 +30,34 @@ import type { ActivityDetail, TrackPoint } from '@/types';
 
 const ACTIVITY_ROUTE_SOURCE_ID = 'activity-route-source';
 const ACTIVITY_ROUTE_LAYER_ID = 'activity-route-layer';
+const CHART_GRID_STROKE = 'rgba(var(--color-border), 0.75)';
+const CHART_AXIS_STROKE = 'rgb(var(--color-muted))';
+const CHART_TOOLTIP_STYLE = {
+  borderRadius: 10,
+  border: '1px solid rgba(var(--color-border), 0.9)',
+  background: 'rgba(var(--color-panel), 0.96)',
+  color: 'rgb(var(--color-foreground))',
+  boxShadow: '0 8px 24px rgba(0, 0, 0, 0.12)'
+};
+
+function formatElapsedTick(seconds: number): string {
+  const rounded = Math.max(0, Math.round(seconds));
+  const hours = Math.floor(rounded / 3600);
+  const minutes = Math.floor((rounded % 3600) / 60);
+  const secs = rounded % 60;
+
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, '0')}`;
+  }
+
+  return `${minutes}:${String(secs).padStart(2, '0')}`;
+}
+
+function formatNumberTick(value: number, digits = 1): string {
+  return new Intl.NumberFormat(undefined, {
+    maximumFractionDigits: digits
+  }).format(value);
+}
 
 function toRouteFeatureCollection(track: TrackPoint[]): FeatureCollection<LineString> {
   const coordinates = track.map((point) => [point.lon, point.lat] as [number, number]);
@@ -236,7 +264,7 @@ export function ActivityDetailPage() {
       (detail?.samples ?? [])
         .filter((sample) => sample.speedMps != null)
         .map((sample) => ({
-          elapsedMin: sample.elapsedSeconds / 60,
+          elapsedSeconds: sample.elapsedSeconds,
           speedKmh: (sample.speedMps ?? 0) * 3.6
         })),
     [detail?.samples]
@@ -247,20 +275,26 @@ export function ActivityDetailPage() {
       (detail?.samples ?? [])
         .filter((sample) => sample.heartRate != null)
         .map((sample) => ({
-          elapsedMin: sample.elapsedSeconds / 60,
+          elapsedSeconds: sample.elapsedSeconds,
           heartRate: sample.heartRate ?? 0
         })),
     [detail?.samples]
   );
 
-  const elevationData = useMemo(
-    () =>
-      (detail?.samples ?? [])
-        .filter((sample) => sample.altitudeM != null)
-        .map((sample) => ({
-          x: sample.distanceM ? sample.distanceM / 1000 : sample.elapsedSeconds / 60,
+  const elevationChart = useMemo(
+    () => {
+      const altitudeSamples = (detail?.samples ?? []).filter((sample) => sample.altitudeM != null);
+      const useDistanceAxis =
+        altitudeSamples.length > 0 && altitudeSamples.every((sample) => sample.distanceM != null);
+
+      return {
+        useDistanceAxis,
+        data: altitudeSamples.map((sample) => ({
+          x: useDistanceAxis ? (sample.distanceM ?? 0) / 1000 : sample.elapsedSeconds,
           elevationM: sample.altitudeM ?? 0
-        })),
+        }))
+      };
+    },
     [detail?.samples]
   );
 
@@ -294,119 +328,216 @@ export function ActivityDetailPage() {
         </Link>
       </header>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="Distance" value={formatDistanceKm(detail.summary.distanceM)} />
-        <MetricCard label="Duration" value={formatDuration(detail.summary.durationSeconds)} />
-        <MetricCard
-          label="Avg Speed / Pace"
-          value={`${formatSpeedKmh(detail.summary.avgSpeedMps)} · ${formatPaceMinKm(detail.summary.avgSpeedMps)}`}
-        />
-        <MetricCard
-          label="Elevation Gain"
-          value={`${Math.round(detail.summary.elevationGainM)} m`}
-          subLabel={`Avg HR ${detail.summary.avgHr ? Math.round(detail.summary.avgHr) : 'n/a'} · Max HR ${
-            detail.summary.maxHr ? Math.round(detail.summary.maxHr) : 'n/a'
-          }`}
-        />
-      </div>
-
-      <section className="overflow-hidden rounded-xl border border-border bg-panel">
-        <div className="border-b border-border px-4 py-3">
-          <h3 className="text-lg font-semibold text-foreground">Route</h3>
-        </div>
-        <MaximizableMapFrame
-          label="route map"
-          collapsedHeightClassName="h-80"
-          topLeftActions={
-            detail.track.length > 0 ? (
-              <ReducedComplexityMapToggle
-                enabled={reducedMapComplexity}
-                onChange={setReducedMapComplexity}
-              />
-            ) : null
-          }
-        >
-          {detail.track.length === 0 ? (
-            <div className="flex h-full items-center justify-center text-sm text-muted">
-              No GPS track available
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
+        <div className="order-2 space-y-6 xl:order-1">
+          <section className="overflow-hidden rounded-xl border border-border bg-panel">
+            <div className="border-b border-border px-4 py-3">
+              <h3 className="text-lg font-semibold text-foreground">Route</h3>
             </div>
-          ) : (
-            <ActivityRouteMap
-              track={detail.track}
-              reducedComplexity={reducedMapComplexity}
-              routeLineColorHex={accentPalette.routeLineHex}
-            />
-          )}
-        </MaximizableMapFrame>
-      </section>
-
-      <div className="grid gap-6 xl:grid-cols-3">
-        <section className="rounded-xl border border-border bg-panel p-4">
-          <h3 className="text-lg font-semibold text-foreground">Speed vs Time</h3>
-          <div className="mt-3 h-64">
-            {speedData.length === 0 ? (
-              <p className="text-sm text-muted">No speed samples available.</p>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={speedData}>
-                  <CartesianGrid stroke="#2B313A" />
-                  <XAxis dataKey="elapsedMin" stroke="#9EA4AE" />
-                  <YAxis stroke="#9EA4AE" />
-                  <Tooltip />
-                  <Line
-                    type="monotone"
-                    dataKey="speedKmh"
-                    stroke={accentPalette.speedChartLineHex}
-                    dot={false}
+            <MaximizableMapFrame
+              label="route map"
+              collapsedHeightClassName="h-80"
+              topLeftActions={
+                detail.track.length > 0 ? (
+                  <ReducedComplexityMapToggle
+                    enabled={reducedMapComplexity}
+                    onChange={setReducedMapComplexity}
                   />
-                </LineChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </section>
+                ) : null
+              }
+            >
+              {detail.track.length === 0 ? (
+                <div className="flex h-full items-center justify-center text-sm text-muted">
+                  No GPS track available
+                </div>
+              ) : (
+                <ActivityRouteMap
+                  track={detail.track}
+                  reducedComplexity={reducedMapComplexity}
+                  routeLineColorHex={accentPalette.routeLineHex}
+                />
+              )}
+            </MaximizableMapFrame>
+          </section>
 
-        <section className="rounded-xl border border-border bg-panel p-4">
-          <h3 className="text-lg font-semibold text-foreground">Heart Rate vs Time</h3>
-          <div className="mt-3 h-64">
-            {heartRateData.length === 0 ? (
-              <p className="text-sm text-muted">No heart rate data available.</p>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={heartRateData}>
-                  <CartesianGrid stroke="#2B313A" />
-                  <XAxis dataKey="elapsedMin" stroke="#9EA4AE" />
-                  <YAxis stroke="#9EA4AE" />
-                  <Tooltip />
-                  <Line type="monotone" dataKey="heartRate" stroke="#FF8C42" dot={false} />
-                </LineChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </section>
+          <section className="rounded-xl border border-border bg-panel p-4">
+            <div className="flex items-baseline justify-between gap-3">
+              <h3 className="text-lg font-semibold text-foreground">Speed vs Time</h3>
+              <p className="text-xs text-muted">km/h</p>
+            </div>
+            <div className="mt-3 h-64">
+              {speedData.length === 0 ? (
+                <p className="text-sm text-muted">No speed samples available.</p>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={speedData} syncId="activity-time-charts" margin={{ top: 8, right: 8, left: -8, bottom: 2 }}>
+                    <CartesianGrid stroke={CHART_GRID_STROKE} strokeDasharray="3 3" vertical={false} />
+                    <XAxis
+                      type="number"
+                      dataKey="elapsedSeconds"
+                      stroke={CHART_AXIS_STROKE}
+                      tickFormatter={formatElapsedTick}
+                      tickMargin={8}
+                      minTickGap={28}
+                    />
+                    <YAxis
+                      stroke={CHART_AXIS_STROKE}
+                      tickFormatter={(value) => formatNumberTick(value, 1)}
+                      tickMargin={8}
+                      width={44}
+                    />
+                    <Tooltip
+                      contentStyle={CHART_TOOLTIP_STYLE}
+                      cursor={{ stroke: 'rgba(var(--color-border), 0.95)', strokeWidth: 1 }}
+                      labelFormatter={(value) => `Time ${formatElapsedTick(Number(value))}`}
+                      formatter={(value) => [`${formatNumberTick(Number(value), 1)} km/h`, 'Speed']}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="speedKmh"
+                      stroke={accentPalette.speedChartLineHex}
+                      strokeWidth={2}
+                      dot={false}
+                      activeDot={{ r: 3, strokeWidth: 0 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </section>
 
-        <section className="rounded-xl border border-border bg-panel p-4">
-          <h3 className="text-lg font-semibold text-foreground">Elevation</h3>
-          <div className="mt-3 h-64">
-            {elevationData.length === 0 ? (
-              <p className="text-sm text-muted">No elevation data available.</p>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={elevationData}>
-                  <CartesianGrid stroke="#2B313A" />
-                  <XAxis dataKey="x" stroke="#9EA4AE" />
-                  <YAxis stroke="#9EA4AE" />
-                  <Tooltip />
-                  <Line type="monotone" dataKey="elevationM" stroke="#77C043" dot={false} />
-                </LineChart>
-              </ResponsiveContainer>
-            )}
+          <section className="rounded-xl border border-border bg-panel p-4">
+            <div className="flex items-baseline justify-between gap-3">
+              <h3 className="text-lg font-semibold text-foreground">Heart Rate vs Time</h3>
+              <p className="text-xs text-muted">bpm</p>
+            </div>
+            <div className="mt-3 h-64">
+              {heartRateData.length === 0 ? (
+                <p className="text-sm text-muted">No heart rate data available.</p>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={heartRateData} syncId="activity-time-charts" margin={{ top: 8, right: 8, left: -8, bottom: 2 }}>
+                    <CartesianGrid stroke={CHART_GRID_STROKE} strokeDasharray="3 3" vertical={false} />
+                    <XAxis
+                      type="number"
+                      dataKey="elapsedSeconds"
+                      stroke={CHART_AXIS_STROKE}
+                      tickFormatter={formatElapsedTick}
+                      tickMargin={8}
+                      minTickGap={28}
+                    />
+                    <YAxis
+                      stroke={CHART_AXIS_STROKE}
+                      tickFormatter={(value) => formatNumberTick(value, 0)}
+                      tickMargin={8}
+                      width={44}
+                    />
+                    <Tooltip
+                      contentStyle={CHART_TOOLTIP_STYLE}
+                      cursor={{ stroke: 'rgba(var(--color-border), 0.95)', strokeWidth: 1 }}
+                      labelFormatter={(value) => `Time ${formatElapsedTick(Number(value))}`}
+                      formatter={(value) => [`${Math.round(Number(value))} bpm`, 'Heart rate']}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="heartRate"
+                      stroke="#FF8C42"
+                      strokeWidth={2}
+                      dot={false}
+                      activeDot={{ r: 3, strokeWidth: 0 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </section>
+
+          <section className="rounded-xl border border-border bg-panel p-4">
+            <div className="flex items-baseline justify-between gap-3">
+              <h3 className="text-lg font-semibold text-foreground">Elevation</h3>
+              <p className="text-xs text-muted">
+                {elevationChart.useDistanceAxis ? 'x-axis: km' : 'x-axis: time'}
+              </p>
+            </div>
+            <div className="mt-3 h-64">
+              {elevationChart.data.length === 0 ? (
+                <p className="text-sm text-muted">No elevation data available.</p>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={elevationChart.data} margin={{ top: 8, right: 8, left: -8, bottom: 2 }}>
+                    <CartesianGrid stroke={CHART_GRID_STROKE} strokeDasharray="3 3" vertical={false} />
+                    <XAxis
+                      type="number"
+                      dataKey="x"
+                      stroke={CHART_AXIS_STROKE}
+                      tickFormatter={(value) =>
+                        elevationChart.useDistanceAxis
+                          ? formatNumberTick(Number(value), 1)
+                          : formatElapsedTick(Number(value))
+                      }
+                      tickMargin={8}
+                      minTickGap={28}
+                    />
+                    <YAxis
+                      stroke={CHART_AXIS_STROKE}
+                      tickFormatter={(value) => formatNumberTick(value, 0)}
+                      tickMargin={8}
+                      width={52}
+                    />
+                    <Tooltip
+                      contentStyle={CHART_TOOLTIP_STYLE}
+                      cursor={{ stroke: 'rgba(var(--color-border), 0.95)', strokeWidth: 1 }}
+                      labelFormatter={(value) =>
+                        elevationChart.useDistanceAxis
+                          ? `Distance ${formatNumberTick(Number(value), 2)} km`
+                          : `Time ${formatElapsedTick(Number(value))}`
+                      }
+                      formatter={(value) => [`${Math.round(Number(value))} m`, 'Elevation']}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="elevationM"
+                      stroke="#77C043"
+                      strokeWidth={2}
+                      dot={false}
+                      activeDot={{ r: 3, strokeWidth: 0 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </section>
+        </div>
+
+        <aside className="order-1 xl:order-2">
+          <div className="space-y-4 xl:sticky xl:top-4">
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
+              <MetricCard label="Distance" value={formatDistanceKm(detail.summary.distanceM)} />
+              <MetricCard label="Duration" value={formatDuration(detail.summary.durationSeconds)} />
+              <MetricCard
+                label="Avg Speed / Pace"
+                value={`${formatSpeedKmh(detail.summary.avgSpeedMps)} · ${formatPaceMinKm(detail.summary.avgSpeedMps)}`}
+              />
+              <MetricCard
+                label="Elevation Gain"
+                value={`${Math.round(detail.summary.elevationGainM)} m`}
+                subLabel={`Avg HR ${detail.summary.avgHr ? Math.round(detail.summary.avgHr) : 'n/a'} · Max HR ${
+                  detail.summary.maxHr ? Math.round(detail.summary.maxHr) : 'n/a'
+                }`}
+              />
+            </div>
+
+            <section className="rounded-xl border border-border bg-panel p-4">
+              <p className="text-xs uppercase tracking-[0.18em] text-muted">Samples</p>
+              <p className="mt-2 text-2xl font-semibold text-foreground">
+                {detail.samples.length}
+                <span className="ml-1 text-base font-medium text-muted">shown</span>
+              </p>
+              <p className="mt-1 text-xs text-muted">Original samples: {detail.originalSampleCount}</p>
+            </section>
           </div>
-        </section>
+        </aside>
       </div>
-
-      <p className="text-xs text-muted">
-        Samples shown: {detail.samples.length} / original {detail.originalSampleCount}
-      </p>
     </div>
   );
 }
