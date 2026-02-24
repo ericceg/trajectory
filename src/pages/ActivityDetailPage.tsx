@@ -1758,6 +1758,10 @@ export function ActivityDetailPage() {
               <MetricCard label="Distance" value={formatDistanceKm(detail.summary.distanceM)} />
               <MetricCard label="Duration" value={formatDuration(detail.summary.durationSeconds)} />
               <MetricCard
+                label="Moving Time"
+                value={formatDuration(detail.summary.movingDurationSeconds)}
+              />
+              <MetricCard
                 label="Avg Speed / Pace"
                 value={`${formatSpeedKmh(detail.summary.avgSpeedMps)} · ${formatPaceMinKm(detail.summary.avgSpeedMps)}`}
               />

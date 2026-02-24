@@ -35,6 +35,7 @@ export interface ActivitySummary {
   category: string;
   sportType: string;
   durationSeconds: number;
+  movingDurationSeconds: number;
   distanceM: number;
   elevationGainM: number;
   avgSpeedMps: number | null;

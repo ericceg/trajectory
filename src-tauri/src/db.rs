@@ -54,6 +54,7 @@ pub fn init_db(db_path: &Path) -> Result<()> {
       category TEXT NOT NULL DEFAULT 'Other',
       sport_type TEXT NOT NULL,
       duration_seconds REAL NOT NULL,
+      moving_duration_seconds REAL NOT NULL DEFAULT 0,
       distance_m REAL NOT NULL,
       elevation_gain_m REAL NOT NULL,
       avg_speed_mps REAL,
@@ -92,6 +93,7 @@ pub fn init_db(db_path: &Path) -> Result<()> {
     ensure_activity_category_column(&conn)?;
     ensure_activity_title_column(&conn)?;
     ensure_activity_min_hr_column(&conn)?;
+    ensure_activity_moving_duration_column(&conn)?;
 
     Ok(())
 }
@@ -199,6 +201,36 @@ fn ensure_activity_min_hr_column(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+fn ensure_activity_moving_duration_column(conn: &Connection) -> Result<()> {
+    let has_moving_duration = conn
+        .query_row(
+            "SELECT 1 FROM pragma_table_info('activities') WHERE name = 'moving_duration_seconds' LIMIT 1",
+            [],
+            |_| Ok(()),
+        )
+        .optional()?
+        .is_some();
+
+    if !has_moving_duration {
+        conn.execute(
+            "ALTER TABLE activities ADD COLUMN moving_duration_seconds REAL NOT NULL DEFAULT 0",
+            [],
+        )?;
+    }
+
+    conn.execute_batch(
+        r#"
+    UPDATE activities
+    SET moving_duration_seconds = CASE
+      WHEN COALESCE(moving_duration_seconds, 0) <= 0 THEN COALESCE(duration_seconds, 0)
+      ELSE MIN(moving_duration_seconds, COALESCE(duration_seconds, moving_duration_seconds))
+    END;
+    "#,
+    )?;
+
+    Ok(())
+}
+
 pub fn source_file_meta_map(conn: &Connection) -> Result<HashMap<String, SourceFileMeta>> {
     let mut stmt = conn.prepare("SELECT source_path, source_mtime, source_size FROM activities")?;
 
@@ -265,6 +297,7 @@ pub fn upsert_activity(
       category,
       sport_type,
       duration_seconds,
+      moving_duration_seconds,
       distance_m,
       elevation_gain_m,
       avg_speed_mps,
@@ -276,7 +309,7 @@ pub fn upsert_activity(
       track_json,
       original_sample_count,
       updated_at
-    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, CURRENT_TIMESTAMP)
+    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, CURRENT_TIMESTAMP)
     ON CONFLICT(source_path) DO UPDATE SET
       source_mtime = excluded.source_mtime,
       source_size = excluded.source_size,
@@ -285,6 +318,7 @@ pub fn upsert_activity(
       category = excluded.category,
       sport_type = excluded.sport_type,
       duration_seconds = excluded.duration_seconds,
+      moving_duration_seconds = excluded.moving_duration_seconds,
       distance_m = excluded.distance_m,
       elevation_gain_m = excluded.elevation_gain_m,
       avg_speed_mps = excluded.avg_speed_mps,
@@ -306,6 +340,7 @@ pub fn upsert_activity(
             &parsed.category,
             &parsed.sport_type,
             parsed.duration_seconds,
+            parsed.moving_duration_seconds,
             parsed.distance_m,
             parsed.elevation_gain_m,
             parsed.avg_speed_mps,
@@ -381,14 +416,15 @@ fn map_summary_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ActivitySummary>
         category: row.get(4)?,
         sport_type: row.get(5)?,
         duration_seconds: row.get(6)?,
-        distance_m: row.get(7)?,
-        elevation_gain_m: row.get(8)?,
-        avg_speed_mps: row.get(9)?,
-        max_speed_mps: row.get(10)?,
-        avg_hr: row.get(11)?,
-        min_hr: row.get(12)?,
-        max_hr: row.get(13)?,
-        has_gps: row.get::<_, i64>(14)? == 1,
+        moving_duration_seconds: row.get(7)?,
+        distance_m: row.get(8)?,
+        elevation_gain_m: row.get(9)?,
+        avg_speed_mps: row.get(10)?,
+        max_speed_mps: row.get(11)?,
+        avg_hr: row.get(12)?,
+        min_hr: row.get(13)?,
+        max_hr: row.get(14)?,
+        has_gps: row.get::<_, i64>(15)? == 1,
     })
 }
 
@@ -534,6 +570,7 @@ pub fn list_activities(
       activities.category,
       activities.sport_type,
       activities.duration_seconds,
+      activities.moving_duration_seconds,
       activities.distance_m,
       CASE
         WHEN lower(activities.source_path) LIKE '%.fit' THEN activities.elevation_gain_m
@@ -789,6 +826,7 @@ pub fn get_activity(conn: &Connection, id: i64) -> Result<ActivityDetail> {
       category,
       sport_type,
       duration_seconds,
+      moving_duration_seconds,
       distance_m,
       elevation_gain_m,
       avg_speed_mps,
@@ -815,17 +853,18 @@ pub fn get_activity(conn: &Connection, id: i64) -> Result<ActivityDetail> {
                     category: row.get(4)?,
                     sport_type: row.get(5)?,
                     duration_seconds: row.get(6)?,
-                    distance_m: row.get(7)?,
-                    elevation_gain_m: row.get(8)?,
-                    avg_speed_mps: row.get(9)?,
-                    max_speed_mps: row.get(10)?,
-                    avg_hr: row.get(11)?,
-                    min_hr: row.get(12)?,
-                    max_hr: row.get(13)?,
-                    has_gps: row.get::<_, i64>(14)? == 1,
+                    moving_duration_seconds: row.get(7)?,
+                    distance_m: row.get(8)?,
+                    elevation_gain_m: row.get(9)?,
+                    avg_speed_mps: row.get(10)?,
+                    max_speed_mps: row.get(11)?,
+                    avg_hr: row.get(12)?,
+                    min_hr: row.get(13)?,
+                    max_hr: row.get(14)?,
+                    has_gps: row.get::<_, i64>(15)? == 1,
                 },
-                row.get(15)?,
                 row.get(16)?,
+                row.get(17)?,
             ))
         })
         .optional()?
@@ -870,6 +909,7 @@ pub fn get_activity_samples(
           category,
           sport_type,
           duration_seconds,
+          moving_duration_seconds,
           distance_m,
           elevation_gain_m,
           avg_speed_mps,

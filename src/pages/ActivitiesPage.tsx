@@ -91,6 +91,10 @@ export function ActivitiesPage() {
         header: 'Duration',
         cell: (info) => formatDuration(info.getValue())
       }),
+      columnHelper.accessor('movingDurationSeconds', {
+        header: 'Moving Time',
+        cell: (info) => formatDuration(info.getValue())
+      }),
       columnHelper.accessor('avgSpeedMps', {
         header: 'Avg Speed',
         cell: (info) => formatSpeedKmh(info.getValue())

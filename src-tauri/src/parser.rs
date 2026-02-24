@@ -10,6 +10,8 @@ use crate::models::{ActivitySample, ParsedActivity, TrackPoint};
 
 const MAX_UI_POINTS: usize = 2000;
 const FIT_SEMICIRCLES_TO_DEGREES: f64 = 180.0 / 2_147_483_648.0;
+const MOVING_SPEED_THRESHOLD_MPS: f64 = 0.5;
+const MOVING_MAX_SAMPLE_GAP_SECONDS: f64 = 300.0;
 
 #[derive(Debug, Error)]
 enum ParseActivityError {
@@ -37,7 +39,8 @@ struct RawTrackPoint {
 #[derive(Debug, Default, Clone)]
 struct SummaryMetrics {
     distance_m: f64,
-    duration_seconds: f64,
+    elapsed_duration_seconds: Option<f64>,
+    timer_duration_seconds: Option<f64>,
     elevation_gain_m: Option<f64>,
     avg_speed_mps: Option<f64>,
     max_speed_mps: Option<f64>,
@@ -294,6 +297,53 @@ fn fit_sport_code_to_name(code: u8) -> &'static str {
     }
 }
 
+fn estimate_moving_duration_seconds(samples: &[ActivitySample]) -> f64 {
+    if samples.len() < 2 {
+        return 0.0;
+    }
+
+    let mut moving_seconds = 0.0;
+
+    for window in samples.windows(2) {
+        let prev = &window[0];
+        let current = &window[1];
+        let dt = current.elapsed_seconds - prev.elapsed_seconds;
+
+        if !(dt > 0.0 && dt <= MOVING_MAX_SAMPLE_GAP_SECONDS) {
+            continue;
+        }
+
+        let segment_distance_m = match (prev.distance_m, current.distance_m) {
+            (Some(a), Some(b)) if b >= a => Some(b - a),
+            _ => match (prev.lat, prev.lon, current.lat, current.lon) {
+                (Some(prev_lat), Some(prev_lon), Some(lat), Some(lon)) => {
+                    Some(haversine_m(prev_lat, prev_lon, lat, lon))
+                }
+                _ => None,
+            },
+        };
+
+        let segment_speed_mps = current.speed_mps.or_else(|| {
+            segment_distance_m.and_then(|distance_m| {
+                if dt > 0.0 {
+                    Some(distance_m / dt)
+                } else {
+                    None
+                }
+            })
+        });
+
+        if segment_speed_mps
+            .map(|speed| speed >= MOVING_SPEED_THRESHOLD_MPS)
+            .unwrap_or(false)
+        {
+            moving_seconds += dt;
+        }
+    }
+
+    moving_seconds.max(0.0)
+}
+
 fn build_parsed_activity(
     path: &Path,
     points: Vec<RawTrackPoint>,
@@ -302,7 +352,8 @@ fn build_parsed_activity(
     notes: Option<String>,
     activity_start: Option<DateTime<Utc>>,
     fallback_distance_m: f64,
-    fallback_duration_seconds: f64,
+    fallback_elapsed_duration_seconds: Option<f64>,
+    fallback_moving_duration_seconds: Option<f64>,
     fallback_elevation_gain_m: Option<f64>,
 ) -> Result<ParsedActivity> {
     if points.is_empty() {
@@ -323,7 +374,10 @@ fn build_parsed_activity(
         (Some(start), Some(end)) if end >= start => {
             (end - start).num_milliseconds() as f64 / 1000.0
         }
-        _ => fallback_duration_seconds.max(0.0),
+        _ => fallback_elapsed_duration_seconds
+            .or(fallback_moving_duration_seconds)
+            .unwrap_or(0.0)
+            .max(0.0),
     };
 
     let mut gps_distance_accum = 0.0;
@@ -461,6 +515,22 @@ fn build_parsed_activity(
     let max_hr = heart_rate_values.iter().copied().reduce(f64::max);
 
     let sampled_track = downsample(&raw_track, MAX_UI_POINTS);
+    let estimated_moving_duration_seconds = estimate_moving_duration_seconds(&raw_samples);
+    let moving_duration_seconds = fallback_moving_duration_seconds
+        .filter(|value| *value > 0.0)
+        .unwrap_or_else(|| {
+            if estimated_moving_duration_seconds > 0.0 {
+                estimated_moving_duration_seconds
+            } else {
+                duration_seconds
+            }
+        })
+        .max(0.0);
+    let moving_duration_seconds = if duration_seconds > 0.0 {
+        moving_duration_seconds.min(duration_seconds)
+    } else {
+        moving_duration_seconds
+    };
     let category = derive_activity_category(&sport_type, notes.as_deref());
     let title = derive_activity_title(
         path,
@@ -476,6 +546,7 @@ fn build_parsed_activity(
         category,
         sport_type,
         duration_seconds: duration_seconds.max(0.0),
+        moving_duration_seconds,
         distance_m: distance_m.max(0.0),
         elevation_gain_m: fallback_elevation_gain_m.unwrap_or(elevation_gain).max(0.0),
         avg_speed_mps,
@@ -511,10 +582,25 @@ fn build_summary_only_activity(
     );
 
     let distance_m = summary.distance_m.max(0.0);
-    let duration_seconds = summary.duration_seconds.max(0.0);
+    let duration_seconds = summary
+        .elapsed_duration_seconds
+        .or(summary.timer_duration_seconds)
+        .unwrap_or(0.0)
+        .max(0.0);
+    let moving_duration_seconds = summary
+        .timer_duration_seconds
+        .or(summary.elapsed_duration_seconds)
+        .unwrap_or(duration_seconds)
+        .max(0.0)
+        .min(duration_seconds.max(0.0));
     let avg_speed_mps = summary.avg_speed_mps.or_else(|| {
-        if duration_seconds > 0.1 && distance_m > 0.0 {
-            Some(distance_m / duration_seconds)
+        let speed_duration_seconds = if moving_duration_seconds > 0.1 {
+            moving_duration_seconds
+        } else {
+            duration_seconds
+        };
+        if speed_duration_seconds > 0.1 && distance_m > 0.0 {
+            Some(distance_m / speed_duration_seconds)
         } else {
             None
         }
@@ -526,6 +612,7 @@ fn build_summary_only_activity(
         category,
         sport_type,
         duration_seconds,
+        moving_duration_seconds,
         distance_m,
         elevation_gain_m: summary.elevation_gain_m.unwrap_or(0.0).max(0.0),
         avg_speed_mps,
@@ -704,7 +791,8 @@ pub fn parse_tcx_file(path: &Path) -> Result<ParsedActivity> {
         notes,
         activity_start,
         lap_distance_total,
-        lap_duration_total,
+        Some(lap_duration_total),
+        None,
         None,
     )
 }
@@ -823,9 +911,17 @@ pub fn parse_fit_file(path: &Path) -> Result<ParsedActivity> {
                             summary.distance_m = summary.distance_m.max(v);
                         }
                     }
-                    "total_timer_time" | "total_elapsed_time" => {
+                    "total_elapsed_time" => {
                         if let Some(v) = fit_value_as_f64(value) {
-                            summary.duration_seconds = summary.duration_seconds.max(v);
+                            summary.elapsed_duration_seconds = Some(
+                                summary.elapsed_duration_seconds.map_or(v, |cur| cur.max(v)),
+                            );
+                        }
+                    }
+                    "total_timer_time" => {
+                        if let Some(v) = fit_value_as_f64(value) {
+                            summary.timer_duration_seconds =
+                                Some(summary.timer_duration_seconds.map_or(v, |cur| cur.max(v)));
                         }
                     }
                     "total_ascent" => {
@@ -905,7 +1001,8 @@ pub fn parse_fit_file(path: &Path) -> Result<ParsedActivity> {
         notes,
         activity_start,
         summary.distance_m,
-        summary.duration_seconds,
+        summary.elapsed_duration_seconds,
+        summary.timer_duration_seconds,
         summary.elevation_gain_m,
     )
 }

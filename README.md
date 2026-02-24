@@ -16,6 +16,7 @@ Prototype (actively evolving).
 - Optional "Clear Cache + Full Rescan" for a full rebuild from disk
 - Background parsing with progress events
 - Summary-only `.fit` exports (no per-point records) are imported when session/activity totals exist, with no map/track charts
+- Moving time is tracked separately from total duration (prefers FIT `total_timer_time`; otherwise estimated from sample movement)
 - Route-level lazy loading for faster initial app startup
 - Workout category derivation (`Running`, `Biking`, `Strength`, etc.) from TCX/FIT sport + notes
 - Workout titles stored for every activity (FIT session/workout names when available, otherwise generated fallback titles)
@@ -32,7 +33,7 @@ Prototype (actively evolving).
 - Filterable/sortable activities table (prefers FIT-reported total ascent when available; otherwise uses summed positive ascent from altitude samples)
 - Active sort direction indicators (`▲`/`▼`) in activities table headers
 - In-memory activities list caching for snappy return navigation (no refetch unless filters/data change)
-- Activity detail with a right-side metric rail, route map (when GPS is present), and switchable charts (distance-based when GPS track exists; time-based fallback when GPS is unavailable) with combined overlay or split plots, shared hover cursor/stats, elevation background in combined mode, zoom-aware adaptive vertical scaling for visible series, drag-to-zoom/click-to-reset, dedicated heart-rate metric card (avg/min/max), and elevation gain that prefers FIT-reported total ascent when available (otherwise summed positive ascent)
+- Activity detail with a right-side metric rail (including duration + moving time), route map (when GPS is present), and switchable charts (distance-based when GPS track exists; time-based fallback when GPS is unavailable) with combined overlay or split plots, shared hover cursor/stats, elevation background in combined mode, zoom-aware adaptive vertical scaling for visible series, drag-to-zoom/click-to-reset, dedicated heart-rate metric card (avg/min/max), and elevation gain that prefers FIT-reported total ascent when available (otherwise summed positive ascent)
 - Activity detail chart hover can highlight the corresponding GPS position on the route map with an animated moving dot (when sample coordinates are available)
 - Adaptive chart sample loading by zoom window (configurable max visible chart samples in Settings)
 - Continuous, Google Maps-style smooth zooming/panning on map views
