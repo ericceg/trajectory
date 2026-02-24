@@ -11,7 +11,7 @@ use crate::models::{
 const DEFAULT_CHART_MAX_SAMPLES: usize = 2000;
 const MIN_CHART_MAX_SAMPLES: usize = 50;
 const MAX_CHART_MAX_SAMPLES: usize = 20_000;
-const DB_SCHEMA_VERSION: i64 = 1;
+const DB_SCHEMA_VERSION: i64 = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UpsertResult {
@@ -80,6 +80,8 @@ pub fn init_db(db_path: &Path) -> Result<()> {
       distance_m REAL,
       speed_mps REAL,
       heart_rate REAL,
+      cadence REAL,
+      power_watts REAL,
       altitude_m REAL,
       lat REAL,
       lon REAL,
@@ -104,6 +106,12 @@ fn apply_legacy_migrations(conn: &Connection) -> Result<()> {
         ensure_activity_title_column(conn)?;
         ensure_activity_min_hr_column(conn)?;
         ensure_activity_moving_duration_column(conn)?;
+        conn.execute_batch("PRAGMA user_version = 1;")?;
+    }
+
+    if user_version < 2 {
+        ensure_activity_sample_cadence_column(conn)?;
+        ensure_activity_sample_power_column(conn)?;
         conn.execute_batch(&format!("PRAGMA user_version = {DB_SCHEMA_VERSION};"))?;
     }
 
@@ -239,6 +247,40 @@ fn ensure_activity_moving_duration_column(conn: &Connection) -> Result<()> {
     END;
     "#,
     )?;
+
+    Ok(())
+}
+
+fn ensure_activity_sample_cadence_column(conn: &Connection) -> Result<()> {
+    let has_cadence = conn
+        .query_row(
+            "SELECT 1 FROM pragma_table_info('activity_samples') WHERE name = 'cadence' LIMIT 1",
+            [],
+            |_| Ok(()),
+        )
+        .optional()?
+        .is_some();
+
+    if !has_cadence {
+        conn.execute("ALTER TABLE activity_samples ADD COLUMN cadence REAL", [])?;
+    }
+
+    Ok(())
+}
+
+fn ensure_activity_sample_power_column(conn: &Connection) -> Result<()> {
+    let has_power_watts = conn
+        .query_row(
+            "SELECT 1 FROM pragma_table_info('activity_samples') WHERE name = 'power_watts' LIMIT 1",
+            [],
+            |_| Ok(()),
+        )
+        .optional()?
+        .is_some();
+
+    if !has_power_watts {
+        conn.execute("ALTER TABLE activity_samples ADD COLUMN power_watts REAL", [])?;
+    }
 
     Ok(())
 }
@@ -387,11 +429,13 @@ pub fn upsert_activity(
         distance_m,
         speed_mps,
         heart_rate,
+        cadence,
+        power_watts,
         altitude_m,
         lat,
         lon,
         sample_time
-      ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+      ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
       "#,
         )?;
 
@@ -402,6 +446,8 @@ pub fn upsert_activity(
                 sample.distance_m,
                 sample.speed_mps,
                 sample.heart_rate,
+                sample.cadence,
+                sample.power_watts,
                 sample.altitude_m,
                 sample.lat,
                 sample.lon,
@@ -656,7 +702,7 @@ pub fn get_heatmap_data(conn: &Connection, filters: &HeatmapFilters) -> Result<H
 fn fetch_activity_samples(conn: &Connection, id: i64) -> Result<Vec<ActivitySample>> {
     let mut sample_stmt = conn.prepare(
         r#"
-    SELECT elapsed_seconds, distance_m, speed_mps, heart_rate, altitude_m, lat, lon, sample_time
+    SELECT elapsed_seconds, distance_m, speed_mps, heart_rate, cadence, power_watts, altitude_m, lat, lon, sample_time
     FROM activity_samples
     WHERE activity_id = ?1
     ORDER BY elapsed_seconds ASC
@@ -669,10 +715,12 @@ fn fetch_activity_samples(conn: &Connection, id: i64) -> Result<Vec<ActivitySamp
             distance_m: row.get(1)?,
             speed_mps: row.get(2)?,
             heart_rate: row.get(3)?,
-            altitude_m: row.get(4)?,
-            lat: row.get(5)?,
-            lon: row.get(6)?,
-            timestamp: row.get(7)?,
+            cadence: row.get(4)?,
+            power_watts: row.get(5)?,
+            altitude_m: row.get(6)?,
+            lat: row.get(7)?,
+            lon: row.get(8)?,
+            timestamp: row.get(9)?,
         })
     })?;
 
