@@ -38,7 +38,7 @@ struct RawTrackPoint {
 struct SummaryMetrics {
     distance_m: f64,
     duration_seconds: f64,
-    elevation_gain_m: f64,
+    elevation_gain_m: Option<f64>,
     avg_speed_mps: Option<f64>,
     max_speed_mps: Option<f64>,
     avg_hr: Option<f64>,
@@ -303,6 +303,7 @@ fn build_parsed_activity(
     activity_start: Option<DateTime<Utc>>,
     fallback_distance_m: f64,
     fallback_duration_seconds: f64,
+    fallback_elevation_gain_m: Option<f64>,
 ) -> Result<ParsedActivity> {
     if points.is_empty() {
         return Err(ParseActivityError::NoTrackpoints(path.display().to_string()).into());
@@ -476,7 +477,7 @@ fn build_parsed_activity(
         sport_type,
         duration_seconds: duration_seconds.max(0.0),
         distance_m: distance_m.max(0.0),
-        elevation_gain_m: elevation_gain.max(0.0),
+        elevation_gain_m: fallback_elevation_gain_m.unwrap_or(elevation_gain).max(0.0),
         avg_speed_mps,
         max_speed_mps,
         avg_hr,
@@ -526,7 +527,7 @@ fn build_summary_only_activity(
         sport_type,
         duration_seconds,
         distance_m,
-        elevation_gain_m: summary.elevation_gain_m.max(0.0),
+        elevation_gain_m: summary.elevation_gain_m.unwrap_or(0.0).max(0.0),
         avg_speed_mps,
         max_speed_mps: summary.max_speed_mps,
         avg_hr: summary.avg_hr,
@@ -704,6 +705,7 @@ pub fn parse_tcx_file(path: &Path) -> Result<ParsedActivity> {
         activity_start,
         lap_distance_total,
         lap_duration_total,
+        None,
     )
 }
 
@@ -828,7 +830,8 @@ pub fn parse_fit_file(path: &Path) -> Result<ParsedActivity> {
                     }
                     "total_ascent" => {
                         if let Some(v) = fit_value_as_f64(value) {
-                            summary.elevation_gain_m = summary.elevation_gain_m.max(v);
+                            summary.elevation_gain_m =
+                                Some(summary.elevation_gain_m.map_or(v, |cur| cur.max(v)));
                         }
                     }
                     "enhanced_avg_speed" | "avg_speed" => {
@@ -903,5 +906,6 @@ pub fn parse_fit_file(path: &Path) -> Result<ParsedActivity> {
         activity_start,
         summary.distance_m,
         summary.duration_seconds,
+        summary.elevation_gain_m,
     )
 }

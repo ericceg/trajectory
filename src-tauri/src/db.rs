@@ -413,6 +413,14 @@ fn compute_total_positive_ascent_m(samples: &[ActivitySample]) -> Option<f64> {
     if saw_altitude { Some(total.max(0.0)) } else { None }
 }
 
+fn is_fit_source_path(source_path: &str) -> bool {
+    Path::new(source_path)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.eq_ignore_ascii_case("fit"))
+        .unwrap_or(false)
+}
+
 fn compute_heart_rate_stats(samples: &[ActivitySample]) -> (Option<f64>, Option<f64>, Option<f64>) {
     let mut count = 0usize;
     let mut sum = 0.0;
@@ -527,7 +535,10 @@ pub fn list_activities(
       activities.sport_type,
       activities.duration_seconds,
       activities.distance_m,
-      COALESCE(elevation_rollups.elevation_gain_m, activities.elevation_gain_m),
+      CASE
+        WHEN lower(activities.source_path) LIKE '%.fit' THEN activities.elevation_gain_m
+        ELSE COALESCE(elevation_rollups.elevation_gain_m, activities.elevation_gain_m)
+      END,
       activities.avg_speed_mps,
       activities.max_speed_mps,
       activities.avg_hr,
@@ -823,8 +834,10 @@ pub fn get_activity(conn: &Connection, id: i64) -> Result<ActivityDetail> {
     let track: Vec<TrackPoint> = serde_json::from_str(&track_json).unwrap_or_default();
 
     let all_samples = fetch_activity_samples(conn, id)?;
-    if let Some(elevation_gain_m) = compute_total_positive_ascent_m(&all_samples) {
-        summary.elevation_gain_m = elevation_gain_m;
+    if !is_fit_source_path(&summary.source_path) {
+        if let Some(elevation_gain_m) = compute_total_positive_ascent_m(&all_samples) {
+            summary.elevation_gain_m = elevation_gain_m;
+        }
     }
     let (avg_hr, min_hr, max_hr) = compute_heart_rate_stats(&all_samples);
     summary.avg_hr = summary.avg_hr.or(avg_hr);

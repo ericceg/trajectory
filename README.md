@@ -29,10 +29,10 @@ Prototype (actively evolving).
 - Dashboard top summary cards include a weekly activity streak tile (consecutive active weeks)
 - Calendar bars can switch between hours, kilometers, and activity count
 - Hovering month or year bars uses horizontal cursor position (full-height hit area) and highlights the corresponding calendar day/month workout context with a quick pop animation
-- Filterable/sortable activities table (elevation uses summed positive ascent when altitude samples are available)
+- Filterable/sortable activities table (prefers FIT-reported total ascent when available; otherwise uses summed positive ascent from altitude samples)
 - Active sort direction indicators (`▲`/`▼`) in activities table headers
 - In-memory activities list caching for snappy return navigation (no refetch unless filters/data change)
-- Activity detail with a right-side metric rail, route map (when GPS is present), and switchable charts (distance-based when GPS track exists; time-based fallback when GPS is unavailable) with combined overlay or split plots, shared hover cursor/stats, elevation background in combined mode, zoom-aware adaptive vertical scaling for visible series, drag-to-zoom/click-to-reset, dedicated heart-rate metric card (avg/min/max), and elevation gain shown as summed positive ascent
+- Activity detail with a right-side metric rail, route map (when GPS is present), and switchable charts (distance-based when GPS track exists; time-based fallback when GPS is unavailable) with combined overlay or split plots, shared hover cursor/stats, elevation background in combined mode, zoom-aware adaptive vertical scaling for visible series, drag-to-zoom/click-to-reset, dedicated heart-rate metric card (avg/min/max), and elevation gain that prefers FIT-reported total ascent when available (otherwise summed positive ascent)
 - Activity detail chart hover can highlight the corresponding GPS position on the route map with an animated moving dot (when sample coordinates are available)
 - Adaptive chart sample loading by zoom window (configurable max visible chart samples in Settings)
 - Continuous, Google Maps-style smooth zooming/panning on map views
