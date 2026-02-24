@@ -1119,15 +1119,15 @@ export function ActivityDetailPage() {
 
           <section className="rounded-xl border border-border bg-panel p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
+              <div className="min-w-0 flex-1">
                 <h3 className="text-lg font-semibold text-foreground">Performance vs Distance</h3>
                 <p className="mt-1 text-xs text-muted">
                   X-axis uses kilometers. Drag across a region to zoom. Y-scales auto-resize to the visible range. Click once on a chart to reset the zoom.
                 </p>
               </div>
-              <div className="flex flex-wrap items-center justify-end gap-2">
+              <div className="flex flex-wrap items-start justify-end gap-2">
                 {chartMode === 'combined' ? (
-                  <>
+                  <div className="flex flex-wrap items-center justify-end gap-2">
                     <SeriesToggle
                       label="Elevation"
                       color={CHART_LINE_COLORS.elevation}
@@ -1160,9 +1160,11 @@ export function ActivityDetailPage() {
                       disabled={!combinedChart.has.speed}
                       onToggle={() => setChartSeriesVisibility((current) => ({ ...current, speed: !current.speed }))}
                     />
-                  </>
+                  </div>
                 ) : null}
-                <ChartModeToggle mode={chartMode} onChange={setChartMode} />
+                <div className="shrink-0">
+                  <ChartModeToggle mode={chartMode} onChange={setChartMode} />
+                </div>
               </div>
             </div>
 
