@@ -43,3 +43,4 @@ pnpm-debug.log*
 
 # Activity imports
 *.tcx
+*.fit
