@@ -1381,81 +1381,97 @@ export function ActivityDetailPage() {
                   Split charts are synchronized by {chartXAxisMode === 'distance' ? 'distance' : 'time'}, so
                   hovering one chart aligns the cursor across the others.
                 </p>
-                <SplitMetricChart
-                  title="Pace"
-                  unitLabel="min/km"
-                  data={combinedChart.data}
-                  hasData={combinedChart.has.pace}
-                  dataKey="paceSecondsPerKm"
-                  color={CHART_LINE_COLORS.pace}
-                  valueLabel="Pace"
-                  valueFormatter={formatPaceSeconds}
-                  yTickFormatter={formatPaceTick}
-                  xDomain={activeChartXAxisDomain}
-                  xAxisMode={chartXAxisMode}
-                  syncId={`activity-${chartXAxisMode}-split-charts`}
-                  selectionDomain={chartSelectionDomain}
-                  onChartMouseDown={handleChartMouseDown}
-                  onChartMouseMove={handleChartMouseMove}
-                  onChartMouseUp={handleChartMouseUp}
-                />
-                <SplitMetricChart
-                  title="Speed"
-                  unitLabel="km/h"
-                  data={combinedChart.data}
-                  hasData={combinedChart.has.speed}
-                  dataKey="speedKmh"
-                  color={CHART_LINE_COLORS.speed}
-                  valueLabel="Speed"
-                  valueFormatter={(value) =>
-                    value == null ? 'n/a' : `${formatNumberTick(value, 1)} km/h`
-                  }
-                  yTickFormatter={(value) => formatNumberTick(value, 1)}
-                  xDomain={activeChartXAxisDomain}
-                  xAxisMode={chartXAxisMode}
-                  syncId={`activity-${chartXAxisMode}-split-charts`}
-                  selectionDomain={chartSelectionDomain}
-                  onChartMouseDown={handleChartMouseDown}
-                  onChartMouseMove={handleChartMouseMove}
-                  onChartMouseUp={handleChartMouseUp}
-                />
-                <SplitMetricChart
-                  title="Heart Rate"
-                  unitLabel="bpm"
-                  data={combinedChart.data}
-                  hasData={combinedChart.has.heartRate}
-                  dataKey="heartRate"
-                  color={CHART_LINE_COLORS.heartRate}
-                  valueLabel="Heart rate"
-                  valueFormatter={(value) => (value == null ? 'n/a' : `${Math.round(value)} bpm`)}
-                  yTickFormatter={(value) => `${Math.round(value)}`}
-                  xDomain={activeChartXAxisDomain}
-                  xAxisMode={chartXAxisMode}
-                  syncId={`activity-${chartXAxisMode}-split-charts`}
-                  selectionDomain={chartSelectionDomain}
-                  onChartMouseDown={handleChartMouseDown}
-                  onChartMouseMove={handleChartMouseMove}
-                  onChartMouseUp={handleChartMouseUp}
-                />
-                <SplitMetricChart
-                  title="Elevation"
-                  unitLabel="m"
-                  data={combinedChart.data}
-                  hasData={combinedChart.has.elevation}
-                  dataKey="elevationM"
-                  color={CHART_LINE_COLORS.elevation}
-                  valueLabel="Elevation"
-                  valueFormatter={(value) => (value == null ? 'n/a' : `${Math.round(value)} m`)}
-                  yTickFormatter={(value) => `${Math.round(value)}`}
-                  xDomain={activeChartXAxisDomain}
-                  xAxisMode={chartXAxisMode}
-                  syncId={`activity-${chartXAxisMode}-split-charts`}
-                  selectionDomain={chartSelectionDomain}
-                  onChartMouseDown={handleChartMouseDown}
-                  onChartMouseMove={handleChartMouseMove}
-                  onChartMouseUp={handleChartMouseUp}
-                  variant="area"
-                />
+                {combinedChart.has.pace ? (
+                  <SplitMetricChart
+                    title="Pace"
+                    unitLabel="min/km"
+                    data={combinedChart.data}
+                    hasData={combinedChart.has.pace}
+                    dataKey="paceSecondsPerKm"
+                    color={CHART_LINE_COLORS.pace}
+                    valueLabel="Pace"
+                    valueFormatter={formatPaceSeconds}
+                    yTickFormatter={formatPaceTick}
+                    xDomain={activeChartXAxisDomain}
+                    xAxisMode={chartXAxisMode}
+                    syncId={`activity-${chartXAxisMode}-split-charts`}
+                    selectionDomain={chartSelectionDomain}
+                    onChartMouseDown={handleChartMouseDown}
+                    onChartMouseMove={handleChartMouseMove}
+                    onChartMouseUp={handleChartMouseUp}
+                  />
+                ) : null}
+                {combinedChart.has.speed ? (
+                  <SplitMetricChart
+                    title="Speed"
+                    unitLabel="km/h"
+                    data={combinedChart.data}
+                    hasData={combinedChart.has.speed}
+                    dataKey="speedKmh"
+                    color={CHART_LINE_COLORS.speed}
+                    valueLabel="Speed"
+                    valueFormatter={(value) =>
+                      value == null ? 'n/a' : `${formatNumberTick(value, 1)} km/h`
+                    }
+                    yTickFormatter={(value) => formatNumberTick(value, 1)}
+                    xDomain={activeChartXAxisDomain}
+                    xAxisMode={chartXAxisMode}
+                    syncId={`activity-${chartXAxisMode}-split-charts`}
+                    selectionDomain={chartSelectionDomain}
+                    onChartMouseDown={handleChartMouseDown}
+                    onChartMouseMove={handleChartMouseMove}
+                    onChartMouseUp={handleChartMouseUp}
+                  />
+                ) : null}
+                {combinedChart.has.heartRate ? (
+                  <SplitMetricChart
+                    title="Heart Rate"
+                    unitLabel="bpm"
+                    data={combinedChart.data}
+                    hasData={combinedChart.has.heartRate}
+                    dataKey="heartRate"
+                    color={CHART_LINE_COLORS.heartRate}
+                    valueLabel="Heart rate"
+                    valueFormatter={(value) => (value == null ? 'n/a' : `${Math.round(value)} bpm`)}
+                    yTickFormatter={(value) => `${Math.round(value)}`}
+                    xDomain={activeChartXAxisDomain}
+                    xAxisMode={chartXAxisMode}
+                    syncId={`activity-${chartXAxisMode}-split-charts`}
+                    selectionDomain={chartSelectionDomain}
+                    onChartMouseDown={handleChartMouseDown}
+                    onChartMouseMove={handleChartMouseMove}
+                    onChartMouseUp={handleChartMouseUp}
+                  />
+                ) : null}
+                {combinedChart.has.elevation ? (
+                  <SplitMetricChart
+                    title="Elevation"
+                    unitLabel="m"
+                    data={combinedChart.data}
+                    hasData={combinedChart.has.elevation}
+                    dataKey="elevationM"
+                    color={CHART_LINE_COLORS.elevation}
+                    valueLabel="Elevation"
+                    valueFormatter={(value) => (value == null ? 'n/a' : `${Math.round(value)} m`)}
+                    yTickFormatter={(value) => `${Math.round(value)}`}
+                    xDomain={activeChartXAxisDomain}
+                    xAxisMode={chartXAxisMode}
+                    syncId={`activity-${chartXAxisMode}-split-charts`}
+                    selectionDomain={chartSelectionDomain}
+                    onChartMouseDown={handleChartMouseDown}
+                    onChartMouseMove={handleChartMouseMove}
+                    onChartMouseUp={handleChartMouseUp}
+                    variant="area"
+                  />
+                ) : null}
+                {!combinedChart.has.pace &&
+                !combinedChart.has.speed &&
+                !combinedChart.has.heartRate &&
+                !combinedChart.has.elevation ? (
+                  <p className="rounded-lg border border-border/70 bg-bg/30 p-4 text-sm text-muted">
+                    No chart samples available.
+                  </p>
+                ) : null}
               </div>
             )}
           </section>
