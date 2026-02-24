@@ -39,12 +39,12 @@ const ROUTE_HOVER_MARKER_SMOOTHING_MS = 10;
 const CHART_GRID_STROKE = 'rgba(var(--color-border), 0.75)';
 const CHART_AXIS_STROKE = 'rgb(var(--color-muted))';
 const CHART_LINE_COLORS = {
-  speed: '#0B1F5E', // navy blue
+  speed: '#2563EB', // blue
   pace: '#2563EB', // blue
   heartRate: '#DC2626', // red
   elevation: '#77C043', // alpine green
-  cadence: '#8B5CF6', // violet
-  power: '#F59E0B' // amber
+  cadence: '#F59E0B', // amber
+  power: '#bd08ff', // violet
 } as const;
 const CHART_TOOLTIP_STYLE = {
   borderRadius: 10,
