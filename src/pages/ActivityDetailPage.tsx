@@ -1537,8 +1537,8 @@ export function ActivityDetailPage() {
           ) : null}
 
           <section className="select-none rounded-xl border border-border bg-panel p-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
+            <div className="space-y-3">
+              <div className="min-w-0">
                 <h3 className="text-lg font-semibold text-foreground">
                   {chartXAxisMode === 'distance' ? 'Performance vs Distance' : 'Performance vs Time'}
                 </h3>
@@ -1746,10 +1746,6 @@ export function ActivityDetailPage() {
               </>
             ) : (
               <div className="mt-4 space-y-4">
-                <p className="text-xs text-muted">
-                  Split charts are synchronized by {chartXAxisMode === 'distance' ? 'distance' : 'time'}, so
-                  hovering one chart aligns the cursor across the others.
-                </p>
                 {combinedChart.has.pace ? (
                   <SplitMetricChart
                     title="Pace"
