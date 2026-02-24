@@ -5,6 +5,7 @@ export interface Settings {
   darkMode: boolean;
   accentTheme: string;
   heatmapFullOpacity: boolean;
+  chartMaxSamples: number;
 }
 
 export interface ActivityFilters {
@@ -64,6 +65,19 @@ export interface ActivityDetail {
   track: TrackPoint[];
   samples: ActivitySample[];
   originalSampleCount: number;
+}
+
+export interface ActivitySampleQuery {
+  distanceMinKm?: number;
+  distanceMaxKm?: number;
+  maxSamples?: number;
+}
+
+export interface ActivitySamplesResponse {
+  samples: ActivitySample[];
+  originalSampleCount: number;
+  matchingSampleCount: number;
+  returnedSampleCount: number;
 }
 
 export interface HeatmapData {

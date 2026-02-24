@@ -10,8 +10,8 @@ use std::{fs, path::PathBuf};
 
 use anyhow::{Context, Result};
 use models::{
-    ActivityDetail, ActivityFilters, ActivitySummary, HeatmapData, HeatmapFilters, ScanDoneEvent,
-    Settings,
+    ActivityDetail, ActivityFilters, ActivitySampleQuery, ActivitySamplesResponse, ActivitySummary,
+    HeatmapData, HeatmapFilters, ScanDoneEvent, Settings,
 };
 use tauri::{AppHandle, Manager, State};
 
@@ -31,6 +31,14 @@ fn is_supported_accent_theme(value: &str) -> bool {
             | "flamingo-pink"
             | "violet-indigo"
     )
+}
+
+fn validate_chart_max_samples(value: usize) -> Result<usize, String> {
+    if (100..=20_000).contains(&value) {
+        Ok(value)
+    } else {
+        Err("chart max samples must be between 100 and 20000".to_string())
+    }
 }
 
 fn init_state(app: &AppHandle) -> Result<AppState> {
@@ -143,6 +151,18 @@ async fn set_heatmap_full_opacity(
 }
 
 #[tauri::command]
+async fn set_chart_max_samples(
+    chart_max_samples: usize,
+    state: State<'_, AppState>,
+) -> Result<Settings, String> {
+    let chart_max_samples = validate_chart_max_samples(chart_max_samples)?;
+    update_app_settings(state.inner(), move |settings| {
+        settings.chart_max_samples = chart_max_samples;
+        Ok(())
+    })
+}
+
+#[tauri::command]
 async fn scan_import_folder(
     app: AppHandle,
     full_rescan: Option<bool>,
@@ -189,6 +209,23 @@ async fn get_activity(id: i64, state: State<'_, AppState>) -> Result<ActivityDet
 }
 
 #[tauri::command]
+async fn get_activity_samples(
+    id: i64,
+    query: Option<ActivitySampleQuery>,
+    state: State<'_, AppState>,
+) -> Result<ActivitySamplesResponse, String> {
+    let db_path = state.db_path.clone();
+    let query = query.unwrap_or_default();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let conn = db::open_connection(&db_path).map_err(|err| err.to_string())?;
+        db::get_activity_samples(&conn, id, &query).map_err(|err| err.to_string())
+    })
+    .await
+    .map_err(|err| err.to_string())?
+}
+
+#[tauri::command]
 async fn get_heatmap_data(
     filters: Option<HeatmapFilters>,
     state: State<'_, AppState>,
@@ -218,9 +255,11 @@ fn main() {
             set_dark_mode,
             set_accent_theme,
             set_heatmap_full_opacity,
+            set_chart_max_samples,
             scan_import_folder,
             list_activities,
             get_activity,
+            get_activity_samples,
             get_heatmap_data
         ])
         .run(tauri::generate_context!())

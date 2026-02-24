@@ -458,7 +458,6 @@ fn build_parsed_activity(
     let max_hr = heart_rate_values.into_iter().reduce(f64::max);
 
     let sampled_track = downsample(&raw_track, MAX_UI_POINTS);
-    let sampled_samples = downsample(&raw_samples, MAX_UI_POINTS);
     let category = derive_activity_category(&sport_type, notes.as_deref());
     let title = derive_activity_title(
         path,
@@ -482,7 +481,7 @@ fn build_parsed_activity(
         max_hr,
         has_gps,
         track: sampled_track,
-        samples: sampled_samples,
+        samples: raw_samples,
         original_sample_count: points.len(),
     })
 }

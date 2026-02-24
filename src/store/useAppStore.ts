@@ -4,6 +4,7 @@ import {
   getSettings,
   scanImportFolder,
   setAccentTheme,
+  setChartMaxSamples,
   setDarkMode,
   setHeatmapFullOpacity,
   setImportFolder,
@@ -25,6 +26,7 @@ interface AppState {
   updateDarkMode: (darkMode: boolean) => Promise<void>;
   updateAccentTheme: (accentTheme: AccentThemeId) => Promise<void>;
   updateHeatmapFullOpacity: (heatmapFullOpacity: boolean) => Promise<void>;
+  updateChartMaxSamples: (chartMaxSamples: number) => Promise<void>;
   runScan: (fullRescan?: boolean) => Promise<void>;
   getCachedActivities: (cacheKey: string) => ActivitySummary[] | null;
   setCachedActivities: (cacheKey: string, activities: ActivitySummary[]) => void;
@@ -75,6 +77,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   updateHeatmapFullOpacity: async (heatmapFullOpacity) => {
     const settings = await setHeatmapFullOpacity(heatmapFullOpacity);
+    set({ settings });
+  },
+  updateChartMaxSamples: async (chartMaxSamples) => {
+    const settings = await setChartMaxSamples(chartMaxSamples);
     set({ settings });
   },
   runScan: async (fullRescan = false) => {

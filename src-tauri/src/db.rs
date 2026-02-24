@@ -4,9 +4,13 @@ use anyhow::{anyhow, Context, Result};
 use rusqlite::{params, params_from_iter, types::Value, Connection, OptionalExtension};
 
 use crate::models::{
-    ActivityDetail, ActivityFilters, ActivitySample, ActivitySummary, HeatmapData, HeatmapFilters,
-    ParsedActivity, SourceFileMeta, TrackPoint,
+    ActivityDetail, ActivityFilters, ActivitySample, ActivitySampleQuery, ActivitySamplesResponse,
+    ActivitySummary, HeatmapData, HeatmapFilters, ParsedActivity, SourceFileMeta, TrackPoint,
 };
+
+const DEFAULT_CHART_MAX_SAMPLES: usize = 2000;
+const MIN_CHART_MAX_SAMPLES: usize = 50;
+const MAX_CHART_MAX_SAMPLES: usize = 20_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UpsertResult {
@@ -381,6 +385,38 @@ fn downsample_track(points: &[TrackPoint], stride: usize) -> Vec<TrackPoint> {
     sampled
 }
 
+fn downsample_cloned<T: Clone>(items: &[T], max: usize) -> Vec<T> {
+    if max == 0 {
+        return Vec::new();
+    }
+
+    if items.len() <= max {
+        return items.to_vec();
+    }
+
+    if max <= 1 {
+        return vec![items[items.len() - 1].clone()];
+    }
+
+    let stride = ((items.len() - 1) as f64 / (max - 1) as f64).ceil() as usize;
+    let mut output = Vec::with_capacity(max);
+    let mut index = 0;
+
+    while index < items.len() - 1 && output.len() < max - 1 {
+        output.push(items[index].clone());
+        index += stride;
+    }
+
+    output.push(items[items.len() - 1].clone());
+    output
+}
+
+fn clamp_chart_max_samples(value: Option<usize>) -> usize {
+    value
+        .unwrap_or(DEFAULT_CHART_MAX_SAMPLES)
+        .clamp(MIN_CHART_MAX_SAMPLES, MAX_CHART_MAX_SAMPLES)
+}
+
 pub fn list_activities(
     conn: &Connection,
     filters: &ActivityFilters,
@@ -531,6 +567,109 @@ pub fn get_heatmap_data(conn: &Connection, filters: &HeatmapFilters) -> Result<H
     })
 }
 
+fn fetch_activity_samples(conn: &Connection, id: i64) -> Result<Vec<ActivitySample>> {
+    let mut sample_stmt = conn.prepare(
+        r#"
+    SELECT elapsed_seconds, distance_m, speed_mps, heart_rate, altitude_m, lat, lon, sample_time
+    FROM activity_samples
+    WHERE activity_id = ?1
+    ORDER BY elapsed_seconds ASC
+    "#,
+    )?;
+
+    let sample_rows = sample_stmt.query_map(params![id], |row| {
+        Ok(ActivitySample {
+            elapsed_seconds: row.get(0)?,
+            distance_m: row.get(1)?,
+            speed_mps: row.get(2)?,
+            heart_rate: row.get(3)?,
+            altitude_m: row.get(4)?,
+            lat: row.get(5)?,
+            lon: row.get(6)?,
+            timestamp: row.get(7)?,
+        })
+    })?;
+
+    let mut samples = Vec::new();
+    for sample in sample_rows {
+        samples.push(sample?);
+    }
+
+    Ok(samples)
+}
+
+fn sample_matches_distance_window(
+    sample: &ActivitySample,
+    summary: &ActivitySummary,
+    last_distance_m: &mut f64,
+    min_distance_m: Option<f64>,
+    max_distance_m: Option<f64>,
+) -> bool {
+    if min_distance_m.is_none() && max_distance_m.is_none() {
+        return true;
+    }
+
+    let total_distance_m = summary.distance_m.max(0.0);
+    let total_duration_seconds = summary.duration_seconds.max(1.0);
+    let estimated_distance_m = if total_distance_m > 0.0 {
+        (sample.elapsed_seconds / total_duration_seconds) * total_distance_m
+    } else {
+        *last_distance_m
+    };
+    let sample_distance_m =
+        (sample.distance_m.unwrap_or(estimated_distance_m)).max(*last_distance_m);
+    *last_distance_m = sample_distance_m;
+
+    if let Some(min_distance_m) = min_distance_m {
+        if sample_distance_m < min_distance_m {
+            return false;
+        }
+    }
+
+    if let Some(max_distance_m) = max_distance_m {
+        if sample_distance_m > max_distance_m {
+            return false;
+        }
+    }
+
+    true
+}
+
+fn sample_activity_window(
+    all_samples: &[ActivitySample],
+    summary: &ActivitySummary,
+    query: &ActivitySampleQuery,
+) -> (Vec<ActivitySample>, usize) {
+    let min_distance_m = query.distance_min_km.map(|value| value.max(0.0) * 1000.0);
+    let max_distance_m = query.distance_max_km.map(|value| value.max(0.0) * 1000.0);
+    let max_samples = clamp_chart_max_samples(query.max_samples);
+
+    let filtered = if min_distance_m.is_none() && max_distance_m.is_none() {
+        all_samples.to_vec()
+    } else {
+        let mut filtered = Vec::new();
+        let mut last_distance_m = 0.0;
+
+        for sample in all_samples {
+            if sample_matches_distance_window(
+                sample,
+                summary,
+                &mut last_distance_m,
+                min_distance_m,
+                max_distance_m,
+            ) {
+                filtered.push(sample.clone());
+            }
+        }
+
+        filtered
+    };
+
+    let matching_sample_count = filtered.len();
+    let sampled = downsample_cloned(&filtered, max_samples);
+    (sampled, matching_sample_count)
+}
+
 pub fn get_activity(conn: &Connection, id: i64) -> Result<ActivityDetail> {
     let mut stmt = conn.prepare(
         r#"
@@ -584,37 +723,66 @@ pub fn get_activity(conn: &Connection, id: i64) -> Result<ActivityDetail> {
 
     let track: Vec<TrackPoint> = serde_json::from_str(&track_json).unwrap_or_default();
 
-    let mut sample_stmt = conn.prepare(
-        r#"
-    SELECT elapsed_seconds, distance_m, speed_mps, heart_rate, altitude_m, lat, lon, sample_time
-    FROM activity_samples
-    WHERE activity_id = ?1
-    ORDER BY elapsed_seconds ASC
-    "#,
-    )?;
-
-    let sample_rows = sample_stmt.query_map(params![id], |row| {
-        Ok(ActivitySample {
-            elapsed_seconds: row.get(0)?,
-            distance_m: row.get(1)?,
-            speed_mps: row.get(2)?,
-            heart_rate: row.get(3)?,
-            altitude_m: row.get(4)?,
-            lat: row.get(5)?,
-            lon: row.get(6)?,
-            timestamp: row.get(7)?,
-        })
-    })?;
-
-    let mut samples = Vec::new();
-    for sample in sample_rows {
-        samples.push(sample?);
-    }
+    let all_samples = fetch_activity_samples(conn, id)?;
+    let (samples, _) =
+        sample_activity_window(&all_samples, &summary, &ActivitySampleQuery::default());
 
     Ok(ActivityDetail {
         summary,
         track,
         samples,
         original_sample_count: original_sample_count as usize,
+    })
+}
+
+pub fn get_activity_samples(
+    conn: &Connection,
+    id: i64,
+    query: &ActivitySampleQuery,
+) -> Result<ActivitySamplesResponse> {
+    let summary: ActivitySummary = conn
+        .query_row(
+            r#"
+        SELECT
+          id,
+          source_path,
+          activity_start,
+          title,
+          category,
+          sport_type,
+          duration_seconds,
+          distance_m,
+          elevation_gain_m,
+          avg_speed_mps,
+          max_speed_mps,
+          avg_hr,
+          max_hr,
+          has_gps
+        FROM activities
+        WHERE id = ?1
+        "#,
+            params![id],
+            map_summary_row,
+        )
+        .optional()?
+        .ok_or_else(|| anyhow!("activity {} not found", id))?;
+
+    let original_sample_count: i64 = conn
+        .query_row(
+            "SELECT original_sample_count FROM activities WHERE id = ?1",
+            params![id],
+            |row| row.get(0),
+        )
+        .optional()?
+        .ok_or_else(|| anyhow!("activity {} not found", id))?;
+
+    let all_samples = fetch_activity_samples(conn, id)?;
+    let (samples, matching_sample_count) = sample_activity_window(&all_samples, &summary, query);
+
+    Ok(ActivitySamplesResponse {
+        returned_sample_count: samples.len(),
+        samples,
+        original_sample_count: original_sample_count as usize,
+        matching_sample_count,
     })
 }

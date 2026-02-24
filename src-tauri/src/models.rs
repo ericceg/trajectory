@@ -9,6 +9,7 @@ pub struct Settings {
     pub dark_mode: bool,
     pub accent_theme: String,
     pub heatmap_full_opacity: bool,
+    pub chart_max_samples: usize,
 }
 
 impl Default for Settings {
@@ -20,6 +21,7 @@ impl Default for Settings {
             dark_mode: false,
             accent_theme: "strava-orange".to_string(),
             heatmap_full_opacity: false,
+            chart_max_samples: 2000,
         }
     }
 }
@@ -96,6 +98,33 @@ pub struct ActivityDetail {
     pub track: Vec<TrackPoint>,
     pub samples: Vec<ActivitySample>,
     pub original_sample_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActivitySampleQuery {
+    pub distance_min_km: Option<f64>,
+    pub distance_max_km: Option<f64>,
+    pub max_samples: Option<usize>,
+}
+
+impl Default for ActivitySampleQuery {
+    fn default() -> Self {
+        Self {
+            distance_min_km: None,
+            distance_max_km: None,
+            max_samples: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActivitySamplesResponse {
+    pub samples: Vec<ActivitySample>,
+    pub original_sample_count: usize,
+    pub matching_sample_count: usize,
+    pub returned_sample_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

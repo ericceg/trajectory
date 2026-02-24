@@ -14,7 +14,7 @@ import {
 import type { FeatureCollection, LineString } from 'geojson';
 import maplibregl, { type GeoJSONSource } from 'maplibre-gl';
 
-import { getActivity } from '@/lib/tauri';
+import { getActivity, getActivitySamples } from '@/lib/tauri';
 import {
   formatDateTime,
   formatDistanceKm,
@@ -753,6 +753,9 @@ export function ActivityDetailPage() {
   const [detail, setDetail] = useState<ActivityDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [chartSamplesLoading, setChartSamplesLoading] = useState(false);
+  const [chartSamplesError, setChartSamplesError] = useState<string | null>(null);
+  const [chartMatchingSampleCount, setChartMatchingSampleCount] = useState<number | null>(null);
   const [reducedMapComplexity, setReducedMapComplexity] = useState(false);
   const [chartMode, setChartMode] = useState<ChartMode>('combined');
   const [chartSeriesVisibility, setChartSeriesVisibility] = useState<ChartSeriesVisibility>(() =>
@@ -763,7 +766,9 @@ export function ActivityDetailPage() {
   const chartDragAnchorRef = useRef<ChartPointer | null>(null);
   const chartDragCurrentRef = useRef<ChartPointer | null>(null);
   const chartSelectionFrameRef = useRef<number | null>(null);
+  const chartSamplesRequestRef = useRef(0);
   const accentTheme = useAppStore((state) => state.settings?.accentTheme);
+  const chartMaxSamples = useAppStore((state) => state.settings?.chartMaxSamples ?? 2000);
   const accentPalette = useMemo(() => getAccentThemePalette(accentTheme), [accentTheme]);
 
   useEffect(() => {
@@ -777,6 +782,8 @@ export function ActivityDetailPage() {
       try {
         const result = await getActivity(Number(id));
         setDetail(result);
+        setChartMatchingSampleCount(result.samples.length);
+        setChartSamplesError(null);
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
       } finally {
@@ -797,6 +804,8 @@ export function ActivityDetailPage() {
     setChartSelectionDomain(null);
     chartDragAnchorRef.current = null;
     chartDragCurrentRef.current = null;
+    setChartMatchingSampleCount(detail.samples.length);
+    setChartSamplesError(null);
   }, [detail?.summary.id, detail?.summary.sportType]);
 
   const combinedChart = useMemo<CombinedChartModel>(() => {
@@ -883,10 +892,10 @@ export function ActivityDetailPage() {
     };
   }, [detail, chartSeriesVisibility]);
 
-  const fullChartXAxisDomain = useMemo<ChartZoomDomain>(
-    () => [0, Math.max(0.1, combinedChart.maxDistanceKm)],
-    [combinedChart.maxDistanceKm]
-  );
+  const fullChartXAxisDomain = useMemo<ChartZoomDomain>(() => {
+    const summaryDistanceKm = detail ? Math.max(0, detail.summary.distanceM) / 1000 : 0;
+    return [0, Math.max(0.1, summaryDistanceKm, combinedChart.maxDistanceKm)];
+  }, [combinedChart.maxDistanceKm, detail]);
 
   useEffect(() => {
     if (!chartZoomDomain) {
@@ -902,6 +911,53 @@ export function ActivityDetailPage() {
   }, [chartZoomDomain, fullChartXAxisDomain]);
 
   const activeChartXAxisDomain = chartZoomDomain ?? fullChartXAxisDomain;
+
+  useEffect(() => {
+    if (!detail) {
+      return;
+    }
+
+    const query = {
+      distanceMinKm: chartZoomDomain?.[0],
+      distanceMaxKm: chartZoomDomain?.[1],
+      maxSamples: chartMaxSamples
+    };
+    const requestId = chartSamplesRequestRef.current + 1;
+    chartSamplesRequestRef.current = requestId;
+    setChartSamplesLoading(true);
+    setChartSamplesError(null);
+
+    const loadSamples = async () => {
+      try {
+        const response = await getActivitySamples(detail.summary.id, query);
+        if (chartSamplesRequestRef.current !== requestId) {
+          return;
+        }
+
+        setDetail((current) =>
+          current && current.summary.id === detail.summary.id
+            ? {
+                ...current,
+                samples: response.samples,
+                originalSampleCount: response.originalSampleCount
+              }
+            : current
+        );
+        setChartMatchingSampleCount(response.matchingSampleCount);
+      } catch (err) {
+        if (chartSamplesRequestRef.current !== requestId) {
+          return;
+        }
+        setChartSamplesError(err instanceof Error ? err.message : String(err));
+      } finally {
+        if (chartSamplesRequestRef.current === requestId) {
+          setChartSamplesLoading(false);
+        }
+      }
+    };
+
+    void loadSamples();
+  }, [chartMaxSamples, chartZoomDomain, detail?.summary.id]);
 
   const combinedChartDisplayData = useMemo<CombinedChartPoint[]>(() => {
     if (combinedChart.data.length === 0) {
@@ -1124,6 +1180,12 @@ export function ActivityDetailPage() {
                 <p className="mt-1 text-xs text-muted">
                   X-axis uses kilometers. Drag across a region to zoom. Y-scales auto-resize to the visible range. Click once on a chart to reset the zoom.
                 </p>
+                <p className="mt-1 text-xs text-muted">
+                  Chart sample cap: {chartMaxSamples.toLocaleString()} visible points max (adaptive by zoom range).
+                </p>
+                {chartSamplesError ? (
+                  <p className="mt-1 text-xs text-accent">Chart sample refresh failed: {chartSamplesError}</p>
+                ) : null}
               </div>
               <div className="flex flex-wrap items-start justify-end gap-2">
                 {chartMode === 'combined' ? (
@@ -1374,7 +1436,18 @@ export function ActivityDetailPage() {
                 {detail.samples.length}
                 <span className="ml-1 text-base font-medium text-muted">shown</span>
               </p>
-              <p className="mt-1 text-xs text-muted">Original samples: {detail.originalSampleCount}</p>
+              <p className="mt-1 text-xs text-muted">
+                {chartMatchingSampleCount != null
+                  ? `Matching current view: ${chartMatchingSampleCount.toLocaleString()}`
+                  : 'Matching current view: n/a'}
+              </p>
+              <p className="mt-1 text-xs text-muted">
+                Original samples: {detail.originalSampleCount.toLocaleString()}
+              </p>
+              <p className="mt-1 text-xs text-muted">
+                Max visible cap: {chartMaxSamples.toLocaleString()}
+                {chartSamplesLoading ? ' · refreshing…' : ''}
+              </p>
             </section>
           </div>
         </aside>

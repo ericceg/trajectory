@@ -33,6 +33,7 @@ Prototype (actively evolving).
 - Active sort direction indicators (`▲`/`▼`) in activities table headers
 - In-memory activities list caching for snappy return navigation (no refetch unless filters/data change)
 - Activity detail with a right-side metric rail, route map, and switchable distance-based charts (combined overlay or split plots, shared hover cursor/stats, elevation background in combined mode, zoom-aware adaptive vertical scaling for visible series, drag-to-zoom with click-to-reset on charts)
+- Adaptive chart sample loading by zoom window (configurable max visible chart samples in Settings)
 - Continuous, Google Maps-style smooth zooming/panning on map views
 - Toggling "Reduced complexity" preserves the current map viewport (pan/zoom)
 - Map views support in-place maximize/minimize (with `Esc` to close expanded view)
@@ -73,7 +74,8 @@ npm run tauri dev
 4. Open **Settings** any time to run:
    - **Rescan** for a normal incremental pass.
    - **Clear Cache + Full Rescan** when you want to wipe cached activities and re-import everything.
-   - **Appearance** tab for dark mode, accent color theme, and heatmap rendering preferences (including optional 100% heatmap opacity).
+   - **Appearance** tab for dark mode, accent color theme, chart sample cap, and heatmap rendering preferences (including optional 100% heatmap opacity).
+   - If you imported activities before adaptive chart sampling was added, run **Clear Cache + Full Rescan** once so chart zoom can use denser stored samples.
 5. Explore:
    - **Dashboard** for yearly calendar overview, month drill-down, clickable activity entries, and a weekly streak indicator
    - Use dashboard arrows to move between years/months, click metric cards to switch bar mode (hours/km/activities), click year bars to drill into a month, and click month bars to open an activity from that day
@@ -169,9 +171,11 @@ Implemented commands:
 - `set_dark_mode(dark_mode)`
 - `set_accent_theme(accent_theme)`
 - `set_heatmap_full_opacity(heatmap_full_opacity)`
+- `set_chart_max_samples(chart_max_samples)`
 - `scan_import_folder(full_rescan?)`
 - `list_activities(filters)`
 - `get_activity(id)`
+- `get_activity_samples(id, query?)`
 - `get_heatmap_data(filters)`
 
 `list_activities(filters)` supports:
@@ -186,6 +190,10 @@ Implemented commands:
 - `sportType`
 - `activityIds` (optional explicit subset)
 - `maxPoints` (optional cap for returned GPS points)
+
+`get_activity_samples(id, query?)` supports:
+- `distanceMinKm`, `distanceMaxKm` (optional visible chart window)
+- `maxSamples` (optional cap for returned chart samples in that window)
 
 Progress events:
 
