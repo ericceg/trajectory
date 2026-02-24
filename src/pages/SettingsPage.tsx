@@ -16,6 +16,7 @@ export function SettingsPage() {
   const updateDarkMode = useAppStore((state) => state.updateDarkMode);
   const updateAccentTheme = useAppStore((state) => state.updateAccentTheme);
   const updateHeatmapFullOpacity = useAppStore((state) => state.updateHeatmapFullOpacity);
+  const updateChartMaxSamples = useAppStore((state) => state.updateChartMaxSamples);
   const runScan = useAppStore((state) => state.runScan);
   const activeTab = useUiStateStore((state) => state.settingsActiveTab);
   const setSettingsActiveTab = useUiStateStore((state) => state.setSettingsActiveTab);
@@ -246,6 +247,38 @@ export function SettingsPage() {
                   );
                 })}
               </div>
+            </div>
+          </div>
+
+          <div className="mt-6 border-t border-border pt-5">
+            <h3 className="text-lg font-semibold text-foreground">Charts</h3>
+            <p className="mt-2 text-sm text-muted">
+              Limit how many samples are rendered at once in Activity Detail charts. Zooming in
+              will load more detail within the visible range up to this cap.
+            </p>
+            <div className="mt-4 rounded-lg border border-border bg-bg/40 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <label htmlFor="chart-max-samples" className="text-sm font-medium text-foreground">
+                  Max visible chart samples
+                </label>
+                <span className="text-sm font-semibold text-foreground">
+                  {(settings?.chartMaxSamples ?? 2000).toLocaleString()}
+                </span>
+              </div>
+              <input
+                id="chart-max-samples"
+                type="range"
+                min={250}
+                max={5000}
+                step={250}
+                value={settings?.chartMaxSamples ?? 2000}
+                onChange={(event) => void updateChartMaxSamples(Number(event.target.value))}
+                className="mt-3 w-full accent-[rgb(var(--color-accent))]"
+              />
+              <p className="mt-2 text-xs text-muted">
+                Lower values improve responsiveness on slower machines. Higher values reveal more
+                detail before zooming.
+              </p>
             </div>
           </div>
 

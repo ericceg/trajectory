@@ -5,6 +5,8 @@ import type { AccentThemeId } from '@/lib/theme';
 import {
   type ActivityDetail,
   type ActivityFilters,
+  type ActivitySampleQuery,
+  type ActivitySamplesResponse,
   type ActivitySummary,
   type HeatmapData,
   type HeatmapFilters,
@@ -27,6 +29,9 @@ export const setAccentTheme = (accentTheme: AccentThemeId) =>
 export const setHeatmapFullOpacity = (heatmapFullOpacity: boolean) =>
   invoke<Settings>('set_heatmap_full_opacity', { heatmapFullOpacity });
 
+export const setChartMaxSamples = (chartMaxSamples: number) =>
+  invoke<Settings>('set_chart_max_samples', { chartMaxSamples });
+
 export const scanImportFolder = (fullRescan = false) =>
   invoke<ScanDoneEvent>('scan_import_folder', { fullRescan });
 
@@ -34,6 +39,9 @@ export const listActivities = (filters?: ActivityFilters) =>
   invoke<ActivitySummary[]>('list_activities', { filters });
 
 export const getActivity = (id: number) => invoke<ActivityDetail>('get_activity', { id });
+
+export const getActivitySamples = (id: number, query?: ActivitySampleQuery) =>
+  invoke<ActivitySamplesResponse>('get_activity_samples', { id, query });
 
 export const getHeatmapData = (filters?: HeatmapFilters) =>
   invoke<HeatmapData>('get_heatmap_data', { filters });
