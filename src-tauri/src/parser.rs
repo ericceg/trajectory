@@ -495,15 +495,7 @@ fn build_parsed_activity(
         })
         .unwrap_or(fallback_distance_m.max(0.0));
 
-    let avg_speed_mps = if duration_seconds > 0.1 && distance_m > 0.0 {
-        Some(distance_m / duration_seconds)
-    } else if !speed_values.is_empty() {
-        Some(speed_values.iter().sum::<f64>() / speed_values.len() as f64)
-    } else {
-        None
-    };
-
-    let max_speed_mps = speed_values.into_iter().reduce(f64::max);
+    let max_speed_mps = speed_values.iter().copied().reduce(f64::max);
 
     let avg_hr = if heart_rate_values.is_empty() {
         None
@@ -530,6 +522,25 @@ fn build_parsed_activity(
         moving_duration_seconds.min(duration_seconds)
     } else {
         moving_duration_seconds
+    };
+    let avg_speed_mps = if distance_m > 0.0 {
+        let speed_duration_seconds = if moving_duration_seconds > 0.1 {
+            moving_duration_seconds
+        } else {
+            duration_seconds
+        };
+
+        if speed_duration_seconds > 0.1 {
+            Some(distance_m / speed_duration_seconds)
+        } else if !speed_values.is_empty() {
+            Some(speed_values.iter().sum::<f64>() / speed_values.len() as f64)
+        } else {
+            None
+        }
+    } else if !speed_values.is_empty() {
+        Some(speed_values.iter().sum::<f64>() / speed_values.len() as f64)
+    } else {
+        None
     };
     let category = derive_activity_category(&sport_type, notes.as_deref());
     let title = derive_activity_title(

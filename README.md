@@ -16,7 +16,7 @@ Prototype (actively evolving).
 - Optional "Clear Cache + Full Rescan" for a full rebuild from disk
 - Background parsing with progress events
 - Summary-only `.fit` exports (no per-point records) are imported when session/activity totals exist, with no map/track charts
-- Moving time is tracked separately from total duration (prefers FIT `total_timer_time`; otherwise estimated from sample movement)
+- Moving time is tracked separately from total duration (prefers FIT `total_timer_time`; otherwise estimated from sample movement), and computed avg speed/pace uses moving time when available
 - Route-level lazy loading for faster initial app startup
 - Workout category derivation (`Running`, `Biking`, `Strength`, etc.) from TCX/FIT sport + notes
 - Workout titles stored for every activity (FIT session/workout names when available, otherwise generated fallback titles)
