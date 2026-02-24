@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   Area,
@@ -11,7 +11,7 @@ import {
   XAxis,
   YAxis
 } from 'recharts';
-import type { FeatureCollection, LineString } from 'geojson';
+import type { FeatureCollection, LineString, Point } from 'geojson';
 import maplibregl, { type GeoJSONSource } from 'maplibre-gl';
 
 import { getActivity, getActivitySamples } from '@/lib/tauri';
@@ -32,6 +32,10 @@ import type { ActivityDetail, TrackPoint } from '@/types';
 
 const ACTIVITY_ROUTE_SOURCE_ID = 'activity-route-source';
 const ACTIVITY_ROUTE_LAYER_ID = 'activity-route-layer';
+const ACTIVITY_ROUTE_HOVER_SOURCE_ID = 'activity-route-hover-source';
+const ACTIVITY_ROUTE_HOVER_OUTER_LAYER_ID = 'activity-route-hover-outer-layer';
+const ACTIVITY_ROUTE_HOVER_INNER_LAYER_ID = 'activity-route-hover-inner-layer';
+const ROUTE_HOVER_MARKER_SMOOTHING_MS = 10;
 const CHART_GRID_STROKE = 'rgba(var(--color-border), 0.75)';
 const CHART_AXIS_STROKE = 'rgb(var(--color-muted))';
 const CHART_LINE_COLORS = {
@@ -68,6 +72,11 @@ type ChartSeriesVisibility = Record<ChartSeriesKey, boolean>;
 type ChartBand = { min: number; max: number };
 type ChartZoomDomain = [number, number];
 type ChartPointer = { value: number; chartX: number };
+type RouteHoverCoordinate = { lat: number; lon: number } | null;
+type ActivityRouteMapHandle = {
+  setHoverTarget: (coordinate: RouteHoverCoordinate) => void;
+  clearHoverTarget: () => void;
+};
 
 function defaultChartSeriesVisibility(sportType?: string): ChartSeriesVisibility {
   const normalizedSport = (sportType ?? '').trim().toLowerCase();
@@ -110,6 +119,8 @@ interface CombinedChartPoint {
   distanceKm: number;
   distanceM: number;
   elapsedSeconds: number;
+  lat: number | null;
+  lon: number | null;
   speedKmh: number | null;
   paceSecondsPerKm: number | null;
   heartRate: number | null;
@@ -142,6 +153,50 @@ function readChartPointer(event: unknown): ChartPointer | null {
   }
 
   return { value, chartX };
+}
+
+function readHoveredRouteCoordinate(event: unknown): RouteHoverCoordinate {
+  if (!event || typeof event !== 'object') {
+    return null;
+  }
+
+  const maybeHover = event as {
+    isTooltipActive?: unknown;
+    activePayload?: Array<{ payload?: CombinedChartPoint }>;
+  };
+
+  if (maybeHover.isTooltipActive === false) {
+    return null;
+  }
+
+  if (!Array.isArray(maybeHover.activePayload) || maybeHover.activePayload.length === 0) {
+    return null;
+  }
+
+  for (const entry of maybeHover.activePayload) {
+    const point = entry?.payload;
+    if (!point) {
+      continue;
+    }
+
+    if (Number.isFinite(point.lat) && Number.isFinite(point.lon)) {
+      return { lat: point.lat as number, lon: point.lon as number };
+    }
+  }
+
+  return null;
+}
+
+function routeHoverCoordinatesEqual(a: RouteHoverCoordinate, b: RouteHoverCoordinate): boolean {
+  if (a === b) {
+    return true;
+  }
+
+  if (!a || !b) {
+    return false;
+  }
+
+  return Math.abs(a.lat - b.lat) < 1e-7 && Math.abs(a.lon - b.lon) < 1e-7;
 }
 
 function chartDomainsEqual(a: ChartZoomDomain | null, b: ChartZoomDomain | null): boolean {
@@ -491,6 +546,7 @@ function SplitMetricChart({
   selectionDomain,
   onChartMouseDown,
   onChartMouseMove,
+  onChartMouseLeave,
   onChartMouseUp,
   variant = 'line'
 }: {
@@ -509,6 +565,7 @@ function SplitMetricChart({
   selectionDomain?: ChartZoomDomain | null;
   onChartMouseDown?: (event: unknown) => void;
   onChartMouseMove?: (event: unknown) => void;
+  onChartMouseLeave?: () => void;
   onChartMouseUp?: (event: unknown) => void;
   variant?: 'line' | 'area';
 }) {
@@ -539,6 +596,7 @@ function SplitMetricChart({
               margin={{ top: 8, right: 8, left: -6, bottom: 2 }}
               onMouseDown={onChartMouseDown}
               onMouseMove={onChartMouseMove}
+              onMouseLeave={onChartMouseLeave}
               onMouseUp={onChartMouseUp}
             >
               <CartesianGrid stroke={CHART_GRID_STROKE} strokeDasharray="3 3" vertical={false} />
@@ -641,6 +699,26 @@ function toRouteFeatureCollection(track: TrackPoint[]): FeatureCollection<LineSt
   };
 }
 
+function toRouteHoverFeatureCollection(point: RouteHoverCoordinate): FeatureCollection<Point> {
+  if (!point) {
+    return { type: 'FeatureCollection', features: [] };
+  }
+
+  return {
+    type: 'FeatureCollection',
+    features: [
+      {
+        type: 'Feature',
+        properties: {},
+        geometry: {
+          type: 'Point',
+          coordinates: [point.lon, point.lat]
+        }
+      }
+    ]
+  };
+}
+
 function fitMapToTrack(map: maplibregl.Map, track: TrackPoint[]) {
   if (track.length === 0) {
     map.jumpTo({
@@ -673,21 +751,123 @@ function fitMapToTrack(map: maplibregl.Map, track: TrackPoint[]) {
   });
 }
 
-function ActivityRouteMap({
-  track,
-  reducedComplexity,
-  routeLineColorHex
-}: {
-  track: TrackPoint[];
-  reducedComplexity: boolean;
-  routeLineColorHex: string;
-}) {
+const ActivityRouteMap = forwardRef<
+  ActivityRouteMapHandle,
+  {
+    track: TrackPoint[];
+    reducedComplexity: boolean;
+    routeLineColorHex: string;
+  }
+>(function ActivityRouteMap({ track, reducedComplexity, routeLineColorHex }, ref) {
   const { containerRef, mapRef } = useManagedMapLibre({
     reducedComplexity,
     initialCenter: US_DEFAULT_CENTER,
     initialZoom: US_DEFAULT_ZOOM
   });
   const trackSource = useMemo(() => toRouteFeatureCollection(track), [track]);
+  const hoverTargetRef = useRef<RouteHoverCoordinate>(null);
+  const hoverDisplayedRef = useRef<RouteHoverCoordinate>(null);
+  const hoverAnimationFrameRef = useRef<number | null>(null);
+  const hoverLastFrameTimeRef = useRef<number | null>(null);
+
+  const setHoverPointSourceData = (point: RouteHoverCoordinate) => {
+    const map = mapRef.current;
+    if (!map || !map.getSource(ACTIVITY_ROUTE_HOVER_SOURCE_ID)) {
+      return;
+    }
+
+    (map.getSource(ACTIVITY_ROUTE_HOVER_SOURCE_ID) as GeoJSONSource).setData(
+      toRouteHoverFeatureCollection(point)
+    );
+  };
+
+  const cancelHoverAnimation = () => {
+    if (hoverAnimationFrameRef.current == null) {
+      return;
+    }
+
+    cancelAnimationFrame(hoverAnimationFrameRef.current);
+    hoverAnimationFrameRef.current = null;
+  };
+
+  const scheduleHoverAnimation = () => {
+    if (hoverAnimationFrameRef.current != null) {
+      return;
+    }
+
+    hoverAnimationFrameRef.current = requestAnimationFrame((timestamp) => {
+      hoverAnimationFrameRef.current = null;
+
+      const target = hoverTargetRef.current;
+      const current = hoverDisplayedRef.current;
+
+      if (!target) {
+        hoverLastFrameTimeRef.current = null;
+        if (current) {
+          hoverDisplayedRef.current = null;
+          setHoverPointSourceData(null);
+        }
+        return;
+      }
+
+      if (!current) {
+        hoverDisplayedRef.current = { ...target };
+        hoverLastFrameTimeRef.current = timestamp;
+        setHoverPointSourceData(hoverDisplayedRef.current);
+        return;
+      }
+
+      const previousTimestamp = hoverLastFrameTimeRef.current ?? timestamp;
+      hoverLastFrameTimeRef.current = timestamp;
+      const dt = Math.max(1, Math.min(64, timestamp - previousTimestamp));
+      const alpha = 1 - Math.exp(-dt / ROUTE_HOVER_MARKER_SMOOTHING_MS);
+
+      const nextPoint = {
+        lat: current.lat + (target.lat - current.lat) * alpha,
+        lon: current.lon + (target.lon - current.lon) * alpha
+      };
+
+      const closeToTarget =
+        Math.abs(target.lat - nextPoint.lat) < 1e-6 && Math.abs(target.lon - nextPoint.lon) < 1e-6;
+      hoverDisplayedRef.current = closeToTarget ? { ...target } : nextPoint;
+      setHoverPointSourceData(hoverDisplayedRef.current);
+
+      if (!routeHoverCoordinatesEqual(hoverDisplayedRef.current, hoverTargetRef.current)) {
+        scheduleHoverAnimation();
+      }
+    });
+  };
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      setHoverTarget: (coordinate) => {
+        const normalized = coordinate ? { ...coordinate } : null;
+        if (routeHoverCoordinatesEqual(hoverTargetRef.current, normalized)) {
+          return;
+        }
+
+        hoverTargetRef.current = normalized;
+        if (!normalized) {
+          cancelHoverAnimation();
+          hoverLastFrameTimeRef.current = null;
+          hoverDisplayedRef.current = null;
+          setHoverPointSourceData(null);
+          return;
+        }
+
+        scheduleHoverAnimation();
+      },
+      clearHoverTarget: () => {
+        hoverTargetRef.current = null;
+        cancelHoverAnimation();
+        hoverLastFrameTimeRef.current = null;
+        hoverDisplayedRef.current = null;
+        setHoverPointSourceData(null);
+      }
+    }),
+    []
+  );
 
   useEffect(() => {
     const map = mapRef.current;
@@ -742,6 +922,80 @@ function ActivityRouteMap({
       return undefined;
     }
 
+    const syncHoverPointLayer = () => {
+      if (!map.getSource(ACTIVITY_ROUTE_HOVER_SOURCE_ID)) {
+        map.addSource(ACTIVITY_ROUTE_HOVER_SOURCE_ID, {
+          type: 'geojson',
+          data: toRouteHoverFeatureCollection(hoverDisplayedRef.current)
+        });
+      }
+
+      if (!map.getLayer(ACTIVITY_ROUTE_HOVER_OUTER_LAYER_ID)) {
+        map.addLayer({
+          id: ACTIVITY_ROUTE_HOVER_OUTER_LAYER_ID,
+          type: 'circle',
+          source: ACTIVITY_ROUTE_HOVER_SOURCE_ID,
+          paint: {
+            'circle-radius': 6,
+            'circle-color': '#ffffff',
+            'circle-opacity': 0.95,
+            'circle-stroke-width': 2,
+            'circle-stroke-color': 'rgba(15, 23, 42, 0.8)'
+          }
+        });
+      }
+
+      if (!map.getLayer(ACTIVITY_ROUTE_HOVER_INNER_LAYER_ID)) {
+        map.addLayer({
+          id: ACTIVITY_ROUTE_HOVER_INNER_LAYER_ID,
+          type: 'circle',
+          source: ACTIVITY_ROUTE_HOVER_SOURCE_ID,
+          paint: {
+            'circle-radius': 3.25,
+            'circle-color': routeLineColorHex,
+            'circle-opacity': 1
+          }
+        });
+      }
+
+      map.setPaintProperty(ACTIVITY_ROUTE_HOVER_INNER_LAYER_ID, 'circle-color', routeLineColorHex);
+      map.moveLayer(ACTIVITY_ROUTE_HOVER_OUTER_LAYER_ID);
+      map.moveLayer(ACTIVITY_ROUTE_HOVER_INNER_LAYER_ID);
+      setHoverPointSourceData(hoverDisplayedRef.current);
+    };
+
+    if (map.isStyleLoaded()) {
+      syncHoverPointLayer();
+      return undefined;
+    }
+
+    map.once('load', syncHoverPointLayer);
+    return () => {
+      map.off('load', syncHoverPointLayer);
+    };
+  }, [routeLineColorHex]);
+
+  useEffect(() => {
+    hoverTargetRef.current = null;
+    hoverDisplayedRef.current = null;
+    hoverLastFrameTimeRef.current = null;
+    cancelHoverAnimation();
+    setHoverPointSourceData(null);
+  }, [track]);
+
+  useEffect(
+    () => () => {
+      cancelHoverAnimation();
+    },
+    []
+  );
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) {
+      return undefined;
+    }
+
     const fitTrack = () => {
       fitMapToTrack(map, track);
     };
@@ -758,7 +1012,7 @@ function ActivityRouteMap({
   }, [track]);
 
   return <div ref={containerRef} className="h-full w-full" />;
-}
+});
 
 function ReducedComplexityMapToggle({
   enabled,
@@ -806,6 +1060,7 @@ export function ActivityDetailPage() {
   const chartDragCurrentRef = useRef<ChartPointer | null>(null);
   const chartSelectionFrameRef = useRef<number | null>(null);
   const chartSamplesRequestRef = useRef(0);
+  const routeMapRef = useRef<ActivityRouteMapHandle | null>(null);
   const accentTheme = useAppStore((state) => state.settings?.accentTheme);
   const chartMaxSamples = useAppStore((state) => state.settings?.chartMaxSamples ?? 2000);
   const accentPalette = useMemo(() => getAccentThemePalette(accentTheme), [accentTheme]);
@@ -843,6 +1098,7 @@ export function ActivityDetailPage() {
     setChartSelectionDomain(null);
     chartDragAnchorRef.current = null;
     chartDragCurrentRef.current = null;
+    routeMapRef.current?.clearHoverTarget();
   }, [detail?.summary.id, detail?.summary.sportType]);
 
   const combinedChart = useMemo<CombinedChartModel>(() => {
@@ -887,6 +1143,8 @@ export function ActivityDetailPage() {
           distanceKm: distanceM / 1000,
           distanceM,
           elapsedSeconds: sample.elapsedSeconds,
+          lat: sample.lat,
+          lon: sample.lon,
           speedKmh,
           paceSecondsPerKm,
           heartRate: sample.heartRate,
@@ -1096,6 +1354,9 @@ export function ActivityDetailPage() {
   };
 
   const handleChartMouseMove = (event: unknown) => {
+    const hoveredCoordinate = readHoveredRouteCoordinate(event);
+    routeMapRef.current?.setHoverTarget(hoveredCoordinate);
+
     if (!chartDragAnchorRef.current) {
       return;
     }
@@ -1116,6 +1377,10 @@ export function ActivityDetailPage() {
 
     chartDragCurrentRef.current = pointer;
     scheduleChartSelectionSync();
+  };
+
+  const handleChartMouseLeave = () => {
+    routeMapRef.current?.clearHoverTarget();
   };
 
   const handleChartMouseUp = (event: unknown) => {
@@ -1202,6 +1467,7 @@ export function ActivityDetailPage() {
                 }
               >
                 <ActivityRouteMap
+                  ref={routeMapRef}
                   track={detail.track}
                   reducedComplexity={reducedMapComplexity}
                   routeLineColorHex={accentPalette.routeLineHex}
@@ -1278,6 +1544,7 @@ export function ActivityDetailPage() {
                         margin={{ top: 8, right: 8, left: 8, bottom: 8 }}
                         onMouseDown={handleChartMouseDown}
                         onMouseMove={handleChartMouseMove}
+                        onMouseLeave={handleChartMouseLeave}
                         onMouseUp={handleChartMouseUp}
                       >
                         <CartesianGrid stroke={CHART_GRID_STROKE} strokeDasharray="3 3" horizontal={false} />
@@ -1398,6 +1665,7 @@ export function ActivityDetailPage() {
                     selectionDomain={chartSelectionDomain}
                     onChartMouseDown={handleChartMouseDown}
                     onChartMouseMove={handleChartMouseMove}
+                    onChartMouseLeave={handleChartMouseLeave}
                     onChartMouseUp={handleChartMouseUp}
                   />
                 ) : null}
@@ -1420,6 +1688,7 @@ export function ActivityDetailPage() {
                     selectionDomain={chartSelectionDomain}
                     onChartMouseDown={handleChartMouseDown}
                     onChartMouseMove={handleChartMouseMove}
+                    onChartMouseLeave={handleChartMouseLeave}
                     onChartMouseUp={handleChartMouseUp}
                   />
                 ) : null}
@@ -1440,6 +1709,7 @@ export function ActivityDetailPage() {
                     selectionDomain={chartSelectionDomain}
                     onChartMouseDown={handleChartMouseDown}
                     onChartMouseMove={handleChartMouseMove}
+                    onChartMouseLeave={handleChartMouseLeave}
                     onChartMouseUp={handleChartMouseUp}
                   />
                 ) : null}
@@ -1460,6 +1730,7 @@ export function ActivityDetailPage() {
                     selectionDomain={chartSelectionDomain}
                     onChartMouseDown={handleChartMouseDown}
                     onChartMouseMove={handleChartMouseMove}
+                    onChartMouseLeave={handleChartMouseLeave}
                     onChartMouseUp={handleChartMouseUp}
                     variant="area"
                   />

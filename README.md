@@ -33,6 +33,7 @@ Prototype (actively evolving).
 - Active sort direction indicators (`▲`/`▼`) in activities table headers
 - In-memory activities list caching for snappy return navigation (no refetch unless filters/data change)
 - Activity detail with a right-side metric rail, route map (when GPS is present), and switchable charts (distance-based when GPS track exists; time-based fallback when GPS is unavailable) with combined overlay or split plots, shared hover cursor/stats, elevation background in combined mode, zoom-aware adaptive vertical scaling for visible series, and drag-to-zoom/click-to-reset
+- Activity detail chart hover can highlight the corresponding GPS position on the route map with an animated moving dot (when sample coordinates are available)
 - Adaptive chart sample loading by zoom window (configurable max visible chart samples in Settings)
 - Continuous, Google Maps-style smooth zooming/panning on map views
 - Toggling "Reduced complexity" preserves the current map viewport (pan/zoom)
@@ -85,6 +86,7 @@ npm run tauri dev
    - **Heatmap** for a global path heatmap (overlapping GPS tracks; filter by time span/category/sport)
    - Enable **Reduced complexity (grayscale)** in Heatmap to declutter the map and emphasize route overlap
    - **Activity Detail** for metrics plus a route map (GPS activities) and a chart area that switches between distance-based plots (with GPS) and time-based plots (without GPS); split view hides unavailable metric panels
+   - Hover **Activity Detail** charts to see the matching point on the route map highlighted with an animated moving dot (when GPS samples exist)
    - In **Activity Detail** charts, click-drag across the plot to zoom into the visible x-axis range (distance or elapsed time); chart Y-axes/overlay scaling automatically re-fit to the visible segment, and single-click resets back to the full range
    - Use the **Maximize** button on maps (Route + Heatmap) to expand them, then press **Esc** or **Minimize** to close
 
