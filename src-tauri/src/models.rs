@@ -87,6 +87,8 @@ pub struct ActivitySample {
     pub distance_m: Option<f64>,
     pub speed_mps: Option<f64>,
     pub heart_rate: Option<f64>,
+    pub cadence: Option<f64>,
+    pub power_watts: Option<f64>,
     pub altitude_m: Option<f64>,
     pub lat: Option<f64>,
     pub lon: Option<f64>,
