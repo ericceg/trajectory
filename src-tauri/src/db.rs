@@ -59,6 +59,7 @@ pub fn init_db(db_path: &Path) -> Result<()> {
       avg_speed_mps REAL,
       max_speed_mps REAL,
       avg_hr REAL,
+      min_hr REAL,
       max_hr REAL,
       has_gps INTEGER NOT NULL,
       track_json TEXT NOT NULL,
@@ -90,6 +91,7 @@ pub fn init_db(db_path: &Path) -> Result<()> {
 
     ensure_activity_category_column(&conn)?;
     ensure_activity_title_column(&conn)?;
+    ensure_activity_min_hr_column(&conn)?;
 
     Ok(())
 }
@@ -167,6 +169,36 @@ fn ensure_activity_title_column(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+fn ensure_activity_min_hr_column(conn: &Connection) -> Result<()> {
+    let has_min_hr = conn
+        .query_row(
+            "SELECT 1 FROM pragma_table_info('activities') WHERE name = 'min_hr' LIMIT 1",
+            [],
+            |_| Ok(()),
+        )
+        .optional()?
+        .is_some();
+
+    if !has_min_hr {
+        conn.execute("ALTER TABLE activities ADD COLUMN min_hr REAL", [])?;
+    }
+
+    conn.execute_batch(
+        r#"
+    UPDATE activities
+    SET min_hr = (
+      SELECT MIN(heart_rate)
+      FROM activity_samples
+      WHERE activity_id = activities.id
+        AND heart_rate IS NOT NULL
+    )
+    WHERE min_hr IS NULL;
+    "#,
+    )?;
+
+    Ok(())
+}
+
 pub fn source_file_meta_map(conn: &Connection) -> Result<HashMap<String, SourceFileMeta>> {
     let mut stmt = conn.prepare("SELECT source_path, source_mtime, source_size FROM activities")?;
 
@@ -238,12 +270,13 @@ pub fn upsert_activity(
       avg_speed_mps,
       max_speed_mps,
       avg_hr,
+      min_hr,
       max_hr,
       has_gps,
       track_json,
       original_sample_count,
       updated_at
-    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, CURRENT_TIMESTAMP)
+    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, CURRENT_TIMESTAMP)
     ON CONFLICT(source_path) DO UPDATE SET
       source_mtime = excluded.source_mtime,
       source_size = excluded.source_size,
@@ -257,6 +290,7 @@ pub fn upsert_activity(
       avg_speed_mps = excluded.avg_speed_mps,
       max_speed_mps = excluded.max_speed_mps,
       avg_hr = excluded.avg_hr,
+      min_hr = excluded.min_hr,
       max_hr = excluded.max_hr,
       has_gps = excluded.has_gps,
       track_json = excluded.track_json,
@@ -277,6 +311,7 @@ pub fn upsert_activity(
             parsed.avg_speed_mps,
             parsed.max_speed_mps,
             parsed.avg_hr,
+            parsed.min_hr,
             parsed.max_hr,
             if parsed.has_gps { 1 } else { 0 },
             track_json,
@@ -351,9 +386,56 @@ fn map_summary_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ActivitySummary>
         avg_speed_mps: row.get(9)?,
         max_speed_mps: row.get(10)?,
         avg_hr: row.get(11)?,
-        max_hr: row.get(12)?,
-        has_gps: row.get::<_, i64>(13)? == 1,
+        min_hr: row.get(12)?,
+        max_hr: row.get(13)?,
+        has_gps: row.get::<_, i64>(14)? == 1,
     })
+}
+
+fn compute_total_positive_ascent_m(samples: &[ActivitySample]) -> Option<f64> {
+    let mut total = 0.0;
+    let mut previous_altitude: Option<f64> = None;
+    let mut saw_altitude = false;
+
+    for sample in samples {
+        if let Some(current_altitude) = sample.altitude_m {
+            saw_altitude = true;
+            if let Some(prev_altitude) = previous_altitude {
+                let delta = current_altitude - prev_altitude;
+                if delta > 0.0 {
+                    total += delta;
+                }
+            }
+            previous_altitude = Some(current_altitude);
+        }
+    }
+
+    if saw_altitude { Some(total.max(0.0)) } else { None }
+}
+
+fn compute_heart_rate_stats(samples: &[ActivitySample]) -> (Option<f64>, Option<f64>, Option<f64>) {
+    let mut count = 0usize;
+    let mut sum = 0.0;
+    let mut min: Option<f64> = None;
+    let mut max: Option<f64> = None;
+
+    for sample in samples {
+        let Some(hr) = sample.heart_rate else {
+            continue;
+        };
+        count += 1;
+        sum += hr;
+        min = Some(min.map_or(hr, |current| current.min(hr)));
+        max = Some(max.map_or(hr, |current| current.max(hr)));
+    }
+
+    let avg = if count > 0 {
+        Some(sum / count as f64)
+    } else {
+        None
+    };
+
+    (avg, min, max)
 }
 
 fn downsample_track(points: &[TrackPoint], stride: usize) -> Vec<TrackPoint> {
@@ -436,6 +518,7 @@ pub fn list_activities(
       avg_speed_mps,
       max_speed_mps,
       avg_hr,
+      min_hr,
       max_hr,
       has_gps
     FROM activities
@@ -686,6 +769,7 @@ pub fn get_activity(conn: &Connection, id: i64) -> Result<ActivityDetail> {
       avg_speed_mps,
       max_speed_mps,
       avg_hr,
+      min_hr,
       max_hr,
       has_gps,
       track_json,
@@ -695,7 +779,7 @@ pub fn get_activity(conn: &Connection, id: i64) -> Result<ActivityDetail> {
     "#,
     )?;
 
-    let (summary, track_json, original_sample_count): (ActivitySummary, String, i64) = stmt
+    let (mut summary, track_json, original_sample_count): (ActivitySummary, String, i64) = stmt
         .query_row(params![id], |row| {
             Ok((
                 ActivitySummary {
@@ -711,11 +795,12 @@ pub fn get_activity(conn: &Connection, id: i64) -> Result<ActivityDetail> {
                     avg_speed_mps: row.get(9)?,
                     max_speed_mps: row.get(10)?,
                     avg_hr: row.get(11)?,
-                    max_hr: row.get(12)?,
-                    has_gps: row.get::<_, i64>(13)? == 1,
+                    min_hr: row.get(12)?,
+                    max_hr: row.get(13)?,
+                    has_gps: row.get::<_, i64>(14)? == 1,
                 },
-                row.get(14)?,
                 row.get(15)?,
+                row.get(16)?,
             ))
         })
         .optional()?
@@ -724,6 +809,13 @@ pub fn get_activity(conn: &Connection, id: i64) -> Result<ActivityDetail> {
     let track: Vec<TrackPoint> = serde_json::from_str(&track_json).unwrap_or_default();
 
     let all_samples = fetch_activity_samples(conn, id)?;
+    if let Some(elevation_gain_m) = compute_total_positive_ascent_m(&all_samples) {
+        summary.elevation_gain_m = elevation_gain_m;
+    }
+    let (avg_hr, min_hr, max_hr) = compute_heart_rate_stats(&all_samples);
+    summary.avg_hr = summary.avg_hr.or(avg_hr);
+    summary.min_hr = summary.min_hr.or(min_hr);
+    summary.max_hr = summary.max_hr.or(max_hr);
     let (samples, _) =
         sample_activity_window(&all_samples, &summary, &ActivitySampleQuery::default());
 
@@ -756,6 +848,7 @@ pub fn get_activity_samples(
           avg_speed_mps,
           max_speed_mps,
           avg_hr,
+          min_hr,
           max_hr,
           has_gps
         FROM activities

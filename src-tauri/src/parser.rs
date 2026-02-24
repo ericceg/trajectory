@@ -42,6 +42,7 @@ struct SummaryMetrics {
     avg_speed_mps: Option<f64>,
     max_speed_mps: Option<f64>,
     avg_hr: Option<f64>,
+    min_hr: Option<f64>,
     max_hr: Option<f64>,
 }
 
@@ -364,7 +365,7 @@ fn build_parsed_activity(
 
         if let (Some(prev_alt), Some(current_alt)) = (previous_altitude, point.altitude) {
             let delta = current_alt - prev_alt;
-            if delta > 1.0 {
+            if delta > 0.0 {
                 elevation_gain += delta;
             }
         }
@@ -455,7 +456,8 @@ fn build_parsed_activity(
         Some(heart_rate_values.iter().sum::<f64>() / heart_rate_values.len() as f64)
     };
 
-    let max_hr = heart_rate_values.into_iter().reduce(f64::max);
+    let min_hr = heart_rate_values.iter().copied().reduce(f64::min);
+    let max_hr = heart_rate_values.iter().copied().reduce(f64::max);
 
     let sampled_track = downsample(&raw_track, MAX_UI_POINTS);
     let category = derive_activity_category(&sport_type, notes.as_deref());
@@ -478,6 +480,7 @@ fn build_parsed_activity(
         avg_speed_mps,
         max_speed_mps,
         avg_hr,
+        min_hr,
         max_hr,
         has_gps,
         track: sampled_track,
@@ -527,6 +530,7 @@ fn build_summary_only_activity(
         avg_speed_mps,
         max_speed_mps: summary.max_speed_mps,
         avg_hr: summary.avg_hr,
+        min_hr: summary.min_hr,
         max_hr: summary.max_hr,
         has_gps: false,
         track: Vec::new(),
@@ -847,6 +851,11 @@ pub fn parse_fit_file(path: &Path) -> Result<ParsedActivity> {
                     "avg_heart_rate" => {
                         if let Some(v) = fit_value_as_f64(value) {
                             summary.avg_hr = Some(v);
+                        }
+                    }
+                    "min_heart_rate" => {
+                        if let Some(v) = fit_value_as_f64(value) {
+                            summary.min_hr = Some(summary.min_hr.map_or(v, |cur| cur.min(v)));
                         }
                     }
                     "max_heart_rate" => {

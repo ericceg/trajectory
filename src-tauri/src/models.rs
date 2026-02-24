@@ -67,6 +67,7 @@ pub struct ActivitySummary {
     pub avg_speed_mps: Option<f64>,
     pub max_speed_mps: Option<f64>,
     pub avg_hr: Option<f64>,
+    pub min_hr: Option<f64>,
     pub max_hr: Option<f64>,
     pub has_gps: bool,
 }
@@ -189,6 +190,7 @@ pub struct ParsedActivity {
     pub avg_speed_mps: Option<f64>,
     pub max_speed_mps: Option<f64>,
     pub avg_hr: Option<f64>,
+    pub min_hr: Option<f64>,
     pub max_hr: Option<f64>,
     pub has_gps: bool,
     pub track: Vec<TrackPoint>,

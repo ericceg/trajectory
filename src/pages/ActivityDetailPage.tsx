@@ -269,6 +269,10 @@ function formatElapsedTooltip(seconds: number): string {
   return `${minutes}:${String(secs).padStart(2, '0')}`;
 }
 
+function formatHeartRateBpm(value: number | null | undefined): string {
+  return value == null ? 'n/a' : `${Math.round(value)} bpm`;
+}
+
 function formatPaceSeconds(secondsPerKm: number | null): string {
   if (secondsPerKm == null || !Number.isFinite(secondsPerKm) || secondsPerKm <= 0) {
     return 'n/a';
@@ -1760,9 +1764,11 @@ export function ActivityDetailPage() {
               <MetricCard
                 label="Elevation Gain"
                 value={`${Math.round(detail.summary.elevationGainM)} m`}
-                subLabel={`Avg HR ${detail.summary.avgHr ? Math.round(detail.summary.avgHr) : 'n/a'} · Max HR ${
-                  detail.summary.maxHr ? Math.round(detail.summary.maxHr) : 'n/a'
-                }`}
+              />
+              <MetricCard
+                label="Heart Rate"
+                value={`Avg ${formatHeartRateBpm(detail.summary.avgHr)}`}
+                subLabel={`Min ${formatHeartRateBpm(detail.summary.minHr)} · Max ${formatHeartRateBpm(detail.summary.maxHr)}`}
               />
             </div>
           </div>

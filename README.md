@@ -32,7 +32,7 @@ Prototype (actively evolving).
 - Filterable/sortable activities table
 - Active sort direction indicators (`▲`/`▼`) in activities table headers
 - In-memory activities list caching for snappy return navigation (no refetch unless filters/data change)
-- Activity detail with a right-side metric rail, route map (when GPS is present), and switchable charts (distance-based when GPS track exists; time-based fallback when GPS is unavailable) with combined overlay or split plots, shared hover cursor/stats, elevation background in combined mode, zoom-aware adaptive vertical scaling for visible series, and drag-to-zoom/click-to-reset
+- Activity detail with a right-side metric rail, route map (when GPS is present), and switchable charts (distance-based when GPS track exists; time-based fallback when GPS is unavailable) with combined overlay or split plots, shared hover cursor/stats, elevation background in combined mode, zoom-aware adaptive vertical scaling for visible series, drag-to-zoom/click-to-reset, dedicated heart-rate metric card (avg/min/max), and elevation gain shown as summed positive ascent
 - Activity detail chart hover can highlight the corresponding GPS position on the route map with an animated moving dot (when sample coordinates are available)
 - Adaptive chart sample loading by zoom window (configurable max visible chart samples in Settings)
 - Continuous, Google Maps-style smooth zooming/panning on map views

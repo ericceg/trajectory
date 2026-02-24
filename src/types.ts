@@ -40,6 +40,7 @@ export interface ActivitySummary {
   avgSpeedMps: number | null;
   maxSpeedMps: number | null;
   avgHr: number | null;
+  minHr: number | null;
   maxHr: number | null;
   hasGps: boolean;
 }
