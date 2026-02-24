@@ -39,10 +39,12 @@ const ROUTE_HOVER_MARKER_SMOOTHING_MS = 10;
 const CHART_GRID_STROKE = 'rgba(var(--color-border), 0.75)';
 const CHART_AXIS_STROKE = 'rgb(var(--color-muted))';
 const CHART_LINE_COLORS = {
-  speed: '#0B1F5E', // navy blue
+  speed: '#2563EB', // blue
   pace: '#2563EB', // blue
   heartRate: '#DC2626', // red
-  elevation: '#77C043' // alpine green
+  elevation: '#77C043', // alpine green
+  cadence: '#F59E0B', // amber
+  power: '#bd08ff', // violet
 } as const;
 const CHART_TOOLTIP_STYLE = {
   borderRadius: 10,
@@ -56,15 +58,28 @@ const CHART_TOOLTIP_WRAPPER_STYLE = {
   pointerEvents: 'none'
 } as const;
 const COMBINED_CHART_DOMAIN: [number, number] = [0, 100];
-const COMBINED_CHART_SERIES_ORDER: ChartSeriesKey[] = ['speed', 'heartRate', 'pace', 'elevation'];
+const COMBINED_CHART_SERIES_ORDER: ChartSeriesKey[] = [
+  'power',
+  'speed',
+  'heartRate',
+  'cadence',
+  'pace',
+  'elevation'
+];
 const COMBINED_CHART_OUTER_PADDING = 3;
 const COMBINED_CHART_BAND_GAP = 4;
 const CHART_DRAG_CLICK_THRESHOLD_PX = 4;
 const CHART_MIN_ZOOM_SPAN_KM = 0.01;
 const CHART_MIN_ZOOM_SPAN_SECONDS = 15;
 
-type ChartSeriesKey = 'pace' | 'speed' | 'heartRate' | 'elevation';
-type SplitMetricKey = 'paceSecondsPerKm' | 'speedKmh' | 'heartRate' | 'elevationM';
+type ChartSeriesKey = 'pace' | 'speed' | 'heartRate' | 'elevation' | 'cadence' | 'power';
+type SplitMetricKey =
+  | 'paceSecondsPerKm'
+  | 'speedKmh'
+  | 'heartRate'
+  | 'elevationM'
+  | 'cadence'
+  | 'powerWatts';
 type ChartMode = 'combined' | 'split';
 type ChartXAxisMode = 'distance' | 'time';
 
@@ -94,7 +109,9 @@ function defaultChartSeriesVisibility(sportType?: string): ChartSeriesVisibility
       pace: true,
       speed: false,
       heartRate: true,
-      elevation: true
+      elevation: true,
+      cadence: false,
+      power: false
     };
   }
 
@@ -103,7 +120,9 @@ function defaultChartSeriesVisibility(sportType?: string): ChartSeriesVisibility
       pace: false,
       speed: true,
       heartRate: true,
-      elevation: true
+      elevation: true,
+      cadence: false,
+      power: false
     };
   }
 
@@ -111,7 +130,9 @@ function defaultChartSeriesVisibility(sportType?: string): ChartSeriesVisibility
     pace: true,
     speed: true,
     heartRate: true,
-    elevation: true
+    elevation: true,
+    cadence: false,
+    power: false
   };
 }
 
@@ -124,11 +145,15 @@ interface CombinedChartPoint {
   speedKmh: number | null;
   paceSecondsPerKm: number | null;
   heartRate: number | null;
+  cadence: number | null;
+  powerWatts: number | null;
   elevationM: number | null;
   gradePct: number | null;
   pacePlot: number | null;
   speedPlot: number | null;
   heartRatePlot: number | null;
+  cadencePlot: number | null;
+  powerPlot: number | null;
   elevationPlot: number | null;
 }
 
@@ -479,6 +504,14 @@ function CombinedChartTooltip({
         <p>
           Heart rate:{' '}
           <span className="font-semibold">{point.heartRate == null ? 'n/a' : `${Math.round(point.heartRate)} bpm`}</span>
+        </p>
+        <p>
+          Cadence:{' '}
+          <span className="font-semibold">{point.cadence == null ? 'n/a' : `${Math.round(point.cadence)} rpm`}</span>
+        </p>
+        <p>
+          Power:{' '}
+          <span className="font-semibold">{point.powerWatts == null ? 'n/a' : `${Math.round(point.powerWatts)} W`}</span>
         </p>
         <p>
           Elevation:{' '}
@@ -1113,7 +1146,7 @@ export function ActivityDetailPage() {
     if (!detail) {
       return {
         data: [],
-        has: { pace: false, speed: false, heartRate: false, elevation: false },
+        has: { pace: false, speed: false, heartRate: false, elevation: false, cadence: false, power: false },
         maxDistanceKm: 0,
         maxElapsedSeconds: 0
       };
@@ -1124,7 +1157,12 @@ export function ActivityDetailPage() {
     let lastDistanceM = 0;
     let previousElevationPoint: { distanceM: number; elevationM: number } | null = null;
 
-    const basePoints: Array<Omit<CombinedChartPoint, 'pacePlot' | 'speedPlot' | 'heartRatePlot' | 'elevationPlot'>> =
+    const basePoints: Array<
+      Omit<
+        CombinedChartPoint,
+        'pacePlot' | 'speedPlot' | 'heartRatePlot' | 'cadencePlot' | 'powerPlot' | 'elevationPlot'
+      >
+    > =
       chartSamples.map((sample) => {
         const estimatedDistanceM =
           totalDistanceM > 0 ? (sample.elapsedSeconds / totalDurationSeconds) * totalDistanceM : lastDistanceM;
@@ -1156,6 +1194,8 @@ export function ActivityDetailPage() {
           speedKmh,
           paceSecondsPerKm,
           heartRate: sample.heartRate,
+          cadence: sample.cadence,
+          powerWatts: sample.powerWatts,
           elevationM: sample.altitudeM,
           gradePct
         };
@@ -1164,11 +1204,15 @@ export function ActivityDetailPage() {
     const paceRange = metricRange(basePoints.map((point) => point.paceSecondsPerKm));
     const speedRange = metricRange(basePoints.map((point) => point.speedKmh));
     const heartRateRange = metricRange(basePoints.map((point) => point.heartRate));
+    const cadenceRange = metricRange(basePoints.map((point) => point.cadence));
+    const powerRange = metricRange(basePoints.map((point) => point.powerWatts));
     const elevationRange = metricRange(basePoints.map((point) => point.elevationM));
     const has = {
       pace: paceRange != null,
       speed: speedRange != null,
       heartRate: heartRateRange != null,
+      cadence: cadenceRange != null,
+      power: powerRange != null,
       elevation: elevationRange != null
     } satisfies Record<ChartSeriesKey, boolean>;
     const visibleSeries = COMBINED_CHART_SERIES_ORDER.filter(
@@ -1181,6 +1225,8 @@ export function ActivityDetailPage() {
       pacePlot: normalizeToBand(point.paceSecondsPerKm, paceRange, bands.pace, true),
       speedPlot: normalizeToBand(point.speedKmh, speedRange, bands.speed),
       heartRatePlot: normalizeToBand(point.heartRate, heartRateRange, bands.heartRate),
+      cadencePlot: normalizeToBand(point.cadence, cadenceRange, bands.cadence),
+      powerPlot: normalizeToBand(point.powerWatts, powerRange, bands.power),
       elevationPlot: normalizeToBand(point.elevationM, elevationRange, bands.elevation)
     }));
 
@@ -1287,6 +1333,18 @@ export function ActivityDetailPage() {
       (point) => (chartXAxisMode === 'distance' ? point.distanceKm : point.elapsedSeconds),
       (point) => point.heartRate
     );
+    const cadenceRange = metricRangeForVisibleDomain(
+      combinedChart.data,
+      activeChartXAxisDomain,
+      (point) => (chartXAxisMode === 'distance' ? point.distanceKm : point.elapsedSeconds),
+      (point) => point.cadence
+    );
+    const powerRange = metricRangeForVisibleDomain(
+      combinedChart.data,
+      activeChartXAxisDomain,
+      (point) => (chartXAxisMode === 'distance' ? point.distanceKm : point.elapsedSeconds),
+      (point) => point.powerWatts
+    );
     const elevationRange = metricRangeForVisibleDomain(
       combinedChart.data,
       activeChartXAxisDomain,
@@ -1299,6 +1357,8 @@ export function ActivityDetailPage() {
       pacePlot: normalizeToBand(point.paceSecondsPerKm, paceRange, bands.pace, true),
       speedPlot: normalizeToBand(point.speedKmh, speedRange, bands.speed),
       heartRatePlot: normalizeToBand(point.heartRate, heartRateRange, bands.heartRate),
+      cadencePlot: normalizeToBand(point.cadence, cadenceRange, bands.cadence),
+      powerPlot: normalizeToBand(point.powerWatts, powerRange, bands.power),
       elevationPlot: normalizeToBand(point.elevationM, elevationRange, bands.elevation)
     }));
   }, [activeChartXAxisDomain, chartSeriesVisibility, chartXAxisMode, combinedChart.data, combinedChart.has]);
@@ -1477,8 +1537,8 @@ export function ActivityDetailPage() {
           ) : null}
 
           <section className="select-none rounded-xl border border-border bg-panel p-4">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
+            <div className="space-y-3">
+              <div className="min-w-0">
                 <h3 className="text-lg font-semibold text-foreground">
                   {chartXAxisMode === 'distance' ? 'Performance vs Distance' : 'Performance vs Time'}
                 </h3>
@@ -1492,6 +1552,22 @@ export function ActivityDetailPage() {
               <div className="flex flex-wrap items-start justify-end gap-2">
                 {chartMode === 'combined' ? (
                   <div className="flex flex-wrap items-center justify-end gap-2">
+                    <SeriesToggle
+                      label="Power"
+                      color={CHART_LINE_COLORS.power}
+                      enabled={chartSeriesVisibility.power}
+                      disabled={!combinedChart.has.power}
+                      onToggle={() => setChartSeriesVisibility((current) => ({ ...current, power: !current.power }))}
+                    />
+                    <SeriesToggle
+                      label="Cadence"
+                      color={CHART_LINE_COLORS.cadence}
+                      enabled={chartSeriesVisibility.cadence}
+                      disabled={!combinedChart.has.cadence}
+                      onToggle={() =>
+                        setChartSeriesVisibility((current) => ({ ...current, cadence: !current.cadence }))
+                      }
+                    />
                     <SeriesToggle
                       label="Elevation"
                       color={CHART_LINE_COLORS.elevation}
@@ -1621,6 +1697,32 @@ export function ActivityDetailPage() {
                           />
                         ) : null}
 
+                        {chartSeriesVisibility.cadence && combinedChart.has.cadence ? (
+                          <Line
+                            type="monotone"
+                            dataKey="cadencePlot"
+                            stroke={CHART_LINE_COLORS.cadence}
+                            strokeWidth={2}
+                            dot={false}
+                            connectNulls
+                            activeDot={{ r: 3, strokeWidth: 0 }}
+                            isAnimationActive={false}
+                          />
+                        ) : null}
+
+                        {chartSeriesVisibility.power && combinedChart.has.power ? (
+                          <Line
+                            type="monotone"
+                            dataKey="powerPlot"
+                            stroke={CHART_LINE_COLORS.power}
+                            strokeWidth={2}
+                            dot={false}
+                            connectNulls
+                            activeDot={{ r: 3, strokeWidth: 0 }}
+                            isAnimationActive={false}
+                          />
+                        ) : null}
+
                         {chartSeriesVisibility.speed && combinedChart.has.speed ? (
                           <Line
                             type="monotone"
@@ -1644,10 +1746,6 @@ export function ActivityDetailPage() {
               </>
             ) : (
               <div className="mt-4 space-y-4">
-                <p className="text-xs text-muted">
-                  Split charts are synchronized by {chartXAxisMode === 'distance' ? 'distance' : 'time'}, so
-                  hovering one chart aligns the cursor across the others.
-                </p>
                 {combinedChart.has.pace ? (
                   <SplitMetricChart
                     title="Pace"
@@ -1713,6 +1811,48 @@ export function ActivityDetailPage() {
                     onChartMouseUp={handleChartMouseUp}
                   />
                 ) : null}
+                {combinedChart.has.cadence ? (
+                  <SplitMetricChart
+                    title="Cadence"
+                    unitLabel="rpm"
+                    data={combinedChart.data}
+                    hasData={combinedChart.has.cadence}
+                    dataKey="cadence"
+                    color={CHART_LINE_COLORS.cadence}
+                    valueLabel="Cadence"
+                    valueFormatter={(value) => (value == null ? 'n/a' : `${Math.round(value)} rpm`)}
+                    yTickFormatter={(value) => `${Math.round(value)}`}
+                    xDomain={activeChartXAxisDomain}
+                    xAxisMode={chartXAxisMode}
+                    syncId={`activity-${chartXAxisMode}-split-charts`}
+                    selectionDomain={chartSelectionDomain}
+                    onChartMouseDown={handleChartMouseDown}
+                    onChartMouseMove={handleChartMouseMove}
+                    onChartMouseLeave={handleChartMouseLeave}
+                    onChartMouseUp={handleChartMouseUp}
+                  />
+                ) : null}
+                {combinedChart.has.power ? (
+                  <SplitMetricChart
+                    title="Power"
+                    unitLabel="W"
+                    data={combinedChart.data}
+                    hasData={combinedChart.has.power}
+                    dataKey="powerWatts"
+                    color={CHART_LINE_COLORS.power}
+                    valueLabel="Power"
+                    valueFormatter={(value) => (value == null ? 'n/a' : `${Math.round(value)} W`)}
+                    yTickFormatter={(value) => `${Math.round(value)}`}
+                    xDomain={activeChartXAxisDomain}
+                    xAxisMode={chartXAxisMode}
+                    syncId={`activity-${chartXAxisMode}-split-charts`}
+                    selectionDomain={chartSelectionDomain}
+                    onChartMouseDown={handleChartMouseDown}
+                    onChartMouseMove={handleChartMouseMove}
+                    onChartMouseLeave={handleChartMouseLeave}
+                    onChartMouseUp={handleChartMouseUp}
+                  />
+                ) : null}
                 {combinedChart.has.elevation ? (
                   <SplitMetricChart
                     title="Elevation"
@@ -1738,6 +1878,8 @@ export function ActivityDetailPage() {
                 {!combinedChart.has.pace &&
                 !combinedChart.has.speed &&
                 !combinedChart.has.heartRate &&
+                !combinedChart.has.cadence &&
+                !combinedChart.has.power &&
                 !combinedChart.has.elevation ? (
                   <p className="rounded-lg border border-border/70 bg-bg/30 p-4 text-sm text-muted">
                     No chart samples available.

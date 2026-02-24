@@ -32,6 +32,8 @@ struct RawTrackPoint {
     lon: Option<f64>,
     altitude: Option<f64>,
     heart_rate: Option<f64>,
+    cadence: Option<f64>,
+    power_watts: Option<f64>,
     distance: Option<f64>,
     speed: Option<f64>,
 }
@@ -475,6 +477,8 @@ fn build_parsed_activity(
             distance_m,
             speed_mps: derived_speed,
             heart_rate: point.heart_rate,
+            cadence: point.cadence,
+            power_watts: point.power_watts,
             altitude_m: point.altitude,
             lat: point.lat,
             lon: point.lon,
@@ -738,6 +742,8 @@ pub fn parse_tcx_file(path: &Path) -> Result<ParsedActivity> {
                         "DistanceMeters" => current_point.distance = parse_f64(&value),
                         "Speed" => current_point.speed = parse_f64(&value),
                         "Value" if in_heart_rate => current_point.heart_rate = parse_f64(&value),
+                        "Cadence" | "RunCadence" => current_point.cadence = parse_f64(&value),
+                        "Watts" => current_point.power_watts = parse_f64(&value),
                         _ => {}
                     }
                 } else {
@@ -857,6 +863,18 @@ pub fn parse_fit_file(path: &Path) -> Result<ParsedActivity> {
                     "heart_rate" => {
                         point.heart_rate = fit_value_as_f64(value);
                     }
+                    "cadence" | "enhanced_cadence" if point.cadence.is_none() => {
+                        point.cadence = fit_value_as_f64(value);
+                    }
+                    "cadence" => {
+                        point.cadence = fit_value_as_f64(value);
+                    }
+                    "power" | "enhanced_power" if point.power_watts.is_none() => {
+                        point.power_watts = fit_value_as_f64(value);
+                    }
+                    "power" => {
+                        point.power_watts = fit_value_as_f64(value);
+                    }
                     "enhanced_speed" if point.speed.is_none() => {
                         point.speed = fit_value_as_f64(value);
                     }
@@ -875,6 +893,8 @@ pub fn parse_fit_file(path: &Path) -> Result<ParsedActivity> {
                 || point.lon.is_some()
                 || point.distance.is_some()
                 || point.heart_rate.is_some()
+                || point.cadence.is_some()
+                || point.power_watts.is_some()
                 || point.altitude.is_some()
             {
                 points.push(point);

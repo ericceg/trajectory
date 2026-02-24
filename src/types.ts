@@ -56,6 +56,8 @@ export interface ActivitySample {
   distanceM: number | null;
   speedMps: number | null;
   heartRate: number | null;
+  cadence: number | null;
+  powerWatts: number | null;
   altitudeM: number | null;
   lat: number | null;
   lon: number | null;
