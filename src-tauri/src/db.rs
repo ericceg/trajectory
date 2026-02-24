@@ -549,19 +549,6 @@ pub fn list_activities(
 ) -> Result<Vec<ActivitySummary>> {
     let mut stmt = conn.prepare(
         r#"
-    WITH elevation_rollups AS (
-      SELECT
-        sample_deltas.activity_id AS activity_id,
-        SUM(CASE WHEN sample_deltas.delta > 0 THEN sample_deltas.delta ELSE 0 END) AS elevation_gain_m
-      FROM (
-        SELECT
-          activity_id,
-          altitude_m - LAG(altitude_m) OVER (PARTITION BY activity_id ORDER BY elapsed_seconds, id) AS delta
-        FROM activity_samples
-        WHERE altitude_m IS NOT NULL
-      ) AS sample_deltas
-      GROUP BY sample_deltas.activity_id
-    )
     SELECT
       activities.id,
       activities.source_path,
@@ -572,10 +559,7 @@ pub fn list_activities(
       activities.duration_seconds,
       activities.moving_duration_seconds,
       activities.distance_m,
-      CASE
-        WHEN lower(activities.source_path) LIKE '%.fit' THEN activities.elevation_gain_m
-        ELSE COALESCE(elevation_rollups.elevation_gain_m, activities.elevation_gain_m)
-      END,
+      activities.elevation_gain_m,
       activities.avg_speed_mps,
       activities.max_speed_mps,
       activities.avg_hr,
@@ -583,7 +567,6 @@ pub fn list_activities(
       activities.max_hr,
       activities.has_gps
     FROM activities
-    LEFT JOIN elevation_rollups ON elevation_rollups.activity_id = activities.id
     WHERE (?1 IS NULL OR date(activities.activity_start) >= date(?1))
       AND (?2 IS NULL OR date(activities.activity_start) <= date(?2))
       AND (?3 IS NULL OR activities.category = ?3)

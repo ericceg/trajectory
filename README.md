@@ -30,7 +30,7 @@ Prototype (actively evolving).
 - Dashboard top summary cards include a weekly activity streak tile (consecutive active weeks)
 - Calendar bars can switch between hours, kilometers, and activity count
 - Hovering month or year bars uses horizontal cursor position (full-height hit area) and highlights the corresponding calendar day/month workout context with a quick pop animation
-- Filterable/sortable activities table (prefers FIT-reported total ascent when available; otherwise uses summed positive ascent from altitude samples)
+- Filterable/sortable activities table (uses stored imported elevation gain summaries for fast loading)
 - Active sort direction indicators (`▲`/`▼`) in activities table headers
 - In-memory activities list caching for snappy return navigation (no refetch unless filters/data change)
 - Activity detail with a right-side metric rail (including duration + moving time), route map (when GPS is present), and switchable charts (distance-based when GPS track exists; time-based fallback when GPS is unavailable) with combined overlay or split plots, shared hover cursor/stats, elevation background in combined mode, zoom-aware adaptive vertical scaling for visible series, drag-to-zoom/click-to-reset, dedicated heart-rate metric card (avg/min/max), and elevation gain that prefers FIT-reported total ascent when available (otherwise summed positive ascent)

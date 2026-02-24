@@ -296,6 +296,9 @@ const SparkBars = ({
 export function DashboardPage() {
   const navigate = useNavigate();
   const scanDone = useAppStore((state) => state.scanDone);
+  const settings = useAppStore((state) => state.settings);
+  const getCachedActivities = useAppStore((state) => state.getCachedActivities);
+  const setCachedActivities = useAppStore((state) => state.setCachedActivities);
 
   const mode = useUiStateStore((state) => state.dashboardMode) as CalendarMode;
   const setMode = useUiStateStore((state) => state.setDashboardMode);
@@ -309,14 +312,9 @@ export function DashboardPage() {
   const [pinnedBarIndex, setPinnedBarIndex] = useState<number | null>(null);
   const [hoverPulseTick, setHoverPulseTick] = useState(0);
 
-  const [yearActivities, setYearActivities] = useState<ActivitySummary[]>([]);
-  const [calendarLoading, setCalendarLoading] = useState(false);
-  const [calendarError, setCalendarError] = useState<string | null>(null);
-
-  const [weeklySummary, setWeeklySummary] = useState<SummaryTotals | null>(null);
-  const [yearlySummary, setYearlySummary] = useState<SummaryTotals | null>(null);
-  const [weeklyStreak, setWeeklyStreak] = useState<WeeklyStreakDisplay>({ count: 0, status: 'none' });
-  const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [allActivities, setAllActivities] = useState<ActivitySummary[]>([]);
+  const [dashboardLoading, setDashboardLoading] = useState(false);
+  const [dashboardError, setDashboardError] = useState<string | null>(null);
 
   const selectedMonthDate = useMemo(
     () => new Date(selectedYear, selectedMonthIndex, 1),
@@ -328,78 +326,83 @@ export function DashboardPage() {
     setPinnedBarIndex(null);
   }, [mode, selectedYear, selectedMonthIndex, barMetric]);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    const loadSummaryCards = async () => {
-      try {
-        setSummaryError(null);
-        const today = startOfToday();
-        const weekStart = subDays(today, 6);
-        const yearStart = new Date(today.getFullYear(), 0, 1);
-        const [weekActivities, yearActivities, allActivities] = await Promise.all([
-          listActivities({
-            startDate: format(weekStart, 'yyyy-MM-dd'),
-            endDate: format(today, 'yyyy-MM-dd')
-          }),
-          listActivities({
-            startDate: format(yearStart, 'yyyy-MM-dd'),
-            endDate: format(today, 'yyyy-MM-dd')
-          }),
-          listActivities()
-        ]);
-
-        if (!cancelled) {
-          setWeeklySummary(summarizeActivities(weekActivities));
-          setYearlySummary(summarizeActivities(yearActivities));
-          setWeeklyStreak(computeWeeklyStreak(allActivities));
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setSummaryError(err instanceof Error ? err.message : String(err));
-        }
-      }
-    };
-
-    void loadSummaryCards();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [scanDone]);
+  const dashboardCacheKey = useMemo(
+    () =>
+      JSON.stringify({
+        scope: 'dashboard-all-activities',
+        importFolderPath: settings?.importFolderPath ?? null,
+        lastScanTimestamp: settings?.lastScanTimestamp ?? null
+      }),
+    [settings?.importFolderPath, settings?.lastScanTimestamp]
+  );
 
   useEffect(() => {
+    const cached = getCachedActivities(dashboardCacheKey);
+    if (cached) {
+      setAllActivities(cached);
+      setDashboardLoading(false);
+      setDashboardError(null);
+      return;
+    }
+
     let cancelled = false;
 
-    const loadYearActivities = async () => {
+    const loadAllActivities = async () => {
       try {
-        setCalendarLoading(true);
-        setCalendarError(null);
-        setYearActivities([]);
-        const startDate = `${selectedYear}-01-01`;
-        const endDate = `${selectedYear}-12-31`;
-        const activities = await listActivities({ startDate, endDate });
-
-        if (!cancelled) {
-          setYearActivities(activities);
+        setDashboardLoading(true);
+        setDashboardError(null);
+        const activities = await listActivities();
+        if (cancelled) {
+          return;
         }
+        setAllActivities(activities);
+        setCachedActivities(dashboardCacheKey, activities);
       } catch (err) {
         if (!cancelled) {
-          setCalendarError(err instanceof Error ? err.message : String(err));
+          setDashboardError(err instanceof Error ? err.message : String(err));
         }
       } finally {
         if (!cancelled) {
-          setCalendarLoading(false);
+          setDashboardLoading(false);
         }
       }
     };
 
-    void loadYearActivities();
+    void loadAllActivities();
 
     return () => {
       cancelled = true;
     };
-  }, [selectedYear, scanDone]);
+  }, [dashboardCacheKey, getCachedActivities, scanDone, setCachedActivities]);
+
+  const yearActivities = useMemo(
+    () =>
+      allActivities.filter((activity) => {
+        const date = parseISO(activity.activityStart);
+        return !Number.isNaN(date.getTime()) && date.getFullYear() === selectedYear;
+      }),
+    [allActivities, selectedYear]
+  );
+
+  const { weeklySummary, yearlySummary, weeklyStreak } = useMemo(() => {
+    const today = startOfToday();
+    const weekStart = subDays(today, 6);
+    const yearStart = new Date(today.getFullYear(), 0, 1);
+
+    const isInRange = (activity: ActivitySummary, start: Date, end: Date) => {
+      const date = parseISO(activity.activityStart);
+      return !Number.isNaN(date.getTime()) && date >= start && date <= end;
+    };
+
+    const weekActivities = allActivities.filter((activity) => isInRange(activity, weekStart, today));
+    const ytdActivities = allActivities.filter((activity) => isInRange(activity, yearStart, today));
+
+    return {
+      weeklySummary: summarizeActivities(weekActivities),
+      yearlySummary: summarizeActivities(ytdActivities),
+      weeklyStreak: computeWeeklyStreak(allActivities)
+    };
+  }, [allActivities]);
 
   const calendarData = useMemo(() => {
     const monthBuckets: MonthBucket[] = Array.from({ length: 12 }, () => ({
@@ -607,8 +610,7 @@ export function DashboardPage() {
         <h2 className="mt-2 text-3xl font-semibold text-foreground">Training Overview</h2>
       </header>
 
-      {summaryError ? <p className="rounded-lg bg-accent/20 p-3 text-sm text-accent">{summaryError}</p> : null}
-      {calendarError ? <p className="rounded-lg bg-accent/20 p-3 text-sm text-accent">{calendarError}</p> : null}
+      {dashboardError ? <p className="rounded-lg bg-accent/20 p-3 text-sm text-accent">{dashboardError}</p> : null}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <MetricCard
@@ -838,7 +840,7 @@ export function DashboardPage() {
           </div>
         </header>
 
-        {calendarLoading ? <p className="mt-4 text-sm text-muted">Loading calendar...</p> : null}
+        {dashboardLoading ? <p className="mt-4 text-sm text-muted">Loading calendar...</p> : null}
 
         {mode === 'year' ? (
           <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
