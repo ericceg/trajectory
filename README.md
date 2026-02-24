@@ -129,21 +129,26 @@ Release guardrails:
 - No Apple signing/notarization GitHub secrets are required for the current release workflow.
 - Builds are expected to run on macOS (including Apple Silicon), but Gatekeeper warnings will still appear on first launch.
 
-### First release (`v0.1.0`)
+### Cutting a release
 
-Versions are already set to `0.1.0`, so the first release can be created with:
+1. Update the version in all three files so they match exactly:
+   - `package.json`
+   - `src-tauri/tauri.conf.json`
+   - `src-tauri/Cargo.toml`
+2. Commit the release changes on `main`.
+3. Create and push an annotated version tag (`vX.Y.Z`):
 
 ```bash
 git checkout main
 git pull --ff-only
-git tag -a v0.1.0 -m "Trajectory v0.1.0"
+git tag -a v0.1.2 -m "Trajectory v0.1.2"
 git push origin main
-git push origin v0.1.0
+git push origin v0.1.2
 ```
 
 After pushing the tag:
-1. Open GitHub Actions and confirm the `Release` workflow for `v0.1.0` is green.
-2. Open the GitHub Release `v0.1.0` and confirm release assets include the macOS installer (`.dmg`).
+1. Open GitHub Actions and confirm the `Release` workflow for the tag (for example, `v0.1.2`) is green.
+2. Open the GitHub Release for that tag and confirm release assets include the macOS installer (`.dmg`).
 
 ### First launch warnings (expected for ad-hoc signed builds)
 
