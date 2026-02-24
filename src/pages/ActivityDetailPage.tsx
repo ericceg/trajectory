@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   Area,
@@ -35,6 +35,7 @@ const ACTIVITY_ROUTE_LAYER_ID = 'activity-route-layer';
 const ACTIVITY_ROUTE_HOVER_SOURCE_ID = 'activity-route-hover-source';
 const ACTIVITY_ROUTE_HOVER_OUTER_LAYER_ID = 'activity-route-hover-outer-layer';
 const ACTIVITY_ROUTE_HOVER_INNER_LAYER_ID = 'activity-route-hover-inner-layer';
+const ROUTE_HOVER_MARKER_SMOOTHING_MS = 85;
 const CHART_GRID_STROKE = 'rgba(var(--color-border), 0.75)';
 const CHART_AXIS_STROKE = 'rgb(var(--color-muted))';
 const CHART_LINE_COLORS = {
@@ -72,6 +73,10 @@ type ChartBand = { min: number; max: number };
 type ChartZoomDomain = [number, number];
 type ChartPointer = { value: number; chartX: number };
 type RouteHoverCoordinate = { lat: number; lon: number } | null;
+type ActivityRouteMapHandle = {
+  setHoverTarget: (coordinate: RouteHoverCoordinate) => void;
+  clearHoverTarget: () => void;
+};
 
 function defaultChartSeriesVisibility(sportType?: string): ChartSeriesVisibility {
   const normalizedSport = (sportType ?? '').trim().toLowerCase();
@@ -746,26 +751,122 @@ function fitMapToTrack(map: maplibregl.Map, track: TrackPoint[]) {
   });
 }
 
-function ActivityRouteMap({
-  track,
-  hoveredCoordinate,
-  reducedComplexity,
-  routeLineColorHex
-}: {
-  track: TrackPoint[];
-  hoveredCoordinate: RouteHoverCoordinate;
-  reducedComplexity: boolean;
-  routeLineColorHex: string;
-}) {
+const ActivityRouteMap = forwardRef<
+  ActivityRouteMapHandle,
+  {
+    track: TrackPoint[];
+    reducedComplexity: boolean;
+    routeLineColorHex: string;
+  }
+>(function ActivityRouteMap({ track, reducedComplexity, routeLineColorHex }, ref) {
   const { containerRef, mapRef } = useManagedMapLibre({
     reducedComplexity,
     initialCenter: US_DEFAULT_CENTER,
     initialZoom: US_DEFAULT_ZOOM
   });
   const trackSource = useMemo(() => toRouteFeatureCollection(track), [track]);
-  const hoverPointSource = useMemo(
-    () => toRouteHoverFeatureCollection(hoveredCoordinate),
-    [hoveredCoordinate]
+  const hoverTargetRef = useRef<RouteHoverCoordinate>(null);
+  const hoverDisplayedRef = useRef<RouteHoverCoordinate>(null);
+  const hoverAnimationFrameRef = useRef<number | null>(null);
+  const hoverLastFrameTimeRef = useRef<number | null>(null);
+
+  const setHoverPointSourceData = (point: RouteHoverCoordinate) => {
+    const map = mapRef.current;
+    if (!map || !map.getSource(ACTIVITY_ROUTE_HOVER_SOURCE_ID)) {
+      return;
+    }
+
+    (map.getSource(ACTIVITY_ROUTE_HOVER_SOURCE_ID) as GeoJSONSource).setData(
+      toRouteHoverFeatureCollection(point)
+    );
+  };
+
+  const cancelHoverAnimation = () => {
+    if (hoverAnimationFrameRef.current == null) {
+      return;
+    }
+
+    cancelAnimationFrame(hoverAnimationFrameRef.current);
+    hoverAnimationFrameRef.current = null;
+  };
+
+  const scheduleHoverAnimation = () => {
+    if (hoverAnimationFrameRef.current != null) {
+      return;
+    }
+
+    hoverAnimationFrameRef.current = requestAnimationFrame((timestamp) => {
+      hoverAnimationFrameRef.current = null;
+
+      const target = hoverTargetRef.current;
+      const current = hoverDisplayedRef.current;
+
+      if (!target) {
+        hoverLastFrameTimeRef.current = null;
+        if (current) {
+          hoverDisplayedRef.current = null;
+          setHoverPointSourceData(null);
+        }
+        return;
+      }
+
+      if (!current) {
+        hoverDisplayedRef.current = { ...target };
+        hoverLastFrameTimeRef.current = timestamp;
+        setHoverPointSourceData(hoverDisplayedRef.current);
+        return;
+      }
+
+      const previousTimestamp = hoverLastFrameTimeRef.current ?? timestamp;
+      hoverLastFrameTimeRef.current = timestamp;
+      const dt = Math.max(1, Math.min(64, timestamp - previousTimestamp));
+      const alpha = 1 - Math.exp(-dt / ROUTE_HOVER_MARKER_SMOOTHING_MS);
+
+      const nextPoint = {
+        lat: current.lat + (target.lat - current.lat) * alpha,
+        lon: current.lon + (target.lon - current.lon) * alpha
+      };
+
+      const closeToTarget =
+        Math.abs(target.lat - nextPoint.lat) < 1e-6 && Math.abs(target.lon - nextPoint.lon) < 1e-6;
+      hoverDisplayedRef.current = closeToTarget ? { ...target } : nextPoint;
+      setHoverPointSourceData(hoverDisplayedRef.current);
+
+      if (!routeHoverCoordinatesEqual(hoverDisplayedRef.current, hoverTargetRef.current)) {
+        scheduleHoverAnimation();
+      }
+    });
+  };
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      setHoverTarget: (coordinate) => {
+        const normalized = coordinate ? { ...coordinate } : null;
+        if (routeHoverCoordinatesEqual(hoverTargetRef.current, normalized)) {
+          return;
+        }
+
+        hoverTargetRef.current = normalized;
+        if (!normalized) {
+          cancelHoverAnimation();
+          hoverLastFrameTimeRef.current = null;
+          hoverDisplayedRef.current = null;
+          setHoverPointSourceData(null);
+          return;
+        }
+
+        scheduleHoverAnimation();
+      },
+      clearHoverTarget: () => {
+        hoverTargetRef.current = null;
+        cancelHoverAnimation();
+        hoverLastFrameTimeRef.current = null;
+        hoverDisplayedRef.current = null;
+        setHoverPointSourceData(null);
+      }
+    }),
+    []
   );
 
   useEffect(() => {
@@ -821,14 +922,12 @@ function ActivityRouteMap({
       return undefined;
     }
 
-    const syncHoverPoint = () => {
+    const syncHoverPointLayer = () => {
       if (!map.getSource(ACTIVITY_ROUTE_HOVER_SOURCE_ID)) {
         map.addSource(ACTIVITY_ROUTE_HOVER_SOURCE_ID, {
           type: 'geojson',
-          data: hoverPointSource
+          data: toRouteHoverFeatureCollection(hoverDisplayedRef.current)
         });
-      } else {
-        (map.getSource(ACTIVITY_ROUTE_HOVER_SOURCE_ID) as GeoJSONSource).setData(hoverPointSource);
       }
 
       if (!map.getLayer(ACTIVITY_ROUTE_HOVER_OUTER_LAYER_ID)) {
@@ -862,18 +961,34 @@ function ActivityRouteMap({
       map.setPaintProperty(ACTIVITY_ROUTE_HOVER_INNER_LAYER_ID, 'circle-color', routeLineColorHex);
       map.moveLayer(ACTIVITY_ROUTE_HOVER_OUTER_LAYER_ID);
       map.moveLayer(ACTIVITY_ROUTE_HOVER_INNER_LAYER_ID);
+      setHoverPointSourceData(hoverDisplayedRef.current);
     };
 
     if (map.isStyleLoaded()) {
-      syncHoverPoint();
+      syncHoverPointLayer();
       return undefined;
     }
 
-    map.once('load', syncHoverPoint);
+    map.once('load', syncHoverPointLayer);
     return () => {
-      map.off('load', syncHoverPoint);
+      map.off('load', syncHoverPointLayer);
     };
-  }, [hoverPointSource, routeLineColorHex]);
+  }, [routeLineColorHex]);
+
+  useEffect(() => {
+    hoverTargetRef.current = null;
+    hoverDisplayedRef.current = null;
+    hoverLastFrameTimeRef.current = null;
+    cancelHoverAnimation();
+    setHoverPointSourceData(null);
+  }, [track]);
+
+  useEffect(
+    () => () => {
+      cancelHoverAnimation();
+    },
+    []
+  );
 
   useEffect(() => {
     const map = mapRef.current;
@@ -897,7 +1012,7 @@ function ActivityRouteMap({
   }, [track]);
 
   return <div ref={containerRef} className="h-full w-full" />;
-}
+});
 
 function ReducedComplexityMapToggle({
   enabled,
@@ -941,11 +1056,11 @@ export function ActivityDetailPage() {
   );
   const [chartZoomDomain, setChartZoomDomain] = useState<ChartZoomDomain | null>(null);
   const [chartSelectionDomain, setChartSelectionDomain] = useState<ChartZoomDomain | null>(null);
-  const [hoveredRouteCoordinate, setHoveredRouteCoordinate] = useState<RouteHoverCoordinate>(null);
   const chartDragAnchorRef = useRef<ChartPointer | null>(null);
   const chartDragCurrentRef = useRef<ChartPointer | null>(null);
   const chartSelectionFrameRef = useRef<number | null>(null);
   const chartSamplesRequestRef = useRef(0);
+  const routeMapRef = useRef<ActivityRouteMapHandle | null>(null);
   const accentTheme = useAppStore((state) => state.settings?.accentTheme);
   const chartMaxSamples = useAppStore((state) => state.settings?.chartMaxSamples ?? 2000);
   const accentPalette = useMemo(() => getAccentThemePalette(accentTheme), [accentTheme]);
@@ -983,7 +1098,7 @@ export function ActivityDetailPage() {
     setChartSelectionDomain(null);
     chartDragAnchorRef.current = null;
     chartDragCurrentRef.current = null;
-    setHoveredRouteCoordinate(null);
+    routeMapRef.current?.clearHoverTarget();
   }, [detail?.summary.id, detail?.summary.sportType]);
 
   const combinedChart = useMemo<CombinedChartModel>(() => {
@@ -1240,9 +1355,7 @@ export function ActivityDetailPage() {
 
   const handleChartMouseMove = (event: unknown) => {
     const hoveredCoordinate = readHoveredRouteCoordinate(event);
-    setHoveredRouteCoordinate((current) =>
-      routeHoverCoordinatesEqual(current, hoveredCoordinate) ? current : hoveredCoordinate
-    );
+    routeMapRef.current?.setHoverTarget(hoveredCoordinate);
 
     if (!chartDragAnchorRef.current) {
       return;
@@ -1267,7 +1380,7 @@ export function ActivityDetailPage() {
   };
 
   const handleChartMouseLeave = () => {
-    setHoveredRouteCoordinate(null);
+    routeMapRef.current?.clearHoverTarget();
   };
 
   const handleChartMouseUp = (event: unknown) => {
@@ -1354,8 +1467,8 @@ export function ActivityDetailPage() {
                 }
               >
                 <ActivityRouteMap
+                  ref={routeMapRef}
                   track={detail.track}
-                  hoveredCoordinate={hoveredRouteCoordinate}
                   reducedComplexity={reducedMapComplexity}
                   routeLineColorHex={accentPalette.routeLineHex}
                 />
