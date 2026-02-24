@@ -98,7 +98,6 @@ pub struct ActivitySample {
 pub struct ActivityDetail {
     pub summary: ActivitySummary,
     pub track: Vec<TrackPoint>,
-    pub samples: Vec<ActivitySample>,
     pub original_sample_count: usize,
 }
 

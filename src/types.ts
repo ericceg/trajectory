@@ -65,7 +65,6 @@ export interface ActivitySample {
 export interface ActivityDetail {
   summary: ActivitySummary;
   track: TrackPoint[];
-  samples: ActivitySample[];
   originalSampleCount: number;
 }
 

@@ -28,7 +28,7 @@ import { useManagedMapLibre } from '@/lib/useManagedMapLibre';
 import { MaximizableMapFrame } from '@/components/MaximizableMapFrame';
 import { MetricCard } from '@/components/MetricCard';
 import { useAppStore } from '@/store/useAppStore';
-import type { ActivityDetail, TrackPoint } from '@/types';
+import type { ActivityDetail, ActivitySample, TrackPoint } from '@/types';
 
 const ACTIVITY_ROUTE_SOURCE_ID = 'activity-route-source';
 const ACTIVITY_ROUTE_LAYER_ID = 'activity-route-layer';
@@ -1051,6 +1051,7 @@ function ReducedComplexityMapToggle({
 export function ActivityDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [detail, setDetail] = useState<ActivityDetail | null>(null);
+  const [chartSamples, setChartSamples] = useState<ActivitySample[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reducedMapComplexity, setReducedMapComplexity] = useState(false);
@@ -1075,6 +1076,9 @@ export function ActivityDetailPage() {
     if (!id) {
       return;
     }
+
+    chartSamplesRequestRef.current += 1;
+    setChartSamples([]);
 
     const load = async () => {
       setLoading(true);
@@ -1121,7 +1125,7 @@ export function ActivityDetailPage() {
     let previousElevationPoint: { distanceM: number; elevationM: number } | null = null;
 
     const basePoints: Array<Omit<CombinedChartPoint, 'pacePlot' | 'speedPlot' | 'heartRatePlot' | 'elevationPlot'>> =
-      detail.samples.map((sample) => {
+      chartSamples.map((sample) => {
         const estimatedDistanceM =
           totalDistanceM > 0 ? (sample.elapsedSeconds / totalDurationSeconds) * totalDistanceM : lastDistanceM;
         const distanceM = Math.max(lastDistanceM, sample.distanceM ?? estimatedDistanceM);
@@ -1195,7 +1199,7 @@ export function ActivityDetailPage() {
       maxDistanceKm,
       maxElapsedSeconds
     };
-  }, [detail, chartSeriesVisibility]);
+  }, [chartSamples, detail, chartSeriesVisibility]);
 
   const fullChartXAxisDomain = useMemo<ChartZoomDomain>(() => {
     if (chartXAxisMode === 'time') {
@@ -1243,15 +1247,7 @@ export function ActivityDetailPage() {
           return;
         }
 
-        setDetail((current) =>
-          current && current.summary.id === detail.summary.id
-            ? {
-                ...current,
-                samples: response.samples,
-                originalSampleCount: response.originalSampleCount
-              }
-            : current
-        );
+        setChartSamples(response.samples);
       } catch (err) {
         if (chartSamplesRequestRef.current !== requestId) {
           return;

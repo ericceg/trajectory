@@ -11,6 +11,7 @@ use crate::models::{
 const DEFAULT_CHART_MAX_SAMPLES: usize = 2000;
 const MIN_CHART_MAX_SAMPLES: usize = 50;
 const MAX_CHART_MAX_SAMPLES: usize = 20_000;
+const DB_SCHEMA_VERSION: i64 = 1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UpsertResult {
@@ -90,10 +91,21 @@ pub fn init_db(db_path: &Path) -> Result<()> {
     "#,
     )?;
 
-    ensure_activity_category_column(&conn)?;
-    ensure_activity_title_column(&conn)?;
-    ensure_activity_min_hr_column(&conn)?;
-    ensure_activity_moving_duration_column(&conn)?;
+    apply_legacy_migrations(&conn)?;
+
+    Ok(())
+}
+
+fn apply_legacy_migrations(conn: &Connection) -> Result<()> {
+    let user_version: i64 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+
+    if user_version < 1 {
+        ensure_activity_category_column(conn)?;
+        ensure_activity_title_column(conn)?;
+        ensure_activity_min_hr_column(conn)?;
+        ensure_activity_moving_duration_column(conn)?;
+        conn.execute_batch(&format!("PRAGMA user_version = {DB_SCHEMA_VERSION};"))?;
+    }
 
     Ok(())
 }
@@ -426,60 +438,6 @@ fn map_summary_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<ActivitySummary>
         max_hr: row.get(14)?,
         has_gps: row.get::<_, i64>(15)? == 1,
     })
-}
-
-fn compute_total_positive_ascent_m(samples: &[ActivitySample]) -> Option<f64> {
-    let mut total = 0.0;
-    let mut previous_altitude: Option<f64> = None;
-    let mut saw_altitude = false;
-
-    for sample in samples {
-        if let Some(current_altitude) = sample.altitude_m {
-            saw_altitude = true;
-            if let Some(prev_altitude) = previous_altitude {
-                let delta = current_altitude - prev_altitude;
-                if delta > 0.0 {
-                    total += delta;
-                }
-            }
-            previous_altitude = Some(current_altitude);
-        }
-    }
-
-    if saw_altitude { Some(total.max(0.0)) } else { None }
-}
-
-fn is_fit_source_path(source_path: &str) -> bool {
-    Path::new(source_path)
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .map(|ext| ext.eq_ignore_ascii_case("fit"))
-        .unwrap_or(false)
-}
-
-fn compute_heart_rate_stats(samples: &[ActivitySample]) -> (Option<f64>, Option<f64>, Option<f64>) {
-    let mut count = 0usize;
-    let mut sum = 0.0;
-    let mut min: Option<f64> = None;
-    let mut max: Option<f64> = None;
-
-    for sample in samples {
-        let Some(hr) = sample.heart_rate else {
-            continue;
-        };
-        count += 1;
-        sum += hr;
-        min = Some(min.map_or(hr, |current| current.min(hr)));
-        max = Some(max.map_or(hr, |current| current.max(hr)));
-    }
-
-    let avg = if count > 0 {
-        Some(sum / count as f64)
-    } else {
-        None
-    };
-
-    (avg, min, max)
 }
 
 fn downsample_track(points: &[TrackPoint], stride: usize) -> Vec<TrackPoint> {
@@ -825,7 +783,7 @@ pub fn get_activity(conn: &Connection, id: i64) -> Result<ActivityDetail> {
     "#,
     )?;
 
-    let (mut summary, track_json, original_sample_count): (ActivitySummary, String, i64) = stmt
+    let (summary, track_json, original_sample_count): (ActivitySummary, String, i64) = stmt
         .query_row(params![id], |row| {
             Ok((
                 ActivitySummary {
@@ -855,23 +813,9 @@ pub fn get_activity(conn: &Connection, id: i64) -> Result<ActivityDetail> {
 
     let track: Vec<TrackPoint> = serde_json::from_str(&track_json).unwrap_or_default();
 
-    let all_samples = fetch_activity_samples(conn, id)?;
-    if !is_fit_source_path(&summary.source_path) {
-        if let Some(elevation_gain_m) = compute_total_positive_ascent_m(&all_samples) {
-            summary.elevation_gain_m = elevation_gain_m;
-        }
-    }
-    let (avg_hr, min_hr, max_hr) = compute_heart_rate_stats(&all_samples);
-    summary.avg_hr = summary.avg_hr.or(avg_hr);
-    summary.min_hr = summary.min_hr.or(min_hr);
-    summary.max_hr = summary.max_hr.or(max_hr);
-    let (samples, _) =
-        sample_activity_window(&all_samples, &summary, &ActivitySampleQuery::default());
-
     Ok(ActivityDetail {
         summary,
         track,
-        samples,
         original_sample_count: original_sample_count as usize,
     })
 }
