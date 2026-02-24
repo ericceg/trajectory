@@ -84,7 +84,7 @@ npm run tauri dev
    - **Activities** for filtering/sorting workouts (category + distance filters auto-apply)
    - **Heatmap** for a global path heatmap (overlapping GPS tracks; filter by time span/category/sport)
    - Enable **Reduced complexity (grayscale)** in Heatmap to declutter the map and emphasize route overlap
-   - **Activity Detail** for metrics plus a route map (GPS activities) and a chart area that switches between distance-based plots (with GPS) and time-based plots (without GPS)
+   - **Activity Detail** for metrics plus a route map (GPS activities) and a chart area that switches between distance-based plots (with GPS) and time-based plots (without GPS); split view hides unavailable metric panels
    - In **Activity Detail** charts, click-drag across the plot to zoom into the visible x-axis range (distance or elapsed time); chart Y-axes/overlay scaling automatically re-fit to the visible segment, and single-click resets back to the full range
    - Use the **Maximize** button on maps (Route + Heatmap) to expand them, then press **Esc** or **Minimize** to close
 
