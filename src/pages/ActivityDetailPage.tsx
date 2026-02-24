@@ -753,9 +753,6 @@ export function ActivityDetailPage() {
   const [detail, setDetail] = useState<ActivityDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [chartSamplesLoading, setChartSamplesLoading] = useState(false);
-  const [chartSamplesError, setChartSamplesError] = useState<string | null>(null);
-  const [chartMatchingSampleCount, setChartMatchingSampleCount] = useState<number | null>(null);
   const [reducedMapComplexity, setReducedMapComplexity] = useState(false);
   const [chartMode, setChartMode] = useState<ChartMode>('combined');
   const [chartSeriesVisibility, setChartSeriesVisibility] = useState<ChartSeriesVisibility>(() =>
@@ -782,8 +779,6 @@ export function ActivityDetailPage() {
       try {
         const result = await getActivity(Number(id));
         setDetail(result);
-        setChartMatchingSampleCount(result.samples.length);
-        setChartSamplesError(null);
       } catch (err) {
         setError(err instanceof Error ? err.message : String(err));
       } finally {
@@ -804,8 +799,6 @@ export function ActivityDetailPage() {
     setChartSelectionDomain(null);
     chartDragAnchorRef.current = null;
     chartDragCurrentRef.current = null;
-    setChartMatchingSampleCount(detail.samples.length);
-    setChartSamplesError(null);
   }, [detail?.summary.id, detail?.summary.sportType]);
 
   const combinedChart = useMemo<CombinedChartModel>(() => {
@@ -924,8 +917,6 @@ export function ActivityDetailPage() {
     };
     const requestId = chartSamplesRequestRef.current + 1;
     chartSamplesRequestRef.current = requestId;
-    setChartSamplesLoading(true);
-    setChartSamplesError(null);
 
     const loadSamples = async () => {
       try {
@@ -943,16 +934,11 @@ export function ActivityDetailPage() {
               }
             : current
         );
-        setChartMatchingSampleCount(response.matchingSampleCount);
       } catch (err) {
         if (chartSamplesRequestRef.current !== requestId) {
           return;
         }
-        setChartSamplesError(err instanceof Error ? err.message : String(err));
-      } finally {
-        if (chartSamplesRequestRef.current === requestId) {
-          setChartSamplesLoading(false);
-        }
+        console.error('Failed to refresh chart samples', err);
       }
     };
 
@@ -1180,12 +1166,6 @@ export function ActivityDetailPage() {
                 <p className="mt-1 text-xs text-muted">
                   X-axis uses kilometers. Drag across a region to zoom. Y-scales auto-resize to the visible range. Click once on a chart to reset the zoom.
                 </p>
-                <p className="mt-1 text-xs text-muted">
-                  Chart sample cap: {chartMaxSamples.toLocaleString()} visible points max (adaptive by zoom range).
-                </p>
-                {chartSamplesError ? (
-                  <p className="mt-1 text-xs text-accent">Chart sample refresh failed: {chartSamplesError}</p>
-                ) : null}
               </div>
               <div className="flex flex-wrap items-start justify-end gap-2">
                 {chartMode === 'combined' ? (
@@ -1429,26 +1409,6 @@ export function ActivityDetailPage() {
                 }`}
               />
             </div>
-
-            <section className="rounded-xl border border-border bg-panel p-4">
-              <p className="text-xs uppercase tracking-[0.18em] text-muted">Samples</p>
-              <p className="mt-2 text-2xl font-semibold text-foreground">
-                {detail.samples.length}
-                <span className="ml-1 text-base font-medium text-muted">shown</span>
-              </p>
-              <p className="mt-1 text-xs text-muted">
-                {chartMatchingSampleCount != null
-                  ? `Matching current view: ${chartMatchingSampleCount.toLocaleString()}`
-                  : 'Matching current view: n/a'}
-              </p>
-              <p className="mt-1 text-xs text-muted">
-                Original samples: {detail.originalSampleCount.toLocaleString()}
-              </p>
-              <p className="mt-1 text-xs text-muted">
-                Max visible cap: {chartMaxSamples.toLocaleString()}
-                {chartSamplesLoading ? ' · refreshing…' : ''}
-              </p>
-            </section>
           </div>
         </aside>
       </div>
