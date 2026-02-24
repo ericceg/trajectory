@@ -505,31 +505,45 @@ pub fn list_activities(
 ) -> Result<Vec<ActivitySummary>> {
     let mut stmt = conn.prepare(
         r#"
+    WITH elevation_rollups AS (
+      SELECT
+        sample_deltas.activity_id AS activity_id,
+        SUM(CASE WHEN sample_deltas.delta > 0 THEN sample_deltas.delta ELSE 0 END) AS elevation_gain_m
+      FROM (
+        SELECT
+          activity_id,
+          altitude_m - LAG(altitude_m) OVER (PARTITION BY activity_id ORDER BY elapsed_seconds, id) AS delta
+        FROM activity_samples
+        WHERE altitude_m IS NOT NULL
+      ) AS sample_deltas
+      GROUP BY sample_deltas.activity_id
+    )
     SELECT
-      id,
-      source_path,
-      activity_start,
-      title,
-      category,
-      sport_type,
-      duration_seconds,
-      distance_m,
-      elevation_gain_m,
-      avg_speed_mps,
-      max_speed_mps,
-      avg_hr,
-      min_hr,
-      max_hr,
-      has_gps
+      activities.id,
+      activities.source_path,
+      activities.activity_start,
+      activities.title,
+      activities.category,
+      activities.sport_type,
+      activities.duration_seconds,
+      activities.distance_m,
+      COALESCE(elevation_rollups.elevation_gain_m, activities.elevation_gain_m),
+      activities.avg_speed_mps,
+      activities.max_speed_mps,
+      activities.avg_hr,
+      activities.min_hr,
+      activities.max_hr,
+      activities.has_gps
     FROM activities
-    WHERE (?1 IS NULL OR date(activity_start) >= date(?1))
-      AND (?2 IS NULL OR date(activity_start) <= date(?2))
-      AND (?3 IS NULL OR category = ?3)
-      AND (?4 IS NULL OR sport_type = ?4)
-      AND (?5 IS NULL OR distance_m >= ?5)
-      AND (?6 IS NULL OR distance_m <= ?6)
-      AND (?7 IS NULL OR date(activity_start) = date(?7))
-    ORDER BY activity_start DESC
+    LEFT JOIN elevation_rollups ON elevation_rollups.activity_id = activities.id
+    WHERE (?1 IS NULL OR date(activities.activity_start) >= date(?1))
+      AND (?2 IS NULL OR date(activities.activity_start) <= date(?2))
+      AND (?3 IS NULL OR activities.category = ?3)
+      AND (?4 IS NULL OR activities.sport_type = ?4)
+      AND (?5 IS NULL OR activities.distance_m >= ?5)
+      AND (?6 IS NULL OR activities.distance_m <= ?6)
+      AND (?7 IS NULL OR date(activities.activity_start) = date(?7))
+    ORDER BY activities.activity_start DESC
     "#,
     )?;
 
