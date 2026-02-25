@@ -294,10 +294,6 @@ function formatElapsedTooltip(seconds: number): string {
   return `${minutes}:${String(secs).padStart(2, '0')}`;
 }
 
-function formatHeartRateBpm(value: number | null | undefined): string {
-  return value == null ? 'n/a' : `${Math.round(value)} bpm`;
-}
-
 function formatPaceSeconds(secondsPerKm: number | null): string {
   if (secondsPerKm == null || !Number.isFinite(secondsPerKm) || secondsPerKm <= 0) {
     return 'n/a';
@@ -1480,6 +1476,32 @@ export function ActivityDetailPage() {
     return <p className="text-sm text-muted">Activity not found.</p>;
   }
 
+  const showDistance = detail.summary.distanceM > 0;
+  const showElevationGain = detail.summary.elevationGainM > 0;
+  const showAvgSpeedPace = detail.summary.avgSpeedMps != null && detail.summary.avgSpeedMps > 0;
+  const hasAnyHeartRate =
+    detail.summary.avgHr != null || detail.summary.minHr != null || detail.summary.maxHr != null;
+
+  let heartRateValue: string | null = null;
+  let heartRateSubLabel: string | undefined;
+
+  if (hasAnyHeartRate) {
+    if (detail.summary.avgHr != null) {
+      heartRateValue = `Avg ${Math.round(detail.summary.avgHr)} bpm`;
+      const heartRateDetails = [
+        detail.summary.minHr != null ? `Min ${Math.round(detail.summary.minHr)} bpm` : null,
+        detail.summary.maxHr != null ? `Max ${Math.round(detail.summary.maxHr)} bpm` : null
+      ].filter((part): part is string => part != null);
+      heartRateSubLabel = heartRateDetails.length > 0 ? heartRateDetails.join(' · ') : undefined;
+    } else if (detail.summary.minHr != null && detail.summary.maxHr != null) {
+      heartRateValue = `${Math.round(detail.summary.minHr)}-${Math.round(detail.summary.maxHr)} bpm`;
+    } else if (detail.summary.minHr != null) {
+      heartRateValue = `Min ${Math.round(detail.summary.minHr)} bpm`;
+    } else if (detail.summary.maxHr != null) {
+      heartRateValue = `Max ${Math.round(detail.summary.maxHr)} bpm`;
+    }
+  }
+
   return (
     <div className="space-y-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
@@ -1882,25 +1904,29 @@ export function ActivityDetailPage() {
         <aside className="order-1 xl:order-2">
           <div className="space-y-4 xl:sticky xl:top-4">
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-1">
-              <MetricCard label="Distance" value={formatDistanceKm(detail.summary.distanceM)} />
               <MetricCard label="Duration" value={formatDuration(detail.summary.durationSeconds)} />
               <MetricCard
                 label="Moving Time"
                 value={formatDuration(detail.summary.movingDurationSeconds)}
               />
-              <MetricCard
-                label="Avg Speed / Pace"
-                value={`${formatSpeedKmh(detail.summary.avgSpeedMps)} · ${formatPaceMinKm(detail.summary.avgSpeedMps)}`}
-              />
-              <MetricCard
-                label="Elevation Gain"
-                value={`${Math.round(detail.summary.elevationGainM)} m`}
-              />
-              <MetricCard
-                label="Heart Rate"
-                value={`Avg ${formatHeartRateBpm(detail.summary.avgHr)}`}
-                subLabel={`Min ${formatHeartRateBpm(detail.summary.minHr)} · Max ${formatHeartRateBpm(detail.summary.maxHr)}`}
-              />
+              {showDistance ? (
+                <MetricCard label="Distance" value={formatDistanceKm(detail.summary.distanceM)} />
+              ) : null}
+              {showAvgSpeedPace ? (
+                <MetricCard
+                  label="Avg Speed / Pace"
+                  value={`${formatSpeedKmh(detail.summary.avgSpeedMps)} · ${formatPaceMinKm(detail.summary.avgSpeedMps)}`}
+                />
+              ) : null}
+              {showElevationGain ? (
+                <MetricCard
+                  label="Elevation Gain"
+                  value={`${Math.round(detail.summary.elevationGainM)} m`}
+                />
+              ) : null}
+              {heartRateValue ? (
+                <MetricCard label="Heart Rate" value={heartRateValue} subLabel={heartRateSubLabel} />
+              ) : null}
             </div>
           </div>
         </aside>
