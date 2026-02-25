@@ -10,7 +10,7 @@ Current implementation:
 
 - Tauri v2 shell (desktop app, no HTTP server)
 - Rust backend for scanning/parsing/indexing/querying
-- React + TypeScript frontend for dashboard/list/detail/heatmap/settings UI
+- React + TypeScript frontend for dashboard/list/detail/heatmap/planner/settings UI
 - SQLite + JSON settings stored in OS app data/config directories
 
 Supported import file types in the current codebase:
@@ -40,10 +40,10 @@ Frontend (`src/`):
 
 - `src/App.tsx`: route gating, startup scan trigger, layout, lazy routes
 - `src/main.tsx`: React bootstrap + global CSS + MapLibre CSS
-- `src/pages/`: route screens (`Dashboard`, `Activities`, `Activity Detail`, `Heatmap`, `Settings`, `Onboarding`)
+- `src/pages/`: route screens (`Dashboard`, `Activities`, `Activity Detail`, `Heatmap`, `Route Planner`, `Settings`, `Onboarding`)
 - `src/components/`: reusable UI pieces (`Sidebar`, `MetricCard`, `ScanStatusCard`, map frame)
 - `src/store/`: Zustand stores (app/runtime state + persisted UI state)
-- `src/lib/`: Tauri bridge, formatting helpers, map styles, theming, MapLibre hook
+- `src/lib/`: Tauri bridge, formatting helpers, map styles, theming, MapLibre hook, routing client, GPX builder
 - `src/types.ts`: TypeScript command/event payload contracts
 
 Backend (`src-tauri/src/`):
@@ -89,6 +89,7 @@ Responsibilities:
 - Initialize SQLite (`db::init_db`)
 - Ensure a default settings file exists
 - Register command handlers and the dialog plugin
+- Handle GPX file writes for planner exports (`write_gpx_file`)
 - Hold shared `AppState { db_path, settings_path }`
 
 Key helpers:
@@ -108,6 +109,7 @@ Implemented Tauri commands (current):
 - `list_activities(filters)`
 - `get_activity(id)`
 - `get_heatmap_data(filters)`
+- `write_gpx_file(path, contents)`
 
 Notes:
 
@@ -328,9 +330,10 @@ Routes currently implemented:
 - `/activities` -> `ActivitiesPage`
 - `/activities/:id` -> `ActivityDetailPage`
 - `/heatmap` -> `HeatmapPage`
+- `/planner` -> `RoutePlannerPage`
 - `/settings` -> `SettingsPage`
 
-`NavigationMemoryTracker` persists the last visited route for sidebar sections (`dashboard`, `heatmap`, `settings`) using the UI state store.
+`NavigationMemoryTracker` persists the last visited route for sidebar sections (`dashboard`, `heatmap`, `planner`, `settings`) using the UI state store.
 
 ### 5.2 Tauri bridge (`src/lib/tauri.ts`)
 
@@ -347,6 +350,7 @@ Wrappers:
 - `listActivities(filters?)`
 - `getActivity(id)`
 - `getHeatmapData(filters?)`
+- `writeGpxFile(path, contents)`
 - `onScanProgress(handler)`
 
 ### 5.3 Global state stores
@@ -376,6 +380,7 @@ Persists UI preferences/navigation state for:
 - dashboard mode/year/month/bar metric
 - activities filters + sorting
 - sidebar last-route memory
+- planner sidebar route entry (`/planner`)
 - heatmap time span/custom dates/category/sport/reduced map complexity
 
 This store intentionally contains view state only (not backend data).
@@ -491,6 +496,30 @@ Rendering features:
 - maximize/minimize frame
 - point count summary (including downsampled count)
 
+#### `RoutePlannerPage.tsx`
+
+Interactive route planning page built on MapLibre with page-local planner state.
+
+Data flow:
+
+1. User clicks the map to add waypoints.
+2. The page calls `planRoute(...)` in `src/lib/routing.ts` against a public OSRM-compatible endpoint.
+3. The snapped route polyline is rendered as a MapLibre GeoJSON line layer.
+4. Export builds a GPX 1.1 track string with `buildTrackGpx(...)` in `src/lib/gpx.ts`.
+5. Frontend opens a native save dialog and writes the selected file through `writeGpxFile(...)`.
+
+Current v1 planner features:
+
+- routing profiles: `bike` and `walk` (mapped to OSRM `cycling` and `walking`)
+- automatic route recompute when waypoints or profile change
+- Undo/Clear waypoint editing
+- route stats (distance, waypoint count, route point count)
+- GPX track export (`trk/trkseg/trkpt`) for Garmin course workflows
+
+Operational constraint:
+
+- Route planning is online-only in v1 and depends on the public default endpoint configured in `src/lib/routing.ts` (`https://router.project-osrm.org`).
+
 ### 5.5 Shared components and utilities
 
 Components:
@@ -518,6 +547,10 @@ Libraries/helpers:
   - reusable MapLibre lifecycle hook
   - preserves viewport across style/reduced-complexity toggles
   - adds navigation controls and resize observer support
+- `src/lib/routing.ts`
+  - OSRM-compatible route planning client with profile mapping and abortable fetch support
+- `src/lib/gpx.ts`
+  - GPX 1.1 track XML generator and filename sanitizing helper
 
 Styling system:
 
@@ -623,6 +656,10 @@ GitHub release workflow (`.github/workflows/release.yml`):
 6. Add/extend TS types in `src/types.ts`.
 7. Consume it from a page/store/component.
 
+Example in the current codebase:
+
+- `write_gpx_file(path, contents)` writes Route Planner GPX exports after the user chooses a save path.
+
 ### Add a new persisted setting
 
 1. Add field + default in Rust `Settings` (`src-tauri/src/models.rs`).
@@ -656,3 +693,4 @@ Current codebase deviations from the original prototype spec in `AGENTS.md`:
 Operational note:
 
 - The app is local-first and has no backend server, but map basemaps are loaded from external tile providers (OSM/CARTO) when map views are displayed.
+- The Route Planner page also uses an external routing service (public OSRM-compatible endpoint) to compute snapped routes before GPX export.

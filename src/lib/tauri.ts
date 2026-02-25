@@ -46,5 +46,8 @@ export const getActivitySamples = (id: number, query?: ActivitySampleQuery) =>
 export const getHeatmapData = (filters?: HeatmapFilters) =>
   invoke<HeatmapData>('get_heatmap_data', { filters });
 
+export const writeGpxFile = (path: string, contents: string) =>
+  invoke<string>('write_gpx_file', { path, contents });
+
 export const onScanProgress = (handler: (event: ScanProgressEvent) => void): Promise<UnlistenFn> =>
   listen<ScanProgressEvent>('scan:progress', (event) => handler(event.payload));

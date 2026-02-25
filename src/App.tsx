@@ -15,6 +15,9 @@ const ActivitiesPage = lazy(async () => ({
 const HeatmapPage = lazy(async () => ({
   default: (await import('@/pages/HeatmapPage')).HeatmapPage
 }));
+const RoutePlannerPage = lazy(async () => ({
+  default: (await import('@/pages/RoutePlannerPage')).RoutePlannerPage
+}));
 const ActivityDetailPage = lazy(async () => ({
   default: (await import('@/pages/ActivityDetailPage')).ActivityDetailPage
 }));
@@ -50,6 +53,11 @@ function NavigationMemoryTracker() {
       return;
     }
 
+    if (pathname === '/planner') {
+      setLastSectionRoute('planner', pathname);
+      return;
+    }
+
     if (pathname === '/settings') {
       setLastSectionRoute('settings', pathname);
       return;
@@ -74,6 +82,7 @@ function AppLayout() {
             <Route path="/" element={<DashboardPage />} />
             <Route path="/activities" element={<ActivitiesPage />} />
             <Route path="/heatmap" element={<HeatmapPage />} />
+            <Route path="/planner" element={<RoutePlannerPage />} />
             <Route path="/activities/:id" element={<ActivityDetailPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             <Route path="*" element={<Navigate to="/" replace />} />

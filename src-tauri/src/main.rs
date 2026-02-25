@@ -241,6 +241,30 @@ async fn get_heatmap_data(
     .map_err(|err| err.to_string())?
 }
 
+#[tauri::command]
+async fn write_gpx_file(path: String, contents: String) -> Result<String, String> {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return Err("export path is empty".to_string());
+    }
+
+    let mut final_path = PathBuf::from(trimmed);
+    let has_gpx_extension = final_path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.eq_ignore_ascii_case("gpx"))
+        .unwrap_or(false);
+
+    if !has_gpx_extension {
+        final_path.set_extension("gpx");
+    }
+
+    fs::write(&final_path, contents.as_bytes())
+        .map_err(|err| format!("failed writing GPX file {}: {err}", final_path.display()))?;
+
+    Ok(final_path.to_string_lossy().to_string())
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -260,7 +284,8 @@ fn main() {
             list_activities,
             get_activity,
             get_activity_samples,
-            get_heatmap_data
+            get_heatmap_data,
+            write_gpx_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

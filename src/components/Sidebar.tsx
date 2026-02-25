@@ -2,12 +2,13 @@ import { Link, useLocation } from 'react-router-dom';
 
 import { useUiStateStore } from '@/store/useUiStateStore';
 
-type NavSection = 'dashboard' | 'activities' | 'heatmap' | 'settings';
+type NavSection = 'dashboard' | 'activities' | 'heatmap' | 'planner' | 'settings';
 
 const navItems: Array<{ section: NavSection; defaultPath: string; label: string }> = [
   { section: 'dashboard', defaultPath: '/', label: 'Dashboard' },
   { section: 'activities', defaultPath: '/activities', label: 'Activities' },
   { section: 'heatmap', defaultPath: '/heatmap', label: 'Heatmap' },
+  { section: 'planner', defaultPath: '/planner', label: 'Planner' },
   { section: 'settings', defaultPath: '/settings', label: 'Settings' }
 ];
 
@@ -18,6 +19,10 @@ function sectionForPath(pathname: string): NavSection | null {
 
   if (pathname === '/heatmap') {
     return 'heatmap';
+  }
+
+  if (pathname === '/planner') {
+    return 'planner';
   }
 
   if (pathname === '/settings') {

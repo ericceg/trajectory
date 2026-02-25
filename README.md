@@ -1,7 +1,7 @@
 # Trajectory
 
 Trajectory is a macOS-first desktop app for local TCX/FIT activity analysis.
-It is inspired by Strava-style training dashboards, but runs fully offline: no server, no cloud sync, no account required.
+It is inspired by Strava-style training dashboards, with local storage/no account requirements and an optional online route-planning feature.
 
 ## Status
 
@@ -42,6 +42,7 @@ Prototype (actively evolving).
 - Map views support in-place maximize/minimize (with `Esc` to close expanded view)
 - Global path-based heatmap page that overlays all matching GPS tracks
 - Heatmap filters for time span (presets + custom), category, and sport type
+- Route planner page with click-to-add waypoints, road-snapped routing (public OSRM-compatible service), and GPX track export for Garmin Edge workflows
 - Appearance settings for accent theme selection and optional full-opacity heatmap routes (100% opacity)
 - "Reduced complexity" toggle on map views for a grayscale, lower-noise basemap with stronger route contrast
 - Map controls (including reduced-complexity toggles/legend) are overlaid on maps so they remain visible in maximized map mode
@@ -87,6 +88,7 @@ npm run tauri dev
    - **Activities** for filtering/sorting workouts (category + distance filters auto-apply)
    - **Heatmap** for a global path heatmap (overlapping GPS tracks; filter by time span/category/sport)
    - Enable **Reduced complexity (grayscale)** in Heatmap to declutter the map and emphasize route overlap
+   - **Planner** to click waypoints on the map, generate a road-snapped route (requires internet/public routing service), and export a `.gpx` track for Garmin Edge / Garmin Connect course import workflows
    - **Activity Detail** for metrics plus a route map (GPS activities) and a chart area that switches between distance-based plots (with GPS) and time-based plots (without GPS); split view hides unavailable metric panels and surfaces cadence/power panels when present
    - Hover **Activity Detail** charts to see the matching point on the route map highlighted with an animated moving dot (when GPS samples exist)
    - In **Activity Detail** charts, click-drag across the plot to zoom into the visible x-axis range (distance or elapsed time); chart Y-axes/overlay scaling automatically re-fit to the visible segment, and single-click resets back to the full range
@@ -186,6 +188,7 @@ Implemented commands:
 - `get_activity(id)`
 - `get_activity_samples(id, query?)`
 - `get_heatmap_data(filters)`
+- `write_gpx_file(path, contents)`
 
 `list_activities(filters)` supports:
 - `startDate`, `endDate`
