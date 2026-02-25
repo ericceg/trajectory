@@ -122,6 +122,8 @@ export function ActivitiesPage() {
     state: {
       sorting
     },
+    sortDescFirst: true,
+    enableSortingRemoval: false,
     onSortingChange: (updater) =>
       setSorting(typeof updater === 'function' ? updater(sorting) : updater),
     getCoreRowModel: getCoreRowModel(),
