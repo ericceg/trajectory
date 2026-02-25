@@ -105,6 +105,7 @@ type HeartRateZoneSlice = {
   seconds: number;
   percent: number;
 };
+type ZoneHighlightSegment = { start: number; end: number };
 
 function defaultChartSeriesVisibility(sportType?: string): ChartSeriesVisibility {
   const normalizedSport = (sportType ?? '').trim().toLowerCase();
@@ -419,6 +420,54 @@ function buildHeartRateZoneBreakdown(
   return { slices, trackedSeconds };
 }
 
+function buildHeartRateZoneHighlightSegments(
+  points: CombinedChartPoint[],
+  xAxisMode: ChartXAxisMode,
+  xDomain: ChartZoomDomain,
+  hoveredZoneIndex: number | null,
+  upperBoundsBpm: number[]
+): ZoneHighlightSegment[] {
+  if (hoveredZoneIndex == null || points.length < 2) {
+    return [];
+  }
+
+  const segments: ZoneHighlightSegment[] = [];
+  let openStart: number | null = null;
+  let previousX: number | null = null;
+
+  for (const point of points) {
+    const x = xAxisMode === 'distance' ? point.distanceKm : point.elapsedSeconds;
+    const hr = point.heartRate;
+    const inHoveredZone =
+      hr != null && Number.isFinite(hr) && heartRateZoneIndexForBpm(hr, upperBoundsBpm) === hoveredZoneIndex;
+
+    if (inHoveredZone) {
+      if (openStart == null) {
+        openStart = x;
+      }
+      previousX = x;
+      continue;
+    }
+
+    if (openStart != null && previousX != null && previousX > openStart) {
+      segments.push({ start: openStart, end: previousX });
+    }
+    openStart = null;
+    previousX = null;
+  }
+
+  if (openStart != null && previousX != null && previousX > openStart) {
+    segments.push({ start: openStart, end: previousX });
+  }
+
+  return segments
+    .map((segment) => ({
+      start: Math.max(segment.start, xDomain[0]),
+      end: Math.min(segment.end, xDomain[1])
+    }))
+    .filter((segment) => segment.end > segment.start);
+}
+
 function metricRange(values: Array<number | null | undefined>): [number, number] | null {
   const numeric = values.filter((value): value is number => value != null && Number.isFinite(value));
   if (numeric.length === 0) {
@@ -669,6 +718,7 @@ function SplitMetricChart({
   xAxisMode,
   syncId,
   selectionDomain,
+  zoneHighlightSegments,
   onChartMouseDown,
   onChartMouseMove,
   onChartMouseLeave,
@@ -688,6 +738,7 @@ function SplitMetricChart({
   xAxisMode: ChartXAxisMode;
   syncId: string;
   selectionDomain?: ChartZoomDomain | null;
+  zoneHighlightSegments?: ZoneHighlightSegment[];
   onChartMouseDown?: (event: unknown) => void;
   onChartMouseMove?: (event: unknown) => void;
   onChartMouseLeave?: () => void;
@@ -770,6 +821,16 @@ function SplitMetricChart({
                   ifOverflow="extendDomain"
                 />
               ) : null}
+              {zoneHighlightSegments?.map((segment, index) => (
+                <ReferenceArea
+                  key={`zone-highlight-${segment.start}-${segment.end}-${index}`}
+                  x1={segment.start}
+                  x2={segment.end}
+                  fill="rgba(220, 38, 38, 0.12)"
+                  stroke="rgba(220, 38, 38, 0.2)"
+                  ifOverflow="extendDomain"
+                />
+              ))}
               {variant === 'area' ? (
                 <Area
                   type="monotone"
@@ -805,11 +866,17 @@ function SplitMetricChart({
 
 function HeartRateZonesCard({
   slices,
-  trackedSeconds
+  trackedSeconds,
+  hoveredZoneIndex,
+  onHoverZoneChange
 }: {
   slices: HeartRateZoneSlice[];
   trackedSeconds: number;
+  hoveredZoneIndex: number | null;
+  onHoverZoneChange: (zoneIndex: number | null) => void;
 }) {
+  const nonEmptySlices = slices.filter((slice) => slice.seconds > 0);
+
   return (
     <section className="rounded-xl border border-border bg-panel p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -829,7 +896,7 @@ function HeartRateZonesCard({
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie
-                data={slices.filter((slice) => slice.seconds > 0)}
+                data={nonEmptySlices}
                 dataKey="seconds"
                 nameKey="label"
                 cx="50%"
@@ -840,12 +907,20 @@ function HeartRateZonesCard({
                 stroke="rgba(var(--color-panel), 1)"
                 strokeWidth={2}
                 isAnimationActive={false}
+                onMouseEnter={(entry) => {
+                  const slice = entry as HeartRateZoneSlice | undefined;
+                  onHoverZoneChange(slice?.zoneIndex ?? null);
+                }}
+                onMouseLeave={() => onHoverZoneChange(null)}
               >
-                {slices
-                  .filter((slice) => slice.seconds > 0)
-                  .map((slice) => (
-                    <Cell key={slice.label} fill={slice.color} />
-                  ))}
+                {nonEmptySlices.map((slice) => (
+                  <Cell
+                    key={slice.label}
+                    fill={slice.color}
+                    fillOpacity={hoveredZoneIndex == null || hoveredZoneIndex === slice.zoneIndex ? 1 : 0.45}
+                    strokeWidth={hoveredZoneIndex === slice.zoneIndex ? 3 : 2}
+                  />
+                ))}
               </Pie>
               <Tooltip
                 formatter={(value: number) => formatDuration(Number(value))}
@@ -865,7 +940,13 @@ function HeartRateZonesCard({
           {slices.map((slice) => (
             <div
               key={slice.label}
-              className="flex items-center justify-between gap-3 rounded-md border border-border/70 bg-bg/30 px-3 py-2"
+              onMouseEnter={() => onHoverZoneChange(slice.zoneIndex)}
+              onMouseLeave={() => onHoverZoneChange(null)}
+              className={`flex items-center justify-between gap-3 rounded-md border px-3 py-2 ${
+                hoveredZoneIndex === slice.zoneIndex
+                  ? 'border-accent/40 bg-accent/5'
+                  : 'border-border/70 bg-bg/30'
+              }`}
             >
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
@@ -1269,6 +1350,7 @@ export function ActivityDetailPage() {
   );
   const [chartZoomDomain, setChartZoomDomain] = useState<ChartZoomDomain | null>(null);
   const [chartSelectionDomain, setChartSelectionDomain] = useState<ChartZoomDomain | null>(null);
+  const [hoveredHeartRateZoneIndex, setHoveredHeartRateZoneIndex] = useState<number | null>(null);
   const chartDragAnchorRef = useRef<ChartPointer | null>(null);
   const chartDragCurrentRef = useRef<ChartPointer | null>(null);
   const chartSelectionFrameRef = useRef<number | null>(null);
@@ -1522,6 +1604,23 @@ export function ActivityDetailPage() {
   const heartRateZoneBreakdown = useMemo(
     () => buildHeartRateZoneBreakdown(heartRateZoneSamples, heartRateZoneUpperBoundsBpm),
     [heartRateZoneSamples, heartRateZoneUpperBoundsBpm]
+  );
+  const heartRateZoneHighlightSegments = useMemo(
+    () =>
+      buildHeartRateZoneHighlightSegments(
+        combinedChart.data,
+        chartXAxisMode,
+        activeChartXAxisDomain,
+        hoveredHeartRateZoneIndex,
+        heartRateZoneUpperBoundsBpm
+      ),
+    [
+      activeChartXAxisDomain,
+      chartXAxisMode,
+      combinedChart.data,
+      heartRateZoneUpperBoundsBpm,
+      hoveredHeartRateZoneIndex
+    ]
   );
 
   const combinedChartDisplayData = useMemo<CombinedChartPoint[]>(() => {
@@ -1900,6 +1999,16 @@ export function ActivityDetailPage() {
                             ifOverflow="extendDomain"
                           />
                         ) : null}
+                        {heartRateZoneHighlightSegments.map((segment, index) => (
+                          <ReferenceArea
+                            key={`combined-zone-${segment.start}-${segment.end}-${index}`}
+                            x1={segment.start}
+                            x2={segment.end}
+                            fill="rgba(220, 38, 38, 0.12)"
+                            stroke="rgba(220, 38, 38, 0.2)"
+                            ifOverflow="extendDomain"
+                          />
+                        ))}
 
                         {chartSeriesVisibility.elevation && combinedChart.has.elevation ? (
                           <Area
@@ -2006,6 +2115,7 @@ export function ActivityDetailPage() {
                     xAxisMode={chartXAxisMode}
                     syncId={`activity-${chartXAxisMode}-split-charts`}
                     selectionDomain={chartSelectionDomain}
+                    zoneHighlightSegments={heartRateZoneHighlightSegments}
                     onChartMouseDown={handleChartMouseDown}
                     onChartMouseMove={handleChartMouseMove}
                     onChartMouseLeave={handleChartMouseLeave}
@@ -2029,6 +2139,7 @@ export function ActivityDetailPage() {
                     xAxisMode={chartXAxisMode}
                     syncId={`activity-${chartXAxisMode}-split-charts`}
                     selectionDomain={chartSelectionDomain}
+                    zoneHighlightSegments={heartRateZoneHighlightSegments}
                     onChartMouseDown={handleChartMouseDown}
                     onChartMouseMove={handleChartMouseMove}
                     onChartMouseLeave={handleChartMouseLeave}
@@ -2050,6 +2161,7 @@ export function ActivityDetailPage() {
                     xAxisMode={chartXAxisMode}
                     syncId={`activity-${chartXAxisMode}-split-charts`}
                     selectionDomain={chartSelectionDomain}
+                    zoneHighlightSegments={heartRateZoneHighlightSegments}
                     onChartMouseDown={handleChartMouseDown}
                     onChartMouseMove={handleChartMouseMove}
                     onChartMouseLeave={handleChartMouseLeave}
@@ -2071,6 +2183,7 @@ export function ActivityDetailPage() {
                     xAxisMode={chartXAxisMode}
                     syncId={`activity-${chartXAxisMode}-split-charts`}
                     selectionDomain={chartSelectionDomain}
+                    zoneHighlightSegments={heartRateZoneHighlightSegments}
                     onChartMouseDown={handleChartMouseDown}
                     onChartMouseMove={handleChartMouseMove}
                     onChartMouseLeave={handleChartMouseLeave}
@@ -2092,6 +2205,7 @@ export function ActivityDetailPage() {
                     xAxisMode={chartXAxisMode}
                     syncId={`activity-${chartXAxisMode}-split-charts`}
                     selectionDomain={chartSelectionDomain}
+                    zoneHighlightSegments={heartRateZoneHighlightSegments}
                     onChartMouseDown={handleChartMouseDown}
                     onChartMouseMove={handleChartMouseMove}
                     onChartMouseLeave={handleChartMouseLeave}
@@ -2113,6 +2227,7 @@ export function ActivityDetailPage() {
                     xAxisMode={chartXAxisMode}
                     syncId={`activity-${chartXAxisMode}-split-charts`}
                     selectionDomain={chartSelectionDomain}
+                    zoneHighlightSegments={heartRateZoneHighlightSegments}
                     onChartMouseDown={handleChartMouseDown}
                     onChartMouseMove={handleChartMouseMove}
                     onChartMouseLeave={handleChartMouseLeave}
@@ -2138,6 +2253,8 @@ export function ActivityDetailPage() {
             <HeartRateZonesCard
               slices={heartRateZoneBreakdown.slices}
               trackedSeconds={heartRateZoneBreakdown.trackedSeconds}
+              hoveredZoneIndex={hoveredHeartRateZoneIndex}
+              onHoverZoneChange={setHoveredHeartRateZoneIndex}
             />
           ) : null}
         </div>
