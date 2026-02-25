@@ -110,8 +110,8 @@ function defaultChartSeriesVisibility(sportType?: string): ChartSeriesVisibility
       speed: false,
       heartRate: true,
       elevation: true,
-      cadence: false,
-      power: false
+      cadence: true,
+      power: true
     };
   }
 
@@ -121,8 +121,8 @@ function defaultChartSeriesVisibility(sportType?: string): ChartSeriesVisibility
       speed: true,
       heartRate: true,
       elevation: true,
-      cadence: false,
-      power: false
+      cadence: true,
+      power: true
     };
   }
 
