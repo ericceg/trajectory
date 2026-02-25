@@ -687,7 +687,7 @@ export function DashboardPage() {
               <div className="mt-2 flex items-center gap-2 text-sm">
                 <button
                   type="button"
-                  className="rounded-md border border-border px-2 py-1 text-muted hover:text-foreground"
+                  className="inline-flex h-9 min-w-9 items-center justify-center rounded-md border border-border px-3 text-sm text-muted hover:text-foreground"
                   onClick={() => shiftYear(-1)}
                 >
                   &lt;
@@ -695,7 +695,7 @@ export function DashboardPage() {
                 <span className="font-semibold text-foreground">{selectedYear}</span>
                 <button
                   type="button"
-                  className="rounded-md border border-border px-2 py-1 text-muted hover:text-foreground"
+                  className="inline-flex h-9 min-w-9 items-center justify-center rounded-md border border-border px-3 text-sm text-muted hover:text-foreground"
                   onClick={() => shiftYear(1)}
                 >
                   &gt;
@@ -705,14 +705,14 @@ export function DashboardPage() {
               <div className="mt-2 flex items-center gap-2 text-sm">
                 <button
                   type="button"
-                  className="rounded-md border border-border px-2 py-1 text-muted hover:text-foreground"
+                  className="inline-flex h-9 items-center rounded-md border border-border px-3 text-sm font-semibold text-foreground"
                   onClick={() => setMode('year')}
                 >
                   {selectedYear}
                 </button>
                 <button
                   type="button"
-                  className="rounded-md border border-border px-2 py-1 text-muted hover:text-foreground"
+                  className="inline-flex h-9 min-w-9 items-center justify-center rounded-md border border-border px-3 text-sm text-muted hover:text-foreground"
                   onClick={() => shiftMonth(-1)}
                 >
                   &lt;
@@ -722,7 +722,7 @@ export function DashboardPage() {
                 </span>
                 <button
                   type="button"
-                  className="rounded-md border border-border px-2 py-1 text-muted hover:text-foreground"
+                  className="inline-flex h-9 min-w-9 items-center justify-center rounded-md border border-border px-3 text-sm text-muted hover:text-foreground"
                   onClick={() => shiftMonth(1)}
                 >
                   &gt;

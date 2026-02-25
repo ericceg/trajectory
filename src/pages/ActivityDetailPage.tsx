@@ -482,6 +482,19 @@ function CombinedChartTooltip({
   }
 
   const point = payload[0].payload;
+  const metricRows = [
+    point.paceSecondsPerKm == null
+      ? null
+      : { label: 'Pace', value: formatPaceSeconds(point.paceSecondsPerKm) },
+    point.speedKmh == null ? null : { label: 'Speed', value: `${formatNumberTick(point.speedKmh, 1)} km/h` },
+    point.heartRate == null ? null : { label: 'Heart rate', value: `${Math.round(point.heartRate)} bpm` },
+    point.cadence == null ? null : { label: 'Cadence', value: `${Math.round(point.cadence)} rpm` },
+    point.powerWatts == null ? null : { label: 'Power', value: `${Math.round(point.powerWatts)} W` },
+    point.elevationM == null ? null : { label: 'Elevation', value: `${Math.round(point.elevationM)} m` },
+    point.gradePct == null
+      ? null
+      : { label: 'Grade', value: `${point.gradePct >= 0 ? '+' : ''}${formatNumberTick(point.gradePct, 1)}%` }
+  ].filter((row): row is { label: string; value: string } => row != null);
 
   return (
     <div style={CHART_TOOLTIP_STYLE} className="min-w-[13rem] p-3 text-sm leading-tight">
@@ -492,37 +505,11 @@ function CombinedChartTooltip({
             Dist: <span className="font-semibold">{formatNumberTick(point.distanceKm, 2)} km</span>
           </p>
         ) : null}
-        <p>
-          Pace: <span className="font-semibold">{formatPaceSeconds(point.paceSecondsPerKm)}</span>
-        </p>
-        <p>
-          Speed:{' '}
-          <span className="font-semibold">
-            {point.speedKmh == null ? 'n/a' : `${formatNumberTick(point.speedKmh, 1)} km/h`}
-          </span>
-        </p>
-        <p>
-          Heart rate:{' '}
-          <span className="font-semibold">{point.heartRate == null ? 'n/a' : `${Math.round(point.heartRate)} bpm`}</span>
-        </p>
-        <p>
-          Cadence:{' '}
-          <span className="font-semibold">{point.cadence == null ? 'n/a' : `${Math.round(point.cadence)} rpm`}</span>
-        </p>
-        <p>
-          Power:{' '}
-          <span className="font-semibold">{point.powerWatts == null ? 'n/a' : `${Math.round(point.powerWatts)} W`}</span>
-        </p>
-        <p>
-          Elevation:{' '}
-          <span className="font-semibold">{point.elevationM == null ? 'n/a' : `${Math.round(point.elevationM)} m`}</span>
-        </p>
-        <p>
-          Grade:{' '}
-          <span className="font-semibold">
-            {point.gradePct == null ? 'n/a' : `${point.gradePct >= 0 ? '+' : ''}${formatNumberTick(point.gradePct, 1)}%`}
-          </span>
-        </p>
+        {metricRows.map((row) => (
+          <p key={row.label}>
+            {row.label}: <span className="font-semibold">{row.value}</span>
+          </p>
+        ))}
       </div>
     </div>
   );
@@ -559,9 +546,11 @@ function SplitMetricTooltip({
             Dist: <span className="font-semibold">{formatNumberTick(point.distanceKm, 2)} km</span>
           </p>
         ) : null}
-        <p>
-          {metricLabel}: <span className="font-semibold">{formatValue(rawValue)}</span>
-        </p>
+        {rawValue == null ? null : (
+          <p>
+            {metricLabel}: <span className="font-semibold">{formatValue(rawValue)}</span>
+          </p>
+        )}
       </div>
     </div>
   );
