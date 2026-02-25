@@ -1,0 +1,1267 @@
+use std::collections::{BTreeMap, HashMap, HashSet};
+
+use anyhow::Result;
+use chrono::{Datelike, Duration, Local, NaiveDate};
+use rusqlite::Connection;
+
+use crate::{
+    db,
+    models::{
+        ActivityFilters, ActivitySample, ActivitySummary, AdvancedAnalyticsActivityCondition,
+        AdvancedAnalyticsActivityConditionField, AdvancedAnalyticsActivityConditionOperator,
+        AdvancedAnalyticsBaseMeasure, AdvancedAnalyticsBucketPoint,
+        AdvancedAnalyticsChartBucketPoint, AdvancedAnalyticsChartDefinition,
+        AdvancedAnalyticsChartResult, AdvancedAnalyticsChartType,
+        AdvancedAnalyticsFormulaMetricDefinition, AdvancedAnalyticsFormulaOperator,
+        AdvancedAnalyticsGranularity, AdvancedAnalyticsMetricDefinition,
+        AdvancedAnalyticsMetricKind, AdvancedAnalyticsMetricResult, AdvancedAnalyticsPeriod,
+        AdvancedAnalyticsRunRequest, AdvancedAnalyticsRunResponse,
+        AdvancedAnalyticsSampleCondition, AdvancedAnalyticsSampleConditionField,
+        AdvancedAnalyticsSampleConditionOperator, AdvancedAnalyticsSeriesByGranularity,
+        AdvancedAnalyticsStreakDefinition, AdvancedAnalyticsStreakResult,
+        AdvancedAnalyticsStreakStatus, AdvancedAnalyticsThresholdOperator,
+    },
+};
+
+#[derive(Debug, Clone)]
+struct BucketValue {
+    label: String,
+    value: Option<f64>,
+}
+
+type BucketSeries = BTreeMap<String, BucketValue>;
+
+#[derive(Debug, Clone)]
+struct InternalMetricResult {
+    metric_id: String,
+    name: String,
+    scalar_value: Option<f64>,
+    unit: Option<String>,
+    day: BucketSeries,
+    week: BucketSeries,
+    month: BucketSeries,
+    errors: Vec<String>,
+    warnings: Vec<String>,
+}
+
+pub fn run_advanced_analytics(
+    conn: &Connection,
+    request: &AdvancedAnalyticsRunRequest,
+    heart_rate_zone_upper_bounds_bpm: &[u16],
+) -> Result<AdvancedAnalyticsRunResponse> {
+    let activities = db::list_activities(
+        conn,
+        &ActivityFilters {
+            start_date: request.start_date.clone(),
+            end_date: request.end_date.clone(),
+            category: None,
+            sport_type: None,
+            min_distance: None,
+            max_distance: None,
+            day: None,
+        },
+    )?;
+
+    let metric_defs: HashMap<String, AdvancedAnalyticsMetricDefinition> = request
+        .metrics
+        .iter()
+        .cloned()
+        .map(|metric| (metric.id.clone(), metric))
+        .collect();
+
+    let mut sample_cache: HashMap<i64, Vec<ActivitySample>> = HashMap::new();
+    let mut metric_cache: HashMap<String, InternalMetricResult> = HashMap::new();
+    let mut metric_visit_state: HashMap<String, VisitState> = HashMap::new();
+
+    let mut global_warnings = Vec::new();
+    if metric_defs.len() != request.metrics.len() {
+        global_warnings
+            .push("Duplicate metric IDs detected; later duplicates were ignored.".to_string());
+    }
+
+    for metric in &request.metrics {
+        compute_metric(
+            &metric.id,
+            &metric_defs,
+            &activities,
+            conn,
+            &mut sample_cache,
+            &mut metric_cache,
+            &mut metric_visit_state,
+            heart_rate_zone_upper_bounds_bpm,
+        )?;
+    }
+
+    let streak_results = build_streak_results(&request.streaks, &metric_cache);
+    let chart_results = build_chart_results(&request.charts, &metric_cache);
+
+    let metric_results = metric_cache
+        .into_iter()
+        .map(|(id, internal)| (id, finalize_metric(internal)))
+        .collect();
+
+    Ok(AdvancedAnalyticsRunResponse {
+        metric_results,
+        streak_results,
+        chart_results,
+        global_warnings,
+    })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum VisitState {
+    Visiting,
+    Done,
+}
+
+#[allow(clippy::too_many_arguments)]
+fn compute_metric(
+    metric_id: &str,
+    metric_defs: &HashMap<String, AdvancedAnalyticsMetricDefinition>,
+    activities: &[ActivitySummary],
+    conn: &Connection,
+    sample_cache: &mut HashMap<i64, Vec<ActivitySample>>,
+    metric_cache: &mut HashMap<String, InternalMetricResult>,
+    visit_state: &mut HashMap<String, VisitState>,
+    hr_zone_upper_bounds: &[u16],
+) -> Result<()> {
+    if metric_cache.contains_key(metric_id) {
+        return Ok(());
+    }
+
+    if matches!(visit_state.get(metric_id), Some(VisitState::Visiting)) {
+        metric_cache.insert(
+            metric_id.to_string(),
+            error_metric(metric_id, metric_id, "Metric formula cycle detected."),
+        );
+        return Ok(());
+    }
+
+    let Some(metric) = metric_defs.get(metric_id) else {
+        metric_cache.insert(
+            metric_id.to_string(),
+            error_metric(metric_id, metric_id, "Metric definition not found."),
+        );
+        return Ok(());
+    };
+
+    visit_state.insert(metric_id.to_string(), VisitState::Visiting);
+
+    let computed = match metric.kind {
+        AdvancedAnalyticsMetricKind::Base => {
+            if let Some(base) = &metric.base {
+                compute_base_metric(
+                    metric,
+                    base,
+                    activities,
+                    conn,
+                    sample_cache,
+                    hr_zone_upper_bounds,
+                )?
+            } else {
+                error_metric(
+                    &metric.id,
+                    &metric.name,
+                    "Missing base metric configuration.",
+                )
+            }
+        }
+        AdvancedAnalyticsMetricKind::Formula => {
+            if let Some(formula) = &metric.formula {
+                compute_metric(
+                    &formula.left_metric_id,
+                    metric_defs,
+                    activities,
+                    conn,
+                    sample_cache,
+                    metric_cache,
+                    visit_state,
+                    hr_zone_upper_bounds,
+                )?;
+                compute_metric(
+                    &formula.right_metric_id,
+                    metric_defs,
+                    activities,
+                    conn,
+                    sample_cache,
+                    metric_cache,
+                    visit_state,
+                    hr_zone_upper_bounds,
+                )?;
+
+                let left = metric_cache.get(&formula.left_metric_id).cloned();
+                let right = metric_cache.get(&formula.right_metric_id).cloned();
+                compute_formula_metric(metric, formula, left, right)
+            } else {
+                error_metric(
+                    &metric.id,
+                    &metric.name,
+                    "Missing formula metric configuration.",
+                )
+            }
+        }
+    };
+
+    visit_state.insert(metric_id.to_string(), VisitState::Done);
+    metric_cache.insert(metric_id.to_string(), computed);
+    Ok(())
+}
+
+fn error_metric(metric_id: &str, name: &str, message: &str) -> InternalMetricResult {
+    InternalMetricResult {
+        metric_id: metric_id.to_string(),
+        name: name.to_string(),
+        scalar_value: None,
+        unit: None,
+        day: BTreeMap::new(),
+        week: BTreeMap::new(),
+        month: BTreeMap::new(),
+        errors: vec![message.to_string()],
+        warnings: Vec::new(),
+    }
+}
+
+fn compute_formula_metric(
+    metric: &AdvancedAnalyticsMetricDefinition,
+    formula: &AdvancedAnalyticsFormulaMetricDefinition,
+    left: Option<InternalMetricResult>,
+    right: Option<InternalMetricResult>,
+) -> InternalMetricResult {
+    let mut result = InternalMetricResult {
+        metric_id: metric.id.clone(),
+        name: metric.name.clone(),
+        scalar_value: None,
+        unit: formula.display_unit.clone(),
+        day: BTreeMap::new(),
+        week: BTreeMap::new(),
+        month: BTreeMap::new(),
+        errors: Vec::new(),
+        warnings: Vec::new(),
+    };
+
+    let Some(left) = left else {
+        result.errors.push(format!(
+            "Left metric '{}' not found.",
+            formula.left_metric_id
+        ));
+        return result;
+    };
+    let Some(right) = right else {
+        result.errors.push(format!(
+            "Right metric '{}' not found.",
+            formula.right_metric_id
+        ));
+        return result;
+    };
+
+    if !left.errors.is_empty() {
+        result
+            .warnings
+            .push(format!("Left metric '{}' has errors.", left.name));
+    }
+    if !right.errors.is_empty() {
+        result
+            .warnings
+            .push(format!("Right metric '{}' has errors.", right.name));
+    }
+
+    result.scalar_value = apply_formula(formula.operator, left.scalar_value, right.scalar_value);
+    if result.unit.is_none() {
+        result.unit = left.unit.clone().or(right.unit.clone());
+    }
+
+    result.day = combine_series_with_formula(formula.operator, &left.day, &right.day);
+    result.week = combine_series_with_formula(formula.operator, &left.week, &right.week);
+    result.month = combine_series_with_formula(formula.operator, &left.month, &right.month);
+
+    result
+}
+
+fn apply_formula(
+    operator: AdvancedAnalyticsFormulaOperator,
+    left: Option<f64>,
+    right: Option<f64>,
+) -> Option<f64> {
+    let (Some(left), Some(right)) = (left, right) else {
+        return None;
+    };
+    match operator {
+        AdvancedAnalyticsFormulaOperator::Add => Some(left + right),
+        AdvancedAnalyticsFormulaOperator::Subtract => Some(left - right),
+        AdvancedAnalyticsFormulaOperator::Divide => {
+            if right.abs() < f64::EPSILON {
+                None
+            } else {
+                Some(left / right)
+            }
+        }
+        AdvancedAnalyticsFormulaOperator::Percent => {
+            if right.abs() < f64::EPSILON {
+                None
+            } else {
+                Some((left / right) * 100.0)
+            }
+        }
+    }
+}
+
+fn combine_series_with_formula(
+    operator: AdvancedAnalyticsFormulaOperator,
+    left: &BucketSeries,
+    right: &BucketSeries,
+) -> BucketSeries {
+    let mut output = BTreeMap::new();
+    let mut keys = BTreeMap::<String, String>::new();
+
+    for (key, value) in left {
+        keys.insert(key.clone(), value.label.clone());
+    }
+    for (key, value) in right {
+        keys.entry(key.clone())
+            .or_insert_with(|| value.label.clone());
+    }
+
+    for (key, label) in keys {
+        let left_value = left.get(&key).and_then(|v| v.value);
+        let right_value = right.get(&key).and_then(|v| v.value);
+        output.insert(
+            key,
+            BucketValue {
+                label,
+                value: apply_formula(operator, left_value, right_value),
+            },
+        );
+    }
+
+    output
+}
+
+fn compute_base_metric(
+    metric: &AdvancedAnalyticsMetricDefinition,
+    base: &crate::models::AdvancedAnalyticsBaseMetricDefinition,
+    activities: &[ActivitySummary],
+    conn: &Connection,
+    sample_cache: &mut HashMap<i64, Vec<ActivitySample>>,
+    hr_zone_upper_bounds: &[u16],
+) -> Result<InternalMetricResult> {
+    let mut result = InternalMetricResult {
+        metric_id: metric.id.clone(),
+        name: metric.name.clone(),
+        scalar_value: Some(0.0),
+        unit: base
+            .display_unit
+            .clone()
+            .or_else(|| default_unit_for_measure(base.measure).map(ToString::to_string)),
+        day: BTreeMap::new(),
+        week: BTreeMap::new(),
+        month: BTreeMap::new(),
+        errors: Vec::new(),
+        warnings: Vec::new(),
+    };
+
+    let matched: Vec<&ActivitySummary> = activities
+        .iter()
+        .filter(|activity| activity_matches_conditions(activity, &base.activity_conditions))
+        .collect();
+
+    match base.measure {
+        AdvancedAnalyticsBaseMeasure::ActivitiesCount
+        | AdvancedAnalyticsBaseMeasure::DistanceSum
+        | AdvancedAnalyticsBaseMeasure::DurationSum
+        | AdvancedAnalyticsBaseMeasure::MovingTimeSum
+        | AdvancedAnalyticsBaseMeasure::ElevationGainSum => {
+            let mut scalar = 0.0;
+            for activity in matched {
+                let Some(date) = parse_activity_day(&activity.activity_start) else {
+                    continue;
+                };
+                let value = base_measure_activity_value(base.measure, activity);
+                scalar += value;
+                add_bucket_value(
+                    &mut result.day,
+                    date,
+                    AdvancedAnalyticsGranularity::Day,
+                    value,
+                );
+                add_bucket_value(
+                    &mut result.week,
+                    date,
+                    AdvancedAnalyticsGranularity::Week,
+                    value,
+                );
+                add_bucket_value(
+                    &mut result.month,
+                    date,
+                    AdvancedAnalyticsGranularity::Month,
+                    value,
+                );
+            }
+            result.scalar_value = Some(scalar);
+        }
+        AdvancedAnalyticsBaseMeasure::ActiveDaysCount => {
+            let mut scalar_days = HashSet::new();
+            let mut by_day_bucket: HashMap<String, HashSet<String>> = HashMap::new();
+            let mut by_week_bucket: HashMap<String, HashSet<String>> = HashMap::new();
+            let mut by_month_bucket: HashMap<String, HashSet<String>> = HashMap::new();
+
+            for activity in matched {
+                let Some(date) = parse_activity_day(&activity.activity_start) else {
+                    continue;
+                };
+                let day_key = date.format("%Y-%m-%d").to_string();
+                scalar_days.insert(day_key.clone());
+
+                let (bucket_key, _) = bucket_key_and_label(date, AdvancedAnalyticsGranularity::Day);
+                by_day_bucket
+                    .entry(bucket_key)
+                    .or_default()
+                    .insert(day_key.clone());
+                let (bucket_key, _) =
+                    bucket_key_and_label(date, AdvancedAnalyticsGranularity::Week);
+                by_week_bucket
+                    .entry(bucket_key)
+                    .or_default()
+                    .insert(day_key.clone());
+                let (bucket_key, _) =
+                    bucket_key_and_label(date, AdvancedAnalyticsGranularity::Month);
+                by_month_bucket
+                    .entry(bucket_key)
+                    .or_default()
+                    .insert(day_key);
+            }
+
+            result.scalar_value = Some(scalar_days.len() as f64);
+            result.day = set_counts_to_series(&by_day_bucket, AdvancedAnalyticsGranularity::Day);
+            result.week = set_counts_to_series(&by_week_bucket, AdvancedAnalyticsGranularity::Week);
+            result.month =
+                set_counts_to_series(&by_month_bucket, AdvancedAnalyticsGranularity::Month);
+        }
+        AdvancedAnalyticsBaseMeasure::SampleTime => {
+            let mut scalar = 0.0;
+            if base.sample_conditions.is_empty() {
+                result
+                    .warnings
+                    .push("Sample time metric has no sample conditions; counting all tracked sample intervals.".to_string());
+            }
+            for activity in matched {
+                let Some(date) = parse_activity_day(&activity.activity_start) else {
+                    continue;
+                };
+                if !sample_cache.contains_key(&activity.id) {
+                    sample_cache.insert(
+                        activity.id,
+                        db::get_all_activity_samples(conn, activity.id)?,
+                    );
+                }
+                let samples = sample_cache
+                    .get(&activity.id)
+                    .expect("sample cache populated");
+                let seconds = compute_matching_sample_time_seconds(
+                    samples,
+                    &base.sample_conditions,
+                    hr_zone_upper_bounds,
+                );
+                scalar += seconds;
+                add_bucket_value(
+                    &mut result.day,
+                    date,
+                    AdvancedAnalyticsGranularity::Day,
+                    seconds,
+                );
+                add_bucket_value(
+                    &mut result.week,
+                    date,
+                    AdvancedAnalyticsGranularity::Week,
+                    seconds,
+                );
+                add_bucket_value(
+                    &mut result.month,
+                    date,
+                    AdvancedAnalyticsGranularity::Month,
+                    seconds,
+                );
+            }
+            result.scalar_value = Some(scalar);
+        }
+    }
+
+    if base.measure != AdvancedAnalyticsBaseMeasure::SampleTime
+        && !base.sample_conditions.is_empty()
+    {
+        result
+            .warnings
+            .push("Sample conditions are ignored unless measure is Sample time.".to_string());
+    }
+
+    Ok(result)
+}
+
+fn default_unit_for_measure(measure: AdvancedAnalyticsBaseMeasure) -> Option<&'static str> {
+    match measure {
+        AdvancedAnalyticsBaseMeasure::ActivitiesCount
+        | AdvancedAnalyticsBaseMeasure::ActiveDaysCount => Some("count"),
+        AdvancedAnalyticsBaseMeasure::DistanceSum => Some("m"),
+        AdvancedAnalyticsBaseMeasure::DurationSum
+        | AdvancedAnalyticsBaseMeasure::MovingTimeSum
+        | AdvancedAnalyticsBaseMeasure::SampleTime => Some("s"),
+        AdvancedAnalyticsBaseMeasure::ElevationGainSum => Some("m"),
+    }
+}
+
+fn base_measure_activity_value(
+    measure: AdvancedAnalyticsBaseMeasure,
+    activity: &ActivitySummary,
+) -> f64 {
+    match measure {
+        AdvancedAnalyticsBaseMeasure::ActivitiesCount => 1.0,
+        AdvancedAnalyticsBaseMeasure::DistanceSum => activity.distance_m.max(0.0),
+        AdvancedAnalyticsBaseMeasure::DurationSum => activity.duration_seconds.max(0.0),
+        AdvancedAnalyticsBaseMeasure::MovingTimeSum => activity.moving_duration_seconds.max(0.0),
+        AdvancedAnalyticsBaseMeasure::ElevationGainSum => activity.elevation_gain_m.max(0.0),
+        AdvancedAnalyticsBaseMeasure::ActiveDaysCount
+        | AdvancedAnalyticsBaseMeasure::SampleTime => 0.0,
+    }
+}
+
+fn set_counts_to_series(
+    buckets: &HashMap<String, HashSet<String>>,
+    granularity: AdvancedAnalyticsGranularity,
+) -> BucketSeries {
+    let mut output = BTreeMap::new();
+    for (key, set) in buckets {
+        let label = bucket_label_from_key(key, granularity);
+        output.insert(
+            key.clone(),
+            BucketValue {
+                label,
+                value: Some(set.len() as f64),
+            },
+        );
+    }
+    output
+}
+
+fn add_bucket_value(
+    series: &mut BucketSeries,
+    date: NaiveDate,
+    granularity: AdvancedAnalyticsGranularity,
+    delta: f64,
+) {
+    let (key, label) = bucket_key_and_label(date, granularity);
+    let entry = series.entry(key).or_insert(BucketValue {
+        label,
+        value: Some(0.0),
+    });
+    let current = entry.value.unwrap_or(0.0);
+    entry.value = Some(current + delta);
+}
+
+fn bucket_key_and_label(
+    date: NaiveDate,
+    granularity: AdvancedAnalyticsGranularity,
+) -> (String, String) {
+    match granularity {
+        AdvancedAnalyticsGranularity::Day => {
+            let key = date.format("%Y-%m-%d").to_string();
+            (key.clone(), key)
+        }
+        AdvancedAnalyticsGranularity::Week => {
+            let week_start = week_start_monday(date);
+            let key = week_start.format("%Y-%m-%d").to_string();
+            (
+                key.clone(),
+                format!("Week of {}", week_start.format("%Y-%m-%d")),
+            )
+        }
+        AdvancedAnalyticsGranularity::Month => {
+            let month_start = NaiveDate::from_ymd_opt(date.year(), date.month(), 1).unwrap_or(date);
+            let key = month_start.format("%Y-%m-%d").to_string();
+            (key.clone(), month_start.format("%Y-%m").to_string())
+        }
+    }
+}
+
+fn bucket_label_from_key(key: &str, granularity: AdvancedAnalyticsGranularity) -> String {
+    match granularity {
+        AdvancedAnalyticsGranularity::Day => key.to_string(),
+        AdvancedAnalyticsGranularity::Week => format!("Week of {key}"),
+        AdvancedAnalyticsGranularity::Month => key.get(0..7).unwrap_or(key).to_string(),
+    }
+}
+
+fn week_start_monday(date: NaiveDate) -> NaiveDate {
+    let offset = i64::from(date.weekday().num_days_from_monday());
+    date - Duration::days(offset)
+}
+
+fn parse_activity_day(value: &str) -> Option<NaiveDate> {
+    let trimmed = value.trim();
+    if let Some(prefix) = trimmed.get(0..10) {
+        NaiveDate::parse_from_str(prefix, "%Y-%m-%d").ok()
+    } else {
+        None
+    }
+}
+
+fn activity_matches_conditions(
+    activity: &ActivitySummary,
+    conditions: &[AdvancedAnalyticsActivityCondition],
+) -> bool {
+    conditions
+        .iter()
+        .all(|condition| activity_matches_condition(activity, condition))
+}
+
+fn activity_matches_condition(
+    activity: &ActivitySummary,
+    condition: &AdvancedAnalyticsActivityCondition,
+) -> bool {
+    match condition.field {
+        AdvancedAnalyticsActivityConditionField::Title => {
+            text_condition_matches(&activity.title, condition.operator, condition)
+        }
+        AdvancedAnalyticsActivityConditionField::Category => {
+            text_condition_matches(&activity.category, condition.operator, condition)
+        }
+        AdvancedAnalyticsActivityConditionField::SportType => {
+            text_condition_matches(&activity.sport_type, condition.operator, condition)
+        }
+        AdvancedAnalyticsActivityConditionField::Weekday => {
+            let Some(date) = parse_activity_day(&activity.activity_start) else {
+                return false;
+            };
+            let actual = weekday_name(date.weekday().num_days_from_monday() as usize);
+            text_condition_matches(actual, condition.operator, condition)
+        }
+        AdvancedAnalyticsActivityConditionField::DistanceM => numeric_condition_matches(
+            Some(activity.distance_m),
+            condition.operator,
+            condition.number_value,
+        ),
+        AdvancedAnalyticsActivityConditionField::DurationSeconds => numeric_condition_matches(
+            Some(activity.duration_seconds),
+            condition.operator,
+            condition.number_value,
+        ),
+        AdvancedAnalyticsActivityConditionField::MovingDurationSeconds => {
+            numeric_condition_matches(
+                Some(activity.moving_duration_seconds),
+                condition.operator,
+                condition.number_value,
+            )
+        }
+        AdvancedAnalyticsActivityConditionField::ElevationGainM => numeric_condition_matches(
+            Some(activity.elevation_gain_m),
+            condition.operator,
+            condition.number_value,
+        ),
+        AdvancedAnalyticsActivityConditionField::AvgHr => {
+            numeric_condition_matches(activity.avg_hr, condition.operator, condition.number_value)
+        }
+        AdvancedAnalyticsActivityConditionField::MaxHr => {
+            numeric_condition_matches(activity.max_hr, condition.operator, condition.number_value)
+        }
+        AdvancedAnalyticsActivityConditionField::HasGps => bool_condition_matches(
+            activity.has_gps,
+            condition.operator,
+            condition.bool_value,
+            condition.value.as_deref(),
+        ),
+    }
+}
+
+fn weekday_name(index_from_monday: usize) -> &'static str {
+    match index_from_monday {
+        0 => "monday",
+        1 => "tuesday",
+        2 => "wednesday",
+        3 => "thursday",
+        4 => "friday",
+        5 => "saturday",
+        _ => "sunday",
+    }
+}
+
+fn normalized_tokens_from_condition(condition: &AdvancedAnalyticsActivityCondition) -> Vec<String> {
+    if let Some(values) = &condition.values {
+        return values
+            .iter()
+            .map(|value| value.trim().to_lowercase())
+            .filter(|value| !value.is_empty())
+            .collect();
+    }
+
+    condition
+        .value
+        .as_deref()
+        .unwrap_or_default()
+        .split(',')
+        .map(|part| part.trim().to_lowercase())
+        .filter(|part| !part.is_empty())
+        .collect()
+}
+
+fn text_condition_matches(
+    text: &str,
+    operator: AdvancedAnalyticsActivityConditionOperator,
+    condition: &AdvancedAnalyticsActivityCondition,
+) -> bool {
+    let haystack = text.trim().to_lowercase();
+    let needle = condition
+        .value
+        .as_deref()
+        .unwrap_or_default()
+        .trim()
+        .to_lowercase();
+
+    match operator {
+        AdvancedAnalyticsActivityConditionOperator::Contains => haystack.contains(&needle),
+        AdvancedAnalyticsActivityConditionOperator::Equals
+        | AdvancedAnalyticsActivityConditionOperator::Is => haystack == needle,
+        AdvancedAnalyticsActivityConditionOperator::StartsWith => haystack.starts_with(&needle),
+        AdvancedAnalyticsActivityConditionOperator::ContainsAny => {
+            let tokens = normalized_tokens_from_condition(condition);
+            !tokens.is_empty() && tokens.iter().any(|token| haystack.contains(token))
+        }
+        AdvancedAnalyticsActivityConditionOperator::ContainsAll => {
+            let tokens = normalized_tokens_from_condition(condition);
+            !tokens.is_empty() && tokens.iter().all(|token| haystack.contains(token))
+        }
+        AdvancedAnalyticsActivityConditionOperator::IsNot
+        | AdvancedAnalyticsActivityConditionOperator::NotEquals => haystack != needle,
+        _ => false,
+    }
+}
+
+fn numeric_condition_matches(
+    actual: Option<f64>,
+    operator: AdvancedAnalyticsActivityConditionOperator,
+    expected: Option<f64>,
+) -> bool {
+    let (Some(actual), Some(expected)) = (actual, expected) else {
+        return false;
+    };
+    match operator {
+        AdvancedAnalyticsActivityConditionOperator::GreaterThan => actual > expected,
+        AdvancedAnalyticsActivityConditionOperator::GreaterThanOrEqual => actual >= expected,
+        AdvancedAnalyticsActivityConditionOperator::LessThan => actual < expected,
+        AdvancedAnalyticsActivityConditionOperator::LessThanOrEqual => actual <= expected,
+        AdvancedAnalyticsActivityConditionOperator::NumberEquals
+        | AdvancedAnalyticsActivityConditionOperator::Equals
+        | AdvancedAnalyticsActivityConditionOperator::Is => (actual - expected).abs() < 1e-9,
+        AdvancedAnalyticsActivityConditionOperator::NotEquals
+        | AdvancedAnalyticsActivityConditionOperator::IsNot => (actual - expected).abs() >= 1e-9,
+        _ => false,
+    }
+}
+
+fn bool_condition_matches(
+    actual: bool,
+    operator: AdvancedAnalyticsActivityConditionOperator,
+    expected_bool: Option<bool>,
+    expected_text: Option<&str>,
+) -> bool {
+    let expected = expected_bool.or_else(|| {
+        expected_text.and_then(|value| match value.trim().to_lowercase().as_str() {
+            "true" | "yes" | "1" => Some(true),
+            "false" | "no" | "0" => Some(false),
+            _ => None,
+        })
+    });
+    let Some(expected) = expected else {
+        return false;
+    };
+
+    match operator {
+        AdvancedAnalyticsActivityConditionOperator::Is
+        | AdvancedAnalyticsActivityConditionOperator::Equals => actual == expected,
+        AdvancedAnalyticsActivityConditionOperator::IsNot
+        | AdvancedAnalyticsActivityConditionOperator::NotEquals => actual != expected,
+        _ => false,
+    }
+}
+
+fn compute_matching_sample_time_seconds(
+    samples: &[ActivitySample],
+    conditions: &[AdvancedAnalyticsSampleCondition],
+    hr_zone_upper_bounds: &[u16],
+) -> f64 {
+    if samples.len() < 2 {
+        return 0.0;
+    }
+
+    let mut total = 0.0;
+    let mut previous: Option<&ActivitySample> = None;
+
+    for current in samples {
+        if let Some(prev) = previous {
+            let start_elapsed = prev.elapsed_seconds;
+            let end_elapsed = current.elapsed_seconds;
+            if end_elapsed.is_finite() && start_elapsed.is_finite() && end_elapsed > start_elapsed {
+                let delta = end_elapsed - start_elapsed;
+                if delta.is_finite() && delta > 0.0 {
+                    let matches = conditions.iter().all(|condition| {
+                        sample_matches_condition(prev, condition, hr_zone_upper_bounds)
+                    });
+                    if matches {
+                        total += delta;
+                    }
+                }
+            }
+        }
+        previous = Some(current);
+    }
+
+    total
+}
+
+fn sample_matches_condition(
+    sample: &ActivitySample,
+    condition: &AdvancedAnalyticsSampleCondition,
+    hr_zone_upper_bounds: &[u16],
+) -> bool {
+    match condition.field {
+        AdvancedAnalyticsSampleConditionField::HeartRate => sample_numeric_condition_matches(
+            sample.heart_rate,
+            condition.operator,
+            condition.number_value,
+        ),
+        AdvancedAnalyticsSampleConditionField::PowerWatts => sample_numeric_condition_matches(
+            sample.power_watts,
+            condition.operator,
+            condition.number_value,
+        ),
+        AdvancedAnalyticsSampleConditionField::Cadence => sample_numeric_condition_matches(
+            sample.cadence,
+            condition.operator,
+            condition.number_value,
+        ),
+        AdvancedAnalyticsSampleConditionField::SpeedMps => sample_numeric_condition_matches(
+            sample.speed_mps,
+            condition.operator,
+            condition.number_value,
+        ),
+        AdvancedAnalyticsSampleConditionField::HeartRateZone => {
+            if condition.operator != AdvancedAnalyticsSampleConditionOperator::Is {
+                return false;
+            }
+            let Some(zone) = condition.zone else {
+                return false;
+            };
+            let Some(hr) = sample.heart_rate else {
+                return false;
+            };
+            let zone_index = heart_rate_zone_index(hr, hr_zone_upper_bounds) + 1;
+            zone_index == zone
+        }
+    }
+}
+
+fn sample_numeric_condition_matches(
+    actual: Option<f64>,
+    operator: AdvancedAnalyticsSampleConditionOperator,
+    expected: Option<f64>,
+) -> bool {
+    let (Some(actual), Some(expected)) = (actual, expected) else {
+        return false;
+    };
+    match operator {
+        AdvancedAnalyticsSampleConditionOperator::GreaterThan => actual > expected,
+        AdvancedAnalyticsSampleConditionOperator::GreaterThanOrEqual => actual >= expected,
+        AdvancedAnalyticsSampleConditionOperator::LessThan => actual < expected,
+        AdvancedAnalyticsSampleConditionOperator::LessThanOrEqual => actual <= expected,
+        AdvancedAnalyticsSampleConditionOperator::NumberEquals
+        | AdvancedAnalyticsSampleConditionOperator::Is => (actual - expected).abs() < 1e-9,
+        AdvancedAnalyticsSampleConditionOperator::NotEquals => (actual - expected).abs() >= 1e-9,
+    }
+}
+
+fn heart_rate_zone_index(hr: f64, upper_bounds: &[u16]) -> u8 {
+    for (index, upper) in upper_bounds.iter().enumerate() {
+        if hr <= f64::from(*upper) {
+            return index as u8;
+        }
+    }
+    upper_bounds.len() as u8
+}
+
+fn build_streak_results(
+    streak_defs: &[AdvancedAnalyticsStreakDefinition],
+    metric_cache: &HashMap<String, InternalMetricResult>,
+) -> HashMap<String, AdvancedAnalyticsStreakResult> {
+    let mut results = HashMap::new();
+    for streak in streak_defs {
+        let mut errors = Vec::new();
+        let warnings = Vec::new();
+
+        let Some(metric) = metric_cache.get(&streak.metric_id) else {
+            results.insert(
+                streak.id.clone(),
+                AdvancedAnalyticsStreakResult {
+                    streak_id: streak.id.clone(),
+                    name: streak.name.clone(),
+                    count: 0,
+                    status: AdvancedAnalyticsStreakStatus::Broken,
+                    current_period_key: current_period_key(streak.period),
+                    current_period_value: 0.0,
+                    errors: vec![format!("Metric '{}' not found.", streak.metric_id)],
+                    warnings,
+                },
+            );
+            continue;
+        };
+
+        let series = match streak.period {
+            AdvancedAnalyticsPeriod::Day => &metric.day,
+            AdvancedAnalyticsPeriod::Week => &metric.week,
+        };
+        let current_key = current_period_key(streak.period);
+        let previous_key = previous_period_key(&current_key, streak.period);
+
+        let current_value = series
+            .get(&current_key)
+            .and_then(|point| point.value)
+            .unwrap_or(0.0);
+        let previous_meets = previous_key
+            .as_deref()
+            .and_then(|key| series.get(key))
+            .and_then(|point| point.value)
+            .is_some_and(|value| {
+                threshold_matches(streak.threshold_operator, value, streak.threshold_value)
+            });
+        let current_meets = threshold_matches(
+            streak.threshold_operator,
+            current_value,
+            streak.threshold_value,
+        );
+
+        let (count, status) = if current_meets {
+            (
+                consecutive_count_from(series, &current_key, streak),
+                AdvancedAnalyticsStreakStatus::Active,
+            )
+        } else if previous_meets {
+            let count = previous_key
+                .as_deref()
+                .map(|key| consecutive_count_from(series, key, streak))
+                .unwrap_or(0);
+            (count, AdvancedAnalyticsStreakStatus::Pending)
+        } else {
+            (0, AdvancedAnalyticsStreakStatus::Broken)
+        };
+
+        if !metric.errors.is_empty() {
+            errors.push(format!(
+                "Metric '{}' has errors and may produce incomplete streak values.",
+                metric.name
+            ));
+        }
+
+        results.insert(
+            streak.id.clone(),
+            AdvancedAnalyticsStreakResult {
+                streak_id: streak.id.clone(),
+                name: streak.name.clone(),
+                count,
+                status,
+                current_period_key: current_key,
+                current_period_value: current_value,
+                errors,
+                warnings,
+            },
+        );
+    }
+    results
+}
+
+fn consecutive_count_from(
+    series: &BucketSeries,
+    start_key: &str,
+    streak: &AdvancedAnalyticsStreakDefinition,
+) -> usize {
+    let mut count = 0;
+    let mut cursor = Some(start_key.to_string());
+    while let Some(key) = cursor {
+        let meets = series
+            .get(&key)
+            .and_then(|point| point.value)
+            .is_some_and(|value| {
+                threshold_matches(streak.threshold_operator, value, streak.threshold_value)
+            });
+        if !meets {
+            break;
+        }
+        count += 1;
+        cursor = previous_period_key(&key, streak.period);
+    }
+    count
+}
+
+fn threshold_matches(
+    operator: AdvancedAnalyticsThresholdOperator,
+    actual: f64,
+    threshold: f64,
+) -> bool {
+    match operator {
+        AdvancedAnalyticsThresholdOperator::GreaterThan => actual > threshold,
+        AdvancedAnalyticsThresholdOperator::GreaterThanOrEqual => actual >= threshold,
+        AdvancedAnalyticsThresholdOperator::LessThan => actual < threshold,
+        AdvancedAnalyticsThresholdOperator::LessThanOrEqual => actual <= threshold,
+        AdvancedAnalyticsThresholdOperator::Equals => (actual - threshold).abs() < 1e-9,
+    }
+}
+
+fn current_period_key(period: AdvancedAnalyticsPeriod) -> String {
+    let today = Local::now().date_naive();
+    match period {
+        AdvancedAnalyticsPeriod::Day => today.format("%Y-%m-%d").to_string(),
+        AdvancedAnalyticsPeriod::Week => week_start_monday(today).format("%Y-%m-%d").to_string(),
+    }
+}
+
+fn previous_period_key(current_key: &str, period: AdvancedAnalyticsPeriod) -> Option<String> {
+    let date = NaiveDate::parse_from_str(current_key, "%Y-%m-%d").ok()?;
+    let prev = match period {
+        AdvancedAnalyticsPeriod::Day => date - Duration::days(1),
+        AdvancedAnalyticsPeriod::Week => date - Duration::days(7),
+    };
+    Some(prev.format("%Y-%m-%d").to_string())
+}
+
+fn build_chart_results(
+    charts: &[AdvancedAnalyticsChartDefinition],
+    metric_cache: &HashMap<String, InternalMetricResult>,
+) -> HashMap<String, AdvancedAnalyticsChartResult> {
+    let mut output = HashMap::new();
+
+    for chart in charts {
+        let mut result = AdvancedAnalyticsChartResult {
+            chart_id: chart.id.clone(),
+            name: chart.name.clone(),
+            chart_type: chart.chart_type,
+            granularity: chart.granularity,
+            metric_ids: chart.metric_ids.clone(),
+            points: Vec::new(),
+            errors: Vec::new(),
+            warnings: Vec::new(),
+        };
+
+        match chart.chart_type {
+            AdvancedAnalyticsChartType::Bar | AdvancedAnalyticsChartType::Line => {
+                if chart.metric_ids.len() != 1 {
+                    result
+                        .errors
+                        .push("Bar/Line charts require exactly 1 metric.".to_string());
+                }
+            }
+            AdvancedAnalyticsChartType::StackedBar => {
+                if !(2..=5).contains(&chart.metric_ids.len()) {
+                    result
+                        .errors
+                        .push("Stacked bar charts require 2 to 5 metrics.".to_string());
+                }
+            }
+        }
+
+        let mut union_keys: BTreeMap<String, String> = BTreeMap::new();
+        let mut metric_series_maps: HashMap<String, &BucketSeries> = HashMap::new();
+
+        for metric_id in &chart.metric_ids {
+            let Some(metric) = metric_cache.get(metric_id) else {
+                result
+                    .errors
+                    .push(format!("Metric '{}' not found.", metric_id));
+                continue;
+            };
+            let series = match chart.granularity {
+                AdvancedAnalyticsGranularity::Day => &metric.day,
+                AdvancedAnalyticsGranularity::Week => &metric.week,
+                AdvancedAnalyticsGranularity::Month => &metric.month,
+            };
+            for (key, value) in series {
+                union_keys
+                    .entry(key.clone())
+                    .or_insert_with(|| value.label.clone());
+            }
+            metric_series_maps.insert(metric_id.clone(), series);
+        }
+
+        if result.errors.is_empty() {
+            for (key, label) in union_keys {
+                let mut values = HashMap::new();
+                for metric_id in &chart.metric_ids {
+                    let value = metric_series_maps
+                        .get(metric_id)
+                        .and_then(|series| series.get(&key))
+                        .and_then(|point| point.value);
+                    values.insert(metric_id.clone(), value);
+                }
+                result
+                    .points
+                    .push(AdvancedAnalyticsChartBucketPoint { key, label, values });
+            }
+        }
+
+        output.insert(chart.id.clone(), result);
+    }
+
+    output
+}
+
+fn finalize_metric(internal: InternalMetricResult) -> AdvancedAnalyticsMetricResult {
+    AdvancedAnalyticsMetricResult {
+        metric_id: internal.metric_id,
+        name: internal.name,
+        scalar_value: internal.scalar_value,
+        unit: internal.unit,
+        series_by_granularity: AdvancedAnalyticsSeriesByGranularity {
+            day: series_to_points(internal.day),
+            week: series_to_points(internal.week),
+            month: series_to_points(internal.month),
+        },
+        errors: internal.errors,
+        warnings: internal.warnings,
+    }
+}
+
+fn series_to_points(series: BucketSeries) -> Vec<AdvancedAnalyticsBucketPoint> {
+    series
+        .into_iter()
+        .map(|(key, bucket)| AdvancedAnalyticsBucketPoint {
+            key,
+            label: bucket.label,
+            value: bucket.value,
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::{
+        AdvancedAnalyticsActivityCondition, AdvancedAnalyticsActivityConditionField,
+        AdvancedAnalyticsActivityConditionOperator, AdvancedAnalyticsFormulaOperator,
+        AdvancedAnalyticsSampleCondition, AdvancedAnalyticsSampleConditionField,
+        AdvancedAnalyticsSampleConditionOperator, AdvancedAnalyticsThresholdOperator,
+    };
+
+    #[test]
+    fn title_matching_is_case_insensitive_and_supports_any_all() {
+        let contains = AdvancedAnalyticsActivityCondition {
+            id: "1".into(),
+            field: AdvancedAnalyticsActivityConditionField::Title,
+            operator: AdvancedAnalyticsActivityConditionOperator::Contains,
+            value: Some("push".into()),
+            values: None,
+            number_value: None,
+            bool_value: None,
+        };
+        assert!(text_condition_matches(
+            "Upper PUSH Session",
+            contains.operator,
+            &contains
+        ));
+
+        let any = AdvancedAnalyticsActivityCondition {
+            operator: AdvancedAnalyticsActivityConditionOperator::ContainsAny,
+            value: Some("push, pull".into()),
+            ..contains.clone()
+        };
+        assert!(text_condition_matches("Leg + Pull Day", any.operator, &any));
+
+        let all = AdvancedAnalyticsActivityCondition {
+            operator: AdvancedAnalyticsActivityConditionOperator::ContainsAll,
+            value: Some("push, day".into()),
+            ..contains
+        };
+        assert!(text_condition_matches("Push day", all.operator, &all));
+    }
+
+    #[test]
+    fn sample_time_uses_previous_sample_interval_semantics() {
+        let samples = vec![
+            ActivitySample {
+                elapsed_seconds: 0.0,
+                distance_m: None,
+                speed_mps: None,
+                heart_rate: Some(130.0),
+                cadence: None,
+                power_watts: None,
+                altitude_m: None,
+                lat: None,
+                lon: None,
+                timestamp: None,
+            },
+            ActivitySample {
+                elapsed_seconds: 10.0,
+                distance_m: None,
+                speed_mps: None,
+                heart_rate: Some(131.0),
+                cadence: None,
+                power_watts: None,
+                altitude_m: None,
+                lat: None,
+                lon: None,
+                timestamp: None,
+            },
+            ActivitySample {
+                elapsed_seconds: 20.0,
+                distance_m: None,
+                speed_mps: None,
+                heart_rate: Some(151.0),
+                cadence: None,
+                power_watts: None,
+                altitude_m: None,
+                lat: None,
+                lon: None,
+                timestamp: None,
+            },
+        ];
+
+        let conditions = vec![AdvancedAnalyticsSampleCondition {
+            id: "z2".into(),
+            field: AdvancedAnalyticsSampleConditionField::HeartRateZone,
+            operator: AdvancedAnalyticsSampleConditionOperator::Is,
+            number_value: None,
+            zone: Some(2),
+        }];
+
+        let seconds =
+            compute_matching_sample_time_seconds(&samples, &conditions, &[120, 140, 160, 180]);
+        assert_eq!(seconds, 20.0);
+    }
+
+    #[test]
+    fn formula_division_by_zero_returns_none() {
+        assert_eq!(
+            apply_formula(
+                AdvancedAnalyticsFormulaOperator::Divide,
+                Some(10.0),
+                Some(0.0)
+            ),
+            None
+        );
+        assert_eq!(
+            apply_formula(
+                AdvancedAnalyticsFormulaOperator::Percent,
+                Some(10.0),
+                Some(0.0)
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn threshold_comparisons_work() {
+        assert!(threshold_matches(
+            AdvancedAnalyticsThresholdOperator::GreaterThanOrEqual,
+            60.0,
+            60.0
+        ));
+        assert!(!threshold_matches(
+            AdvancedAnalyticsThresholdOperator::GreaterThan,
+            60.0,
+            60.0
+        ));
+    }
+}

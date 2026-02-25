@@ -6,7 +6,7 @@ type SettingsTab = 'import' | 'appearance' | 'athlete';
 type DashboardMode = 'year' | 'month';
 type DashboardBarMetric = 'durationHours' | 'distanceKm' | 'activities';
 type HeatmapTimeSpan = 'all' | '30d' | '90d' | '365d' | 'custom';
-type NavSection = 'dashboard' | 'activities' | 'heatmap' | 'settings';
+type NavSection = 'dashboard' | 'activities' | 'heatmap' | 'analytics' | 'settings';
 
 interface UiState {
   settingsActiveTab: SettingsTab;
@@ -61,6 +61,7 @@ export const useUiStateStore = create<UiState>()(
         dashboard: '/',
         activities: '/activities',
         heatmap: '/heatmap',
+        analytics: '/analytics',
         settings: '/settings'
       },
       heatmapTimeSpan: 'all',

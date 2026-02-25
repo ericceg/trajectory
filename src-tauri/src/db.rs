@@ -279,7 +279,10 @@ fn ensure_activity_sample_power_column(conn: &Connection) -> Result<()> {
         .is_some();
 
     if !has_power_watts {
-        conn.execute("ALTER TABLE activity_samples ADD COLUMN power_watts REAL", [])?;
+        conn.execute(
+            "ALTER TABLE activity_samples ADD COLUMN power_watts REAL",
+            [],
+        )?;
     }
 
     Ok(())
@@ -730,6 +733,10 @@ fn fetch_activity_samples(conn: &Connection, id: i64) -> Result<Vec<ActivitySamp
     }
 
     Ok(samples)
+}
+
+pub fn get_all_activity_samples(conn: &Connection, id: i64) -> Result<Vec<ActivitySample>> {
+    fetch_activity_samples(conn, id)
 }
 
 fn sample_matches_distance_window(

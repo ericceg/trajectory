@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod analytics;
 mod db;
 mod models;
 mod parser;
@@ -11,7 +12,8 @@ use std::{fs, path::PathBuf};
 use anyhow::{Context, Result};
 use models::{
     ActivityDetail, ActivityFilters, ActivitySampleQuery, ActivitySamplesResponse, ActivitySummary,
-    HeatmapData, HeatmapFilters, ScanDoneEvent, Settings,
+    AdvancedAnalyticsRunRequest, AdvancedAnalyticsRunResponse, HeatmapData, HeatmapFilters,
+    ScanDoneEvent, Settings,
 };
 use tauri::{AppHandle, Manager, State};
 
@@ -275,6 +277,28 @@ async fn get_heatmap_data(
     .map_err(|err| err.to_string())?
 }
 
+#[tauri::command]
+async fn run_advanced_analytics(
+    request: AdvancedAnalyticsRunRequest,
+    state: State<'_, AppState>,
+) -> Result<AdvancedAnalyticsRunResponse, String> {
+    let db_path = state.db_path.clone();
+    let settings_path = state.settings_path.clone();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let conn = db::open_connection(&db_path).map_err(|err| err.to_string())?;
+        let settings = settings::load_settings(&settings_path).map_err(|err| err.to_string())?;
+        analytics::run_advanced_analytics(
+            &conn,
+            &request,
+            &settings.heart_rate_zone_upper_bounds_bpm,
+        )
+        .map_err(|err| err.to_string())
+    })
+    .await
+    .map_err(|err| err.to_string())?
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -295,7 +319,8 @@ fn main() {
             list_activities,
             get_activity,
             get_activity_samples,
-            get_heatmap_data
+            get_heatmap_data,
+            run_advanced_analytics
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

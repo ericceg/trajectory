@@ -8,6 +8,8 @@ import {
   type ActivitySampleQuery,
   type ActivitySamplesResponse,
   type ActivitySummary,
+  type AdvancedAnalyticsRunRequest,
+  type AdvancedAnalyticsRunResponse,
   type HeatmapData,
   type HeatmapFilters,
   type ScanDoneEvent,
@@ -48,6 +50,9 @@ export const getActivitySamples = (id: number, query?: ActivitySampleQuery) =>
 
 export const getHeatmapData = (filters?: HeatmapFilters) =>
   invoke<HeatmapData>('get_heatmap_data', { filters });
+
+export const runAdvancedAnalytics = (request: AdvancedAnalyticsRunRequest) =>
+  invoke<AdvancedAnalyticsRunResponse>('run_advanced_analytics', { request });
 
 export const onScanProgress = (handler: (event: ScanProgressEvent) => void): Promise<UnlistenFn> =>
   listen<ScanProgressEvent>('scan:progress', (event) => handler(event.payload));

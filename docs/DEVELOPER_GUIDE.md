@@ -40,10 +40,10 @@ Frontend (`src/`):
 
 - `src/App.tsx`: route gating, startup scan trigger, layout, lazy routes
 - `src/main.tsx`: React bootstrap + global CSS + MapLibre CSS
-- `src/pages/`: route screens (`Dashboard`, `Activities`, `Activity Detail`, `Heatmap`, `Settings`, `Onboarding`)
+- `src/pages/`: route screens (`Dashboard`, `Activities`, `Activity Detail`, `Heatmap`, `Advanced Analytics`, `Settings`, `Onboarding`)
 - `src/components/`: reusable UI pieces (`Sidebar`, `MetricCard`, `ScanStatusCard`, map frame)
-- `src/store/`: Zustand stores (app/runtime state + persisted UI state)
-- `src/lib/`: Tauri bridge, formatting helpers, map styles, theming, MapLibre hook
+- `src/store/`: Zustand stores (app/runtime state, persisted UI state, advanced analytics definitions)
+- `src/lib/`: Tauri bridge, analytics/formatting helpers, map styles, theming, MapLibre hook
 - `src/types.ts`: TypeScript command/event payload contracts
 
 Backend (`src-tauri/src/`):
@@ -52,6 +52,7 @@ Backend (`src-tauri/src/`):
 - `scanner.rs`: import folder scan / incremental indexing / progress events
 - `parser.rs`: TCX + FIT parsing and derived metric computation
 - `db.rs`: SQLite schema, migrations, upsert/query logic
+- `analytics.rs`: advanced analytics rule evaluation (custom metrics/streaks/charts)
 - `settings.rs`: JSON settings persistence
 - `models.rs`: Rust command/event DTOs and parser/db shared structs
 
@@ -112,11 +113,12 @@ Implemented Tauri commands (current):
 - `get_activity(id)`
 - `get_activity_samples(id, query?)`
 - `get_heatmap_data(filters)`
+- `run_advanced_analytics(request)`
 
 Notes:
 
 - `scan_import_folder` supports an optional `full_rescan` boolean (defaults to `false`).
-- There is no `get_stats()` command in the current implementation.
+- `run_advanced_analytics(request)` evaluates custom metric/streak/chart definitions in one backend roundtrip and returns per-item errors/warnings when possible instead of failing the whole page.
 
 ### 4.2 `src-tauri/src/models.rs`
 
@@ -135,9 +137,11 @@ Important serialized types:
 - `ActivityDetail`
   - `summary`, `track`, `samples`, `original_sample_count`
 - `HeatmapFilters` / `HeatmapData`
+- `AdvancedAnalytics*`
+  - request/definition/result DTOs for custom metrics, streaks, and chart views
 - `ScanProgressEvent` / `ScanDoneEvent`
 
-Internal/shared (not currently exposed via Tauri commands):
+Internal/shared (lower-level/internal structs):
 
 - `ActivitySampleQuery`
 - `ActivitySamplesResponse`
@@ -385,6 +389,20 @@ Persists UI preferences/navigation state for:
 
 This store intentionally contains view state only (not backend data).
 
+#### `src/store/useAdvancedAnalyticsStore.ts` (persisted analytics definitions)
+
+Uses `zustand/middleware/persist` under key `trajectory-advanced-analytics`.
+
+Persists:
+
+- custom metric definitions (base + formula)
+- custom streak definitions
+- chart view definitions
+- selected analytics item
+- advanced analytics time range / custom dates / auto-run toggle
+
+Computed analytics results are **not** persisted.
+
 ### 5.4 Pages (`src/pages/`)
 
 #### `OnboardingPage.tsx`
@@ -496,12 +514,30 @@ Rendering features:
 - maximize/minimize frame
 - point count summary (including downsampled count)
 
+#### `AdvancedAnalyticsPage.tsx`
+
+Prototype custom analytics builder page.
+
+Key behaviors:
+
+- Loads/saves analytics definitions from `useAdvancedAnalyticsStore`
+- Runs analytics via `runAdvancedAnalytics(...)` (Tauri command `run_advanced_analytics`)
+- Supports:
+  - base metrics (summary aggregates + sample-time metrics)
+  - formula metrics (`+`, `-`, `/`, `%`)
+  - daily/weekly threshold streaks
+  - time-bucketed chart views (`bar`, `line`, `stackedBar`)
+- Guided builder UI only (no DSL), AND-only conditions
+- Uses Settings heart-rate zone cutoffs for HR-zone sample conditions
+
 ### 5.5 Shared components and utilities
 
 Components:
 
 - `src/components/Sidebar.tsx`
-  - section navigation with last-route memory (except `Activities`, which always goes to `/activities`)
+  - section navigation with last-route memory (except `Activities`, which always goes to `/activities`), including Advanced Analytics
+- `src/components/analytics/*`
+  - advanced analytics library list, builders, and preview UI
 - `src/components/MetricCard.tsx`
   - reusable metric display card
 - `src/components/ScanStatusCard.tsx`
@@ -515,6 +551,10 @@ Libraries/helpers:
 
 - `src/lib/format.ts`
   - UI formatting helpers for distance/time/speed/pace/date values
+- `src/lib/analytics/validation.ts`
+  - frontend validation for definition shape and chart metric-count constraints
+- `src/lib/analytics/formatting.ts`
+  - formatting helpers for advanced analytics values/units and previews
 - `src/lib/theme.ts`
   - accent theme IDs/palettes and CSS variable application
 - `src/lib/mapStyles.ts`
@@ -645,16 +685,15 @@ GitHub release workflow (`.github/workflows/release.yml`):
 
 ### Add a new chart/query optimization path
 
-A likely next extension is exposing `db::get_activity_samples(...)` as a Tauri command so `ActivityDetailPage` can request windowed/downsampled chart data on demand instead of always loading the default sample set from `get_activity(...)`.
+A likely next extension is reusing the new analytics evaluator infrastructure to add cached/precomputed custom analytics results (instead of recomputing everything on demand per run).
 
 ## 11. Known Implementation Notes / Gaps
 
 Current codebase deviations from the original prototype spec in `AGENTS.md`:
 
-- There is **no `Statistics` page** yet.
-- There is **no `get_stats()` Tauri command** yet.
+- The app now includes an **Advanced Analytics** prototype page and `run_advanced_analytics(request)` command instead of a generic `get_stats()` API.
+- Advanced Analytics is intentionally limited to a guided builder, AND-only conditions, simple title text matching (no regex), and time-series charts only in the current prototype.
 - The app currently supports **FIT** in addition to TCX/TXC (an expansion beyond the original TCX-only spec).
-- `db::get_activity_samples(...)` exists but is not currently exposed through Tauri.
 - `MonthCalendar.tsx` is present but not used by the current dashboard implementation.
 - There is no automated test suite in the repository yet (the `test/` folder contains sample FIT files, not test code).
 
