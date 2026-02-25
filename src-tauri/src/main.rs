@@ -41,6 +41,28 @@ fn validate_chart_max_samples(value: usize) -> Result<usize, String> {
     }
 }
 
+fn validate_heart_rate_zone_upper_bounds_bpm(values: Vec<u16>) -> Result<Vec<u16>, String> {
+    if values.len() != 4 {
+        return Err("heart rate zones require exactly 4 upper bounds (Z1-Z4)".to_string());
+    }
+
+    let mut previous = 0_u16;
+    for (index, value) in values.iter().copied().enumerate() {
+        if !(40..=260).contains(&value) {
+            return Err(format!(
+                "heart rate zone bound {} must be between 40 and 260 bpm",
+                index + 1
+            ));
+        }
+        if index > 0 && value <= previous {
+            return Err("heart rate zone upper bounds must be strictly increasing".to_string());
+        }
+        previous = value;
+    }
+
+    Ok(values)
+}
+
 fn init_state(app: &AppHandle) -> Result<AppState> {
     let data_dir = app
         .path()
@@ -163,6 +185,18 @@ async fn set_chart_max_samples(
 }
 
 #[tauri::command]
+async fn set_heart_rate_zone_upper_bounds_bpm(
+    upper_bounds_bpm: Vec<u16>,
+    state: State<'_, AppState>,
+) -> Result<Settings, String> {
+    let upper_bounds_bpm = validate_heart_rate_zone_upper_bounds_bpm(upper_bounds_bpm)?;
+    update_app_settings(state.inner(), move |settings| {
+        settings.heart_rate_zone_upper_bounds_bpm = upper_bounds_bpm;
+        Ok(())
+    })
+}
+
+#[tauri::command]
 async fn scan_import_folder(
     app: AppHandle,
     full_rescan: Option<bool>,
@@ -256,6 +290,7 @@ fn main() {
             set_accent_theme,
             set_heatmap_full_opacity,
             set_chart_max_samples,
+            set_heart_rate_zone_upper_bounds_bpm,
             scan_import_folder,
             list_activities,
             get_activity,

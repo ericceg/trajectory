@@ -96,6 +96,7 @@ Key helpers:
 - `init_state(app)` sets up app-owned directories and files
 - `update_app_settings(...)` centralizes read-modify-write settings updates
 - `is_supported_accent_theme(...)` validates allowed accent theme IDs from the frontend
+- `validate_heart_rate_zone_upper_bounds_bpm(...)` validates user-configured HR zone cutoffs (4 ascending bpm thresholds)
 
 Implemented Tauri commands (current):
 
@@ -104,9 +105,12 @@ Implemented Tauri commands (current):
 - `set_dark_mode(dark_mode)`
 - `set_accent_theme(accent_theme)`
 - `set_heatmap_full_opacity(heatmap_full_opacity)`
+- `set_chart_max_samples(chart_max_samples)`
+- `set_heart_rate_zone_upper_bounds_bpm(upper_bounds_bpm)`
 - `scan_import_folder(full_rescan?)`
 - `list_activities(filters)`
 - `get_activity(id)`
+- `get_activity_samples(id, query?)`
 - `get_heatmap_data(filters)`
 
 Notes:
@@ -123,6 +127,7 @@ Important serialized types:
 - `Settings`
   - `import_folder_path`, `scan_recursive`, `last_scan_timestamp`
   - `dark_mode`, `accent_theme`, `heatmap_full_opacity`
+  - `chart_max_samples`, `heart_rate_zone_upper_bounds_bpm`
 - `ActivityFilters`
   - `start_date`, `end_date`, `category`, `sport_type`, `min_distance`, `max_distance`, `day`
 - `ActivitySummary`

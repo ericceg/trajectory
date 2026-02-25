@@ -7,6 +7,7 @@ import {
   setChartMaxSamples,
   setDarkMode,
   setHeatmapFullOpacity,
+  setHeartRateZoneUpperBoundsBpm,
   setImportFolder,
   onScanProgress
 } from '@/lib/tauri';
@@ -27,6 +28,7 @@ interface AppState {
   updateAccentTheme: (accentTheme: AccentThemeId) => Promise<void>;
   updateHeatmapFullOpacity: (heatmapFullOpacity: boolean) => Promise<void>;
   updateChartMaxSamples: (chartMaxSamples: number) => Promise<void>;
+  updateHeartRateZoneUpperBoundsBpm: (upperBoundsBpm: number[]) => Promise<void>;
   runScan: (fullRescan?: boolean) => Promise<void>;
   getCachedActivities: (cacheKey: string) => ActivitySummary[] | null;
   setCachedActivities: (cacheKey: string, activities: ActivitySummary[]) => void;
@@ -81,6 +83,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   updateChartMaxSamples: async (chartMaxSamples) => {
     const settings = await setChartMaxSamples(chartMaxSamples);
+    set({ settings });
+  },
+  updateHeartRateZoneUpperBoundsBpm: async (upperBoundsBpm) => {
+    const settings = await setHeartRateZoneUpperBoundsBpm(upperBoundsBpm);
     set({ settings });
   },
   runScan: async (fullRescan = false) => {

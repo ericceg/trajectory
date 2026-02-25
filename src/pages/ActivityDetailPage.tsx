@@ -3,8 +3,11 @@ import { Link, useParams } from 'react-router-dom';
 import {
   Area,
   CartesianGrid,
+  Cell,
   ComposedChart,
   Line,
+  Pie,
+  PieChart,
   ReferenceArea,
   ResponsiveContainer,
   Tooltip,
@@ -71,6 +74,8 @@ const COMBINED_CHART_BAND_GAP = 4;
 const CHART_DRAG_CLICK_THRESHOLD_PX = 4;
 const CHART_MIN_ZOOM_SPAN_KM = 0.01;
 const CHART_MIN_ZOOM_SPAN_SECONDS = 15;
+const DEFAULT_HEART_RATE_ZONE_UPPER_BOUNDS_BPM = [120, 140, 160, 180] as const;
+const HEART_RATE_ZONE_COLORS = ['#FEE2E2', '#FCA5A5', '#F87171', '#DC2626', '#7F1D1D'] as const;
 
 type ChartSeriesKey = 'pace' | 'speed' | 'heartRate' | 'elevation' | 'cadence' | 'power';
 type SplitMetricKey =
@@ -91,6 +96,14 @@ type RouteHoverCoordinate = { lat: number; lon: number } | null;
 type ActivityRouteMapHandle = {
   setHoverTarget: (coordinate: RouteHoverCoordinate) => void;
   clearHoverTarget: () => void;
+};
+type HeartRateZoneSlice = {
+  zoneIndex: number;
+  label: string;
+  rangeLabel: string;
+  color: string;
+  seconds: number;
+  percent: number;
 };
 
 function defaultChartSeriesVisibility(sportType?: string): ChartSeriesVisibility {
@@ -314,6 +327,96 @@ function formatPaceTick(secondsPerKm: number): string {
   const minutes = Math.floor(rounded / 60);
   const seconds = rounded % 60;
   return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
+function normalizeHeartRateZoneUpperBounds(rawBounds: number[] | undefined): number[] {
+  if (!Array.isArray(rawBounds) || rawBounds.length !== 4) {
+    return [...DEFAULT_HEART_RATE_ZONE_UPPER_BOUNDS_BPM];
+  }
+
+  const parsed = rawBounds.map((value) => Math.round(Number(value)));
+  if (parsed.some((value) => !Number.isFinite(value) || value < 40 || value > 260)) {
+    return [...DEFAULT_HEART_RATE_ZONE_UPPER_BOUNDS_BPM];
+  }
+
+  for (let index = 1; index < parsed.length; index += 1) {
+    if (parsed[index] <= parsed[index - 1]) {
+      return [...DEFAULT_HEART_RATE_ZONE_UPPER_BOUNDS_BPM];
+    }
+  }
+
+  return parsed;
+}
+
+function heartRateZoneIndexForBpm(bpm: number, upperBoundsBpm: number[]): number {
+  for (let index = 0; index < upperBoundsBpm.length; index += 1) {
+    if (bpm <= upperBoundsBpm[index]) {
+      return index;
+    }
+  }
+
+  return upperBoundsBpm.length;
+}
+
+function heartRateZoneRangeLabel(zoneIndex: number, upperBoundsBpm: number[]): string {
+  if (zoneIndex === 0) {
+    return `≤ ${upperBoundsBpm[0]} bpm`;
+  }
+
+  if (zoneIndex < upperBoundsBpm.length) {
+    return `${upperBoundsBpm[zoneIndex - 1] + 1}-${upperBoundsBpm[zoneIndex]} bpm`;
+  }
+
+  return `≥ ${upperBoundsBpm[upperBoundsBpm.length - 1] + 1} bpm`;
+}
+
+function buildHeartRateZoneBreakdown(
+  samples: ActivitySample[],
+  upperBoundsBpm: number[]
+): { slices: HeartRateZoneSlice[]; trackedSeconds: number } | null {
+  if (samples.length < 2) {
+    return null;
+  }
+
+  const zoneSeconds = [0, 0, 0, 0, 0];
+  let previousHrSample: { elapsedSeconds: number; heartRate: number } | null = null;
+
+  for (const sample of samples) {
+    const elapsedSeconds = Number(sample.elapsedSeconds);
+    const heartRate = sample.heartRate == null ? NaN : Number(sample.heartRate);
+
+    if (!Number.isFinite(elapsedSeconds)) {
+      continue;
+    }
+
+    if (previousHrSample != null && elapsedSeconds > previousHrSample.elapsedSeconds) {
+      const deltaSeconds = elapsedSeconds - previousHrSample.elapsedSeconds;
+      if (Number.isFinite(deltaSeconds) && deltaSeconds > 0) {
+        const zoneIndex = heartRateZoneIndexForBpm(previousHrSample.heartRate, upperBoundsBpm);
+        zoneSeconds[zoneIndex] += deltaSeconds;
+      }
+    }
+
+    if (Number.isFinite(heartRate) && heartRate > 0) {
+      previousHrSample = { elapsedSeconds, heartRate };
+    }
+  }
+
+  const trackedSeconds = zoneSeconds.reduce((sum, seconds) => sum + seconds, 0);
+  if (trackedSeconds <= 0) {
+    return null;
+  }
+
+  const slices: HeartRateZoneSlice[] = zoneSeconds.map((seconds, zoneIndex) => ({
+    zoneIndex,
+    label: `Z${zoneIndex + 1}`,
+    rangeLabel: heartRateZoneRangeLabel(zoneIndex, upperBoundsBpm),
+    color: HEART_RATE_ZONE_COLORS[zoneIndex],
+    seconds,
+    percent: seconds / trackedSeconds
+  }));
+
+  return { slices, trackedSeconds };
 }
 
 function metricRange(values: Array<number | null | undefined>): [number, number] | null {
@@ -700,6 +803,92 @@ function SplitMetricChart({
   );
 }
 
+function HeartRateZonesCard({
+  slices,
+  trackedSeconds
+}: {
+  slices: HeartRateZoneSlice[];
+  trackedSeconds: number;
+}) {
+  return (
+    <section className="rounded-xl border border-border bg-panel p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-lg font-semibold text-foreground">Heart Rate Zones</h3>
+          <p className="mt-1 text-xs text-muted">
+            Time in zone based on recorded heart-rate sample intervals.
+          </p>
+        </div>
+        <p className="text-sm text-muted">
+          Tracked HR time: <span className="font-semibold text-foreground">{formatDuration(trackedSeconds)}</span>
+        </p>
+      </div>
+
+      <div className="mt-4 grid gap-4 lg:grid-cols-[16rem_minmax(0,1fr)]">
+        <div className="h-64">
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie
+                data={slices.filter((slice) => slice.seconds > 0)}
+                dataKey="seconds"
+                nameKey="label"
+                cx="50%"
+                cy="50%"
+                innerRadius="52%"
+                outerRadius="82%"
+                paddingAngle={2}
+                stroke="rgba(var(--color-panel), 1)"
+                strokeWidth={2}
+                isAnimationActive={false}
+              >
+                {slices
+                  .filter((slice) => slice.seconds > 0)
+                  .map((slice) => (
+                    <Cell key={slice.label} fill={slice.color} />
+                  ))}
+              </Pie>
+              <Tooltip
+                formatter={(value: number) => formatDuration(Number(value))}
+                labelFormatter={(_, payload) => {
+                  const entry = payload?.[0]?.payload as HeartRateZoneSlice | undefined;
+                  return entry ? `${entry.label} • ${entry.rangeLabel}` : '';
+                }}
+                contentStyle={CHART_TOOLTIP_STYLE}
+                wrapperStyle={CHART_TOOLTIP_WRAPPER_STYLE}
+                isAnimationActive={false}
+              />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+
+        <div className="space-y-2">
+          {slices.map((slice) => (
+            <div
+              key={slice.label}
+              className="flex items-center justify-between gap-3 rounded-md border border-border/70 bg-bg/30 px-3 py-2"
+            >
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span
+                    className="h-2.5 w-2.5 rounded-full"
+                    style={{ backgroundColor: slice.color, opacity: slice.seconds > 0 ? 1 : 0.35 }}
+                  />
+                  <span className="text-sm font-medium text-foreground">{slice.label}</span>
+                  <span className="truncate text-xs text-muted">{slice.rangeLabel}</span>
+                </div>
+              </div>
+              <div className="shrink-0 text-right">
+                <p className="text-sm font-semibold text-foreground">{formatDuration(slice.seconds)}</p>
+                <p className="text-xs text-muted">{(slice.percent * 100).toFixed(1)}%</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function toRouteFeatureCollection(track: TrackPoint[]): FeatureCollection<LineString> {
   const coordinates = track.map((point) => [point.lon, point.lat] as [number, number]);
   if (coordinates.length < 2) {
@@ -1070,6 +1259,7 @@ export function ActivityDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [detail, setDetail] = useState<ActivityDetail | null>(null);
   const [chartSamples, setChartSamples] = useState<ActivitySample[]>([]);
+  const [heartRateZoneSamples, setHeartRateZoneSamples] = useState<ActivitySample[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reducedMapComplexity, setReducedMapComplexity] = useState(false);
@@ -1083,9 +1273,13 @@ export function ActivityDetailPage() {
   const chartDragCurrentRef = useRef<ChartPointer | null>(null);
   const chartSelectionFrameRef = useRef<number | null>(null);
   const chartSamplesRequestRef = useRef(0);
+  const heartRateZoneSamplesRequestRef = useRef(0);
   const routeMapRef = useRef<ActivityRouteMapHandle | null>(null);
   const accentTheme = useAppStore((state) => state.settings?.accentTheme);
   const chartMaxSamples = useAppStore((state) => state.settings?.chartMaxSamples ?? 2000);
+  const heartRateZoneUpperBoundsBpm = useAppStore((state) =>
+    normalizeHeartRateZoneUpperBounds(state.settings?.heartRateZoneUpperBoundsBpm)
+  );
   const accentPalette = useMemo(() => getAccentThemePalette(accentTheme), [accentTheme]);
   const hasGpsTrack = Boolean(detail?.summary.hasGps && detail.track.length > 0);
   const chartXAxisMode: ChartXAxisMode = hasGpsTrack ? 'distance' : 'time';
@@ -1096,7 +1290,9 @@ export function ActivityDetailPage() {
     }
 
     chartSamplesRequestRef.current += 1;
+    heartRateZoneSamplesRequestRef.current += 1;
     setChartSamples([]);
+    setHeartRateZoneSamples([]);
 
     const load = async () => {
       setLoading(true);
@@ -1289,6 +1485,44 @@ export function ActivityDetailPage() {
 
     void loadSamples();
   }, [chartMaxSamples, chartSampleDistanceZoomDomain, detail?.summary.id]);
+
+  useEffect(() => {
+    if (!detail) {
+      return;
+    }
+
+    const hasHeartRateSummary =
+      detail.summary.avgHr != null || detail.summary.minHr != null || detail.summary.maxHr != null;
+    if (!hasHeartRateSummary) {
+      setHeartRateZoneSamples([]);
+      return;
+    }
+
+    const requestId = heartRateZoneSamplesRequestRef.current + 1;
+    heartRateZoneSamplesRequestRef.current = requestId;
+
+    const loadZoneSamples = async () => {
+      try {
+        const response = await getActivitySamples(detail.summary.id);
+        if (heartRateZoneSamplesRequestRef.current !== requestId) {
+          return;
+        }
+        setHeartRateZoneSamples(response.samples);
+      } catch (err) {
+        if (heartRateZoneSamplesRequestRef.current !== requestId) {
+          return;
+        }
+        console.error('Failed to load heart rate zone samples', err);
+      }
+    };
+
+    void loadZoneSamples();
+  }, [detail?.summary.avgHr, detail?.summary.id, detail?.summary.maxHr, detail?.summary.minHr]);
+
+  const heartRateZoneBreakdown = useMemo(
+    () => buildHeartRateZoneBreakdown(heartRateZoneSamples, heartRateZoneUpperBoundsBpm),
+    [heartRateZoneSamples, heartRateZoneUpperBoundsBpm]
+  );
 
   const combinedChartDisplayData = useMemo<CombinedChartPoint[]>(() => {
     if (combinedChart.data.length === 0) {
@@ -1899,6 +2133,13 @@ export function ActivityDetailPage() {
               </div>
             )}
           </section>
+
+          {heartRateZoneBreakdown ? (
+            <HeartRateZonesCard
+              slices={heartRateZoneBreakdown.slices}
+              trackedSeconds={heartRateZoneBreakdown.trackedSeconds}
+            />
+          ) : null}
         </div>
 
         <aside className="order-1 xl:order-2">

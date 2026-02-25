@@ -25,6 +25,7 @@ Prototype (actively evolving).
 - Light mode by default with optional dark mode toggle in Settings
 - Accent color themes selectable in Settings (applies across UI + route overlays/charts)
 - Settings tabs for Import and Appearance
+- Settings tab for Athlete Metrics with configurable heart-rate zone cutoffs (Z1-Z4 upper bounds; Z5 auto-derived)
 - UI view/filter state is remembered across navigation (e.g. Settings tab, Dashboard calendar view, Heatmap filters); sidebar sections reopen the last route for Dashboard/Heatmap/Settings, while `Activities` always opens the list page
 - Dashboard with a drill-down training calendar (year view -> month view -> activity links)
 - Dashboard top summary cards include a weekly activity streak tile (consecutive active weeks)
@@ -34,6 +35,7 @@ Prototype (actively evolving).
 - Active sort direction indicators (`▲`/`▼`) in activities table headers
 - In-memory activities list caching for snappy return navigation (no refetch unless filters/data change)
 - Activity detail with a right-side metric rail (including duration + moving time), route map (when GPS is present), and switchable charts (distance-based when GPS track exists; time-based fallback when GPS is unavailable) with combined overlay or split plots, shared hover cursor/stats, elevation background in combined mode, zoom-aware adaptive vertical scaling for visible series, drag-to-zoom/click-to-reset, dedicated heart-rate metric card (avg/min/max), and elevation gain that prefers FIT-reported total ascent when available (otherwise summed positive ascent)
+- Activity detail heart-rate zone pie chart + breakdown (time spent in configured zones for workouts with heart-rate samples)
 - Activity detail charts automatically include cadence and power plots/toggles when those samples are present in imported TCX/FIT files
 - Activity detail chart hover can highlight the corresponding GPS position on the route map with an animated moving dot (when sample coordinates are available)
 - Adaptive chart sample loading by zoom window (configurable max visible chart samples in Settings)
@@ -78,6 +80,7 @@ npm run tauri dev
    - **Rescan** for a normal incremental pass.
    - **Clear Cache + Full Rescan** when you want to wipe cached activities and re-import everything.
    - **Appearance** tab for dark mode, accent color theme, chart sample cap, and heatmap rendering preferences (including optional 100% heatmap opacity).
+   - **Athlete Metrics** tab for heart-rate zone cutoffs used in workout zone breakdowns.
    - If you imported activities before adaptive chart sampling was added, run **Clear Cache + Full Rescan** once so chart zoom can use denser stored samples.
 5. Explore:
    - **Dashboard** for yearly calendar overview, month drill-down, clickable activity entries, and a weekly streak indicator
@@ -181,6 +184,7 @@ Implemented commands:
 - `set_accent_theme(accent_theme)`
 - `set_heatmap_full_opacity(heatmap_full_opacity)`
 - `set_chart_max_samples(chart_max_samples)`
+- `set_heart_rate_zone_upper_bounds_bpm(upper_bounds_bpm)`
 - `scan_import_folder(full_rescan?)`
 - `list_activities(filters)`
 - `get_activity(id)`

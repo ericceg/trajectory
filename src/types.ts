@@ -6,6 +6,7 @@ export interface Settings {
   accentTheme: string;
   heatmapFullOpacity: boolean;
   chartMaxSamples: number;
+  heartRateZoneUpperBoundsBpm: number[];
 }
 
 export interface ActivityFilters {

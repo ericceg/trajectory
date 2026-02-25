@@ -2,7 +2,7 @@ import { format, subDays } from 'date-fns';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-type SettingsTab = 'import' | 'appearance';
+type SettingsTab = 'import' | 'appearance' | 'athlete';
 type DashboardMode = 'year' | 'month';
 type DashboardBarMetric = 'durationHours' | 'distanceKm' | 'activities';
 type HeatmapTimeSpan = 'all' | '30d' | '90d' | '365d' | 'custom';

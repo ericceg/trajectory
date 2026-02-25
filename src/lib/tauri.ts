@@ -32,6 +32,9 @@ export const setHeatmapFullOpacity = (heatmapFullOpacity: boolean) =>
 export const setChartMaxSamples = (chartMaxSamples: number) =>
   invoke<Settings>('set_chart_max_samples', { chartMaxSamples });
 
+export const setHeartRateZoneUpperBoundsBpm = (upperBoundsBpm: number[]) =>
+  invoke<Settings>('set_heart_rate_zone_upper_bounds_bpm', { upperBoundsBpm });
+
 export const scanImportFolder = (fullRescan = false) =>
   invoke<ScanDoneEvent>('scan_import_folder', { fullRescan });
 

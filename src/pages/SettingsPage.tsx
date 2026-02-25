@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 
 import { ScanStatusCard } from '@/components/ScanStatusCard';
@@ -17,12 +17,27 @@ export function SettingsPage() {
   const updateAccentTheme = useAppStore((state) => state.updateAccentTheme);
   const updateHeatmapFullOpacity = useAppStore((state) => state.updateHeatmapFullOpacity);
   const updateChartMaxSamples = useAppStore((state) => state.updateChartMaxSamples);
+  const updateHeartRateZoneUpperBoundsBpm = useAppStore(
+    (state) => state.updateHeartRateZoneUpperBoundsBpm
+  );
   const runScan = useAppStore((state) => state.runScan);
   const activeTab = useUiStateStore((state) => state.settingsActiveTab);
   const setSettingsActiveTab = useUiStateStore((state) => state.setSettingsActiveTab);
 
   const [error, setError] = useState<string | null>(null);
   const [confirmFullRescan, setConfirmFullRescan] = useState(false);
+  const [heartRateZoneDraft, setHeartRateZoneDraft] = useState<string[]>(['120', '140', '160', '180']);
+  const [heartRateZoneDirty, setHeartRateZoneDirty] = useState(false);
+
+  useEffect(() => {
+    const values = settings?.heartRateZoneUpperBoundsBpm;
+    if (!Array.isArray(values) || values.length !== 4) {
+      return;
+    }
+
+    setHeartRateZoneDraft(values.map((value) => String(value)));
+    setHeartRateZoneDirty(false);
+  }, [settings?.heartRateZoneUpperBoundsBpm]);
 
   const handleChooseFolder = async () => {
     const path = await open({ directory: true, multiple: false, title: 'Select Import Folder' });
@@ -58,12 +73,63 @@ export function SettingsPage() {
     }
   };
 
+  const handleSaveHeartRateZones = async () => {
+    setError(null);
+
+    const parsed = heartRateZoneDraft.map((value) => Number(value.trim()));
+    if (parsed.some((value) => !Number.isInteger(value))) {
+      setError('Heart rate zone thresholds must be whole numbers in bpm.');
+      return;
+    }
+
+    const bounds = parsed.map((value) => Math.trunc(value));
+    for (let index = 0; index < bounds.length; index += 1) {
+      const value = bounds[index];
+      if (value < 40 || value > 260) {
+        setError(`Zone ${index + 1} upper bound must be between 40 and 260 bpm.`);
+        return;
+      }
+      if (index > 0 && value <= bounds[index - 1]) {
+        setError('Zone upper bounds must increase from Z1 through Z4.');
+        return;
+      }
+    }
+
+    try {
+      await updateHeartRateZoneUpperBoundsBpm(bounds);
+      setHeartRateZoneDirty(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const savedHeartRateBounds =
+    settings?.heartRateZoneUpperBoundsBpm?.length === 4
+      ? settings.heartRateZoneUpperBoundsBpm
+      : [120, 140, 160, 180];
+  const previewHeartRateBounds = heartRateZoneDraft.reduce<number[]>((bounds, value, index) => {
+    const parsed = Number(value);
+    const fallback = savedHeartRateBounds[index];
+    const baseValue = Number.isFinite(parsed) ? Math.trunc(parsed) : fallback;
+    if (index === 0) {
+      bounds.push(Math.max(40, Math.min(260, baseValue)));
+      return bounds;
+    }
+
+    bounds.push(Math.max(bounds[index - 1] + 1, Math.min(260, baseValue)));
+    return bounds;
+  }, []);
+
   return (
     <div className="space-y-6">
       <header>
         <p className="text-xs uppercase tracking-[0.2em] text-muted">Settings</p>
         <h2 className="mt-2 text-3xl font-semibold text-foreground">
-          {activeTab === 'import' ? 'Import Configuration' : 'Appearance'}
+          {activeTab === 'import'
+            ? 'Import Configuration'
+            : activeTab === 'appearance'
+              ? 'Appearance'
+              : 'Athlete Metrics'}
         </h2>
       </header>
 
@@ -90,6 +156,17 @@ export function SettingsPage() {
             }`}
           >
             Appearance
+          </button>
+          <button
+            type="button"
+            onClick={() => setSettingsActiveTab('athlete')}
+            className={`rounded-md px-3 py-2 text-sm font-medium transition-colors ${
+              activeTab === 'athlete'
+                ? 'bg-accent text-white'
+                : 'text-muted hover:bg-bg hover:text-foreground'
+            }`}
+          >
+            Athlete Metrics
           </button>
         </div>
       </section>
@@ -193,7 +270,7 @@ export function SettingsPage() {
             </section>
           ) : null}
         </>
-      ) : (
+      ) : activeTab === 'appearance' ? (
         <section className="rounded-xl border border-border bg-panel p-5">
           <h3 className="text-lg font-semibold text-foreground">Theme</h3>
           <div className="mt-4 space-y-5">
@@ -302,6 +379,94 @@ export function SettingsPage() {
               </span>
             </label>
           </div>
+        </section>
+      ) : (
+        <section className="rounded-xl border border-border bg-panel p-5">
+          <h3 className="text-lg font-semibold text-foreground">Heart Rate Zones</h3>
+          <p className="mt-2 text-sm text-muted">
+            Configure your personal zone cutoffs in bpm. Z5 is automatically anything above your
+            Z4 upper bound.
+          </p>
+
+          <div className="mt-4 grid gap-3 sm:grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)]">
+            <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+              Zone
+            </div>
+            <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+              Range
+            </div>
+            <div className="text-xs font-semibold uppercase tracking-[0.12em] text-muted">
+              Upper bound (bpm)
+            </div>
+
+            {['Z1', 'Z2', 'Z3', 'Z4'].map((zoneLabel, index) => {
+              const previousBound = index === 0 ? 0 : previewHeartRateBounds[index - 1];
+              const currentDraft = heartRateZoneDraft[index] ?? '';
+              const currentBound = previewHeartRateBounds[index];
+              const rangeLabel =
+                index === 0
+                  ? `≤ ${Math.max(1, currentBound)} bpm`
+                  : `${previousBound + 1}-${Math.max(previousBound + 1, currentBound)} bpm`;
+
+              return (
+                <div key={zoneLabel} className="contents">
+                  <div className="flex items-center text-sm font-medium text-foreground">{zoneLabel}</div>
+                  <div className="flex items-center text-sm text-muted">{rangeLabel}</div>
+                  <input
+                    type="number"
+                    min={40}
+                    max={260}
+                    step={1}
+                    inputMode="numeric"
+                    value={currentDraft}
+                    onChange={(event) => {
+                      setHeartRateZoneDraft((current) =>
+                        current.map((value, valueIndex) =>
+                          valueIndex === index ? event.target.value : value
+                        )
+                      );
+                      setHeartRateZoneDirty(true);
+                    }}
+                    className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm text-foreground"
+                  />
+                </div>
+              );
+            })}
+
+            <div className="flex items-center text-sm font-medium text-foreground">Z5</div>
+            <div className="flex items-center text-sm text-muted">
+              ≥ {previewHeartRateBounds[3] + 1} bpm
+            </div>
+            <div className="flex items-center text-sm text-muted">Auto-derived</div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => void handleSaveHeartRateZones()}
+              disabled={!heartRateZoneDirty}
+              className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              Save Zones
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setHeartRateZoneDraft(savedHeartRateBounds.map((value) => String(value)));
+                setHeartRateZoneDirty(false);
+                setError(null);
+              }}
+              disabled={!heartRateZoneDirty}
+              className="rounded-md border border-border px-4 py-2 text-sm text-muted disabled:opacity-50"
+            >
+              Reset
+            </button>
+          </div>
+
+          <p className="mt-3 text-xs text-muted">
+            These zones are used on Activity Detail pages to calculate time spent in each zone from
+            recorded heart-rate samples.
+          </p>
         </section>
       )}
     </div>
