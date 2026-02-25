@@ -31,6 +31,12 @@ struct BucketValue {
 
 type BucketSeries = BTreeMap<String, BucketValue>;
 
+#[derive(Debug, Clone, Copy)]
+struct SeriesFillRange {
+    start: NaiveDate,
+    end: NaiveDate,
+}
+
 #[derive(Debug, Clone)]
 struct InternalMetricResult {
     metric_id: String,
@@ -90,6 +96,12 @@ pub fn run_advanced_analytics(
             &mut metric_visit_state,
             heart_rate_zone_upper_bounds_bpm,
         )?;
+    }
+
+    if let Some(fill_range) = infer_series_fill_range(request, &activities) {
+        for metric in metric_cache.values_mut() {
+            fill_metric_series_gaps(metric, fill_range);
+        }
     }
 
     let streak_results = build_streak_results(&request.streaks, &metric_cache);
@@ -205,6 +217,39 @@ fn compute_metric(
     visit_state.insert(metric_id.to_string(), VisitState::Done);
     metric_cache.insert(metric_id.to_string(), computed);
     Ok(())
+}
+
+fn infer_series_fill_range(
+    request: &AdvancedAnalyticsRunRequest,
+    activities: &[ActivitySummary],
+) -> Option<SeriesFillRange> {
+    let request_start = request.start_date.as_deref().and_then(parse_activity_day);
+    let request_end = request.end_date.as_deref().and_then(parse_activity_day);
+
+    let mut activity_dates = activities
+        .iter()
+        .filter_map(|activity| parse_activity_day(&activity.activity_start));
+    let activity_min = activity_dates.next().map(|first| {
+        activity_dates.fold((first, first), |(min_date, max_date), date| {
+            (min_date.min(date), max_date.max(date))
+        })
+    });
+
+    let (activity_start, activity_end) = activity_min
+        .map(|(min_date, max_date)| (Some(min_date), Some(max_date)))
+        .unwrap_or((None, None));
+
+    let start = request_start.or(activity_start)?;
+    let end = request_end.or(activity_end)?;
+
+    Some(if start <= end {
+        SeriesFillRange { start, end }
+    } else {
+        SeriesFillRange {
+            start: end,
+            end: start,
+        }
+    })
 }
 
 fn error_metric(metric_id: &str, name: &str, message: &str) -> InternalMetricResult {
@@ -600,6 +645,74 @@ fn parse_activity_day(value: &str) -> Option<NaiveDate> {
         NaiveDate::parse_from_str(prefix, "%Y-%m-%d").ok()
     } else {
         None
+    }
+}
+
+fn fill_metric_series_gaps(metric: &mut InternalMetricResult, range: SeriesFillRange) {
+    fill_series_gaps(
+        &mut metric.day,
+        AdvancedAnalyticsGranularity::Day,
+        range.start,
+        range.end,
+    );
+    fill_series_gaps(
+        &mut metric.week,
+        AdvancedAnalyticsGranularity::Week,
+        range.start,
+        range.end,
+    );
+    fill_series_gaps(
+        &mut metric.month,
+        AdvancedAnalyticsGranularity::Month,
+        range.start,
+        range.end,
+    );
+}
+
+fn fill_series_gaps(
+    series: &mut BucketSeries,
+    granularity: AdvancedAnalyticsGranularity,
+    start: NaiveDate,
+    end: NaiveDate,
+) {
+    let mut cursor = bucket_start_for_granularity(start, granularity);
+    let end_bucket = bucket_start_for_granularity(end, granularity);
+
+    while cursor <= end_bucket {
+        let (key, label) = bucket_key_and_label(cursor, granularity);
+        series.entry(key).or_insert(BucketValue {
+            label,
+            value: Some(0.0),
+        });
+        cursor = next_bucket_start(cursor, granularity);
+    }
+}
+
+fn bucket_start_for_granularity(
+    date: NaiveDate,
+    granularity: AdvancedAnalyticsGranularity,
+) -> NaiveDate {
+    match granularity {
+        AdvancedAnalyticsGranularity::Day => date,
+        AdvancedAnalyticsGranularity::Week => week_start_monday(date),
+        AdvancedAnalyticsGranularity::Month => {
+            NaiveDate::from_ymd_opt(date.year(), date.month(), 1).unwrap_or(date)
+        }
+    }
+}
+
+fn next_bucket_start(date: NaiveDate, granularity: AdvancedAnalyticsGranularity) -> NaiveDate {
+    match granularity {
+        AdvancedAnalyticsGranularity::Day => date + Duration::days(1),
+        AdvancedAnalyticsGranularity::Week => date + Duration::days(7),
+        AdvancedAnalyticsGranularity::Month => {
+            let (year, month) = if date.month() == 12 {
+                (date.year() + 1, 1)
+            } else {
+                (date.year(), date.month() + 1)
+            };
+            NaiveDate::from_ymd_opt(year, month, 1).unwrap_or(date + Duration::days(31))
+        }
     }
 }
 
@@ -1263,5 +1376,57 @@ mod tests {
             60.0,
             60.0
         ));
+    }
+
+    #[test]
+    fn fills_missing_buckets_with_zero_values_across_range() {
+        let mut metric = InternalMetricResult {
+            metric_id: "m1".into(),
+            name: "Metric".into(),
+            scalar_value: Some(2.0),
+            unit: Some("count".into()),
+            day: BTreeMap::new(),
+            week: BTreeMap::new(),
+            month: BTreeMap::new(),
+            errors: Vec::new(),
+            warnings: Vec::new(),
+        };
+
+        add_bucket_value(
+            &mut metric.day,
+            NaiveDate::from_ymd_opt(2026, 2, 2).unwrap(),
+            AdvancedAnalyticsGranularity::Day,
+            1.0,
+        );
+        add_bucket_value(
+            &mut metric.day,
+            NaiveDate::from_ymd_opt(2026, 2, 4).unwrap(),
+            AdvancedAnalyticsGranularity::Day,
+            1.0,
+        );
+
+        fill_metric_series_gaps(
+            &mut metric,
+            SeriesFillRange {
+                start: NaiveDate::from_ymd_opt(2026, 2, 1).unwrap(),
+                end: NaiveDate::from_ymd_opt(2026, 2, 5).unwrap(),
+            },
+        );
+
+        let day_points = series_to_points(metric.day.clone());
+        assert_eq!(day_points.len(), 5);
+        assert_eq!(day_points[0].key, "2026-02-01");
+        assert_eq!(day_points[0].value, Some(0.0));
+        assert_eq!(day_points[1].key, "2026-02-02");
+        assert_eq!(day_points[1].value, Some(1.0));
+        assert_eq!(day_points[2].key, "2026-02-03");
+        assert_eq!(day_points[2].value, Some(0.0));
+        assert_eq!(day_points[3].key, "2026-02-04");
+        assert_eq!(day_points[3].value, Some(1.0));
+        assert_eq!(day_points[4].key, "2026-02-05");
+        assert_eq!(day_points[4].value, Some(0.0));
+
+        assert_eq!(metric.week.len(), 2);
+        assert_eq!(metric.month.len(), 1);
     }
 }
