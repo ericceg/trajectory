@@ -528,6 +528,7 @@ Key behaviors:
   - daily/weekly threshold streaks
   - time-bucketed chart views (`bar`, `line`, `stackedBar`)
 - Guided builder UI only (no DSL), AND-only conditions
+- UI separates analytics editing vs preview into Configure/View tabs (View is default and renders an at-a-glance overview); metrics include a persisted `showInView` toggle used to filter the View metrics section
 - Uses Settings heart-rate zone cutoffs for HR-zone sample conditions
 
 ### 5.5 Shared components and utilities
@@ -537,7 +538,7 @@ Components:
 - `src/components/Sidebar.tsx`
   - section navigation with last-route memory (except `Activities`, which always goes to `/activities`), including Advanced Analytics
 - `src/components/analytics/*`
-  - advanced analytics library list, builders, and preview UI
+  - advanced analytics library list, builders, and preview UI (library can run in configure or view-only mode)
 - `src/components/MetricCard.tsx`
   - reusable metric display card
 - `src/components/ScanStatusCard.tsx`

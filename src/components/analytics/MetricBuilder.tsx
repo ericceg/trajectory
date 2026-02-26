@@ -211,6 +211,15 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
         </label>
       </div>
 
+      <label className="flex items-center gap-2 rounded-md border border-border bg-bg/30 px-3 py-2 text-sm text-foreground">
+        <input
+          type="checkbox"
+          checked={metric.showInView !== false}
+          onChange={(event) => onChange({ ...metric, showInView: event.target.checked })}
+        />
+        Show in View tab
+      </label>
+
       {metric.kind === 'base' ? (
         <div className="space-y-4">
           <div className="grid gap-3 md:grid-cols-3">

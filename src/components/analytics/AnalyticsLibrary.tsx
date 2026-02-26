@@ -11,6 +11,7 @@ interface AnalyticsLibraryProps {
   charts: AdvancedAnalyticsChartDefinition[];
   selectedItem: AdvancedAnalyticsSelection;
   onSelect: (selection: AdvancedAnalyticsSelection) => void;
+  showActions?: boolean;
   onAddMetric: () => void;
   onAddFormulaMetric: () => void;
   onAddStreak: () => void;
@@ -25,20 +26,22 @@ function LibrarySection({
 }: {
   title: string;
   children: React.ReactNode;
-  actionLabel: string;
-  onAction: () => void;
+  actionLabel?: string;
+  onAction?: () => void;
 }) {
   return (
     <section className="rounded-xl border border-border bg-panel p-3">
       <div className="mb-3 flex items-center justify-between gap-2">
         <h3 className="text-sm font-semibold text-foreground">{title}</h3>
-        <button
-          type="button"
-          onClick={onAction}
-          className="rounded-md border border-border bg-bg px-2 py-1 text-xs text-foreground hover:border-accent"
-        >
-          {actionLabel}
-        </button>
+        {actionLabel && onAction ? (
+          <button
+            type="button"
+            onClick={onAction}
+            className="rounded-md border border-border bg-bg px-2 py-1 text-xs text-foreground hover:border-accent"
+          >
+            {actionLabel}
+          </button>
+        ) : null}
       </div>
       <div className="space-y-2">{children}</div>
     </section>
@@ -78,6 +81,7 @@ export function AnalyticsLibrary({
   charts,
   selectedItem,
   onSelect,
+  showActions = true,
   onAddMetric,
   onAddFormulaMetric,
   onAddStreak,
@@ -88,7 +92,11 @@ export function AnalyticsLibrary({
 
   return (
     <div className="space-y-4">
-      <LibrarySection title="Metrics" actionLabel="+ Metric" onAction={onAddMetric}>
+      <LibrarySection
+        title="Metrics"
+        actionLabel={showActions ? '+ Metric' : undefined}
+        onAction={showActions ? onAddMetric : undefined}
+      >
         {baseMetrics.length === 0 ? (
           <p className="text-xs text-muted">No custom metrics yet.</p>
         ) : (
@@ -104,7 +112,11 @@ export function AnalyticsLibrary({
         )}
       </LibrarySection>
 
-      <LibrarySection title="Formula Metrics" actionLabel="+ Formula" onAction={onAddFormulaMetric}>
+      <LibrarySection
+        title="Formula Metrics"
+        actionLabel={showActions ? '+ Formula' : undefined}
+        onAction={showActions ? onAddFormulaMetric : undefined}
+      >
         {formulaMetrics.length === 0 ? (
           <p className="text-xs text-muted">No formula metrics yet.</p>
         ) : (
@@ -120,7 +132,11 @@ export function AnalyticsLibrary({
         )}
       </LibrarySection>
 
-      <LibrarySection title="Streaks" actionLabel="+ Streak" onAction={onAddStreak}>
+      <LibrarySection
+        title="Streaks"
+        actionLabel={showActions ? '+ Streak' : undefined}
+        onAction={showActions ? onAddStreak : undefined}
+      >
         {streaks.length === 0 ? (
           <p className="text-xs text-muted">No streaks yet.</p>
         ) : (
@@ -136,7 +152,11 @@ export function AnalyticsLibrary({
         )}
       </LibrarySection>
 
-      <LibrarySection title="Chart Views" actionLabel="+ Chart" onAction={onAddChart}>
+      <LibrarySection
+        title="Chart Views"
+        actionLabel={showActions ? '+ Chart' : undefined}
+        onAction={showActions ? onAddChart : undefined}
+      >
         {charts.length === 0 ? (
           <p className="text-xs text-muted">No chart views yet.</p>
         ) : (

@@ -30,6 +30,8 @@ interface AnalyticsPreviewProps {
   metrics: AdvancedAnalyticsMetricDefinition[];
   streaks: AdvancedAnalyticsStreakDefinition[];
   charts: AdvancedAnalyticsChartDefinition[];
+  mode?: 'selected' | 'overview';
+  overviewMetricIds?: string[];
   response: AdvancedAnalyticsRunResponse | null;
   loading: boolean;
   error: string | null;
@@ -187,7 +189,7 @@ function ChartPreview({
   result?: AdvancedAnalyticsChartResult;
   metricsById: Map<string, AdvancedAnalyticsMetricDefinition>;
 }) {
-  const rows = (result?.points ?? []).map((point) => ({
+  const rows: Array<Record<string, string | number | null>> = (result?.points ?? []).map((point) => ({
     key: point.key,
     label: point.label,
     ...point.values
@@ -270,6 +272,8 @@ export function AnalyticsPreview({
   metrics,
   streaks,
   charts,
+  mode = 'selected',
+  overviewMetricIds,
   response,
   loading,
   error
@@ -278,6 +282,81 @@ export function AnalyticsPreview({
   const metricResults = response?.metricResults ?? {};
   const streakResults = response?.streakResults ?? {};
   const chartResults = response?.chartResults ?? {};
+  const overviewMetricIdSet = overviewMetricIds ? new Set(overviewMetricIds) : null;
+  const overviewMetrics =
+    mode === 'overview'
+      ? (overviewMetricIdSet
+          ? metrics.filter((metric) => overviewMetricIdSet.has(metric.id))
+          : metrics)
+      : [];
+
+  if (mode === 'overview') {
+    const hasAnyItems = overviewMetrics.length > 0 || streaks.length > 0 || charts.length > 0;
+
+    return (
+      <div className="space-y-6">
+        {loading ? <p className="text-sm text-muted">Recomputing analytics...</p> : null}
+        {error ? (
+          <div className="rounded-lg border border-accent/40 bg-accent/10 p-3 text-sm text-accent">
+            {error}
+          </div>
+        ) : null}
+        {response?.globalWarnings?.length ? (
+          <NoticeList title="Global Warnings" items={response.globalWarnings} />
+        ) : null}
+
+        {!hasAnyItems ? (
+          <section className="rounded-xl border border-border bg-panel p-6">
+            <h3 className="text-lg font-semibold text-foreground">View</h3>
+            <p className="mt-2 text-sm text-muted">
+              Create metrics, streaks, or chart views in Configure to see an overview here.
+            </p>
+          </section>
+        ) : null}
+
+        {overviewMetrics.length > 0 ? (
+          <section className="space-y-4">
+            <div>
+              <h3 className="text-lg font-semibold text-foreground">Metrics</h3>
+              <p className="text-sm text-muted">Metrics enabled for the View tab.</p>
+            </div>
+            {overviewMetrics.map((metric) => (
+              <MetricPreview key={metric.id} metric={metric} result={metricResults[metric.id]} />
+            ))}
+          </section>
+        ) : null}
+
+        {streaks.length > 0 ? (
+          <section className="space-y-4">
+            <div>
+              <h3 className="text-lg font-semibold text-foreground">Streaks</h3>
+              <p className="text-sm text-muted">Current streak statuses at a glance.</p>
+            </div>
+            {streaks.map((streak) => (
+              <StreakPreview key={streak.id} streak={streak} result={streakResults[streak.id]} />
+            ))}
+          </section>
+        ) : null}
+
+        {charts.length > 0 ? (
+          <section className="space-y-4">
+            <div>
+              <h3 className="text-lg font-semibold text-foreground">Charts</h3>
+              <p className="text-sm text-muted">Saved chart views for the selected time range.</p>
+            </div>
+            {charts.map((chart) => (
+              <ChartPreview
+                key={chart.id}
+                chart={chart}
+                result={chartResults[chart.id]}
+                metricsById={metricsById}
+              />
+            ))}
+          </section>
+        ) : null}
+      </div>
+    );
+  }
 
   if (!selectedItem) {
     return (

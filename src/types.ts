@@ -205,6 +205,7 @@ export interface AdvancedAnalyticsMetricDefinition {
   id: string;
   name: string;
   kind: AdvancedAnalyticsMetricKind;
+  showInView?: boolean;
   base?: AdvancedAnalyticsBaseMetricDefinition;
   formula?: AdvancedAnalyticsFormulaMetricDefinition;
 }

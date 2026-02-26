@@ -101,6 +101,7 @@ export const useAdvancedAnalyticsStore = create<AdvancedAnalyticsState>()(
                   id: newId('metric'),
                   name: `Formula Metric ${state.metrics.filter((m) => m.kind === 'formula').length + 1}`,
                   kind: 'formula',
+                  showInView: true,
                   formula: {
                     leftMetricId: state.metrics.find((m) => m.kind === 'base')?.id ?? '',
                     operator: 'divide',
@@ -112,6 +113,7 @@ export const useAdvancedAnalyticsStore = create<AdvancedAnalyticsState>()(
                   id: newId('metric'),
                   name: `Metric ${state.metrics.filter((m) => m.kind === 'base').length + 1}`,
                   kind: 'base',
+                  showInView: true,
                   base: defaultBaseMetric()
                 };
 

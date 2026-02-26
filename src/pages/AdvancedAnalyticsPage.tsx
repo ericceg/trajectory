@@ -12,6 +12,8 @@ import { useAdvancedAnalyticsStore } from '@/store/useAdvancedAnalyticsStore';
 import { useAppStore } from '@/store/useAppStore';
 import type { AdvancedAnalyticsRunRequest, AdvancedAnalyticsRunResponse } from '@/types';
 
+type AdvancedAnalyticsTab = 'configure' | 'view';
+
 function resolveTimeRange(
   preset: 'all' | '30d' | '90d' | '365d' | 'custom',
   customStartDate: string,
@@ -63,6 +65,7 @@ export function AdvancedAnalyticsPage() {
   const [response, setResponse] = useState<AdvancedAnalyticsRunResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<AdvancedAnalyticsTab>('view');
 
   useEffect(() => {
     if (selectedItem) {
@@ -101,6 +104,10 @@ export function AdvancedAnalyticsPage() {
   const validationIssues = useMemo(
     () => validateAdvancedAnalyticsDefinitions({ metrics, streaks, charts }),
     [charts, metrics, streaks]
+  );
+  const viewTabMetrics = useMemo(
+    () => metrics.filter((metric) => metric.showInView !== false),
+    [metrics]
   );
 
   const selectedIssues = useMemo(() => {
@@ -246,61 +253,111 @@ export function AdvancedAnalyticsPage() {
             </div>
           </div>
         </section>
+
+        <section className="rounded-xl border border-border bg-panel p-2">
+          <div className="inline-flex rounded-lg border border-border bg-bg/40 p-1">
+            {(['view', 'configure'] as const).map((tab) => {
+              const active = activeTab === tab;
+              return (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => setActiveTab(tab)}
+                  className={`rounded-md px-3 py-1.5 text-sm font-medium capitalize transition-colors ${
+                    active
+                      ? 'bg-accent text-white'
+                      : 'text-muted hover:bg-bg hover:text-foreground'
+                  }`}
+                >
+                  {tab}
+                </button>
+              );
+            })}
+          </div>
+          <p className="mt-2 text-xs text-muted">
+            {activeTab === 'configure'
+              ? 'Create and edit analytics definitions. Metrics can be hidden from the View tab.'
+              : 'See all analytics results at a glance. Only metrics marked for display appear in the metrics section.'}
+          </p>
+        </section>
       </header>
 
-      <div className="grid gap-6 xl:grid-cols-[340px_minmax(0,1fr)]">
-        <AnalyticsLibrary
-          metrics={metrics}
-          streaks={streaks}
-          charts={charts}
-          selectedItem={selectedItem}
-          onSelect={setSelectedItem}
-          onAddMetric={() => addMetric('base')}
-          onAddFormulaMetric={() => addMetric('formula')}
-          onAddStreak={addStreak}
-          onAddChart={addChart}
-        />
+      {activeTab === 'configure' ? (
+        <div className="grid gap-6 xl:grid-cols-[340px_minmax(0,1fr)]">
+          <AnalyticsLibrary
+            metrics={metrics}
+            streaks={streaks}
+            charts={charts}
+            selectedItem={selectedItem}
+            onSelect={setSelectedItem}
+            onAddMetric={() => addMetric('base')}
+            onAddFormulaMetric={() => addMetric('formula')}
+            onAddStreak={addStreak}
+            onAddChart={addChart}
+          />
 
+          <div className="space-y-4">
+            {selectedIssues.length > 0 ? (
+              <section className="rounded-xl border border-border bg-panel p-4">
+                <h3 className="text-sm font-semibold text-foreground">Validation</h3>
+                <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted">
+                  {selectedIssues.map((issue, index) => (
+                    <li key={`${issue.scope}-${issue.id ?? 'global'}-${index}`}>{issue.message}</li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+
+            {selectedMetric ? (
+              <MetricBuilder
+                metric={selectedMetric}
+                allMetrics={metrics}
+                onChange={(metric) => updateMetric(metric.id, () => metric)}
+                onDelete={() => removeMetric(selectedMetric.id)}
+              />
+            ) : null}
+
+            {selectedStreak ? (
+              <StreakBuilder
+                streak={selectedStreak}
+                metrics={metrics}
+                onChange={(streak) => updateStreak(streak.id, () => streak)}
+                onDelete={() => removeStreak(selectedStreak.id)}
+              />
+            ) : null}
+
+            {selectedChart ? (
+              <ChartBuilder
+                chart={selectedChart}
+                metrics={metrics}
+                onChange={(chart) => updateChart(chart.id, () => chart)}
+                onDelete={() => removeChart(selectedChart.id)}
+              />
+            ) : null}
+
+            <AnalyticsPreview
+              selectedItem={selectedItem}
+              metrics={metrics}
+              streaks={streaks}
+              charts={charts}
+              response={response}
+              loading={loading}
+              error={runError}
+            />
+          </div>
+        </div>
+      ) : (
         <div className="space-y-4">
-          {selectedIssues.length > 0 ? (
-            <section className="rounded-xl border border-border bg-panel p-4">
-              <h3 className="text-sm font-semibold text-foreground">Validation</h3>
-              <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-muted">
-                {selectedIssues.map((issue, index) => (
-                  <li key={`${issue.scope}-${issue.id ?? 'global'}-${index}`}>{issue.message}</li>
-                ))}
-              </ul>
+          {metrics.length > 0 && viewTabMetrics.length === 0 ? (
+            <section className="rounded-xl border border-border bg-panel p-4 text-sm text-muted">
+              No metrics are enabled for this tab. Open the Configure tab and enable{' '}
+              <span className="font-medium text-foreground">Show in View tab</span> on any metric.
             </section>
           ) : null}
 
-          {selectedMetric ? (
-            <MetricBuilder
-              metric={selectedMetric}
-              allMetrics={metrics}
-              onChange={(metric) => updateMetric(metric.id, () => metric)}
-              onDelete={() => removeMetric(selectedMetric.id)}
-            />
-          ) : null}
-
-          {selectedStreak ? (
-            <StreakBuilder
-              streak={selectedStreak}
-              metrics={metrics}
-              onChange={(streak) => updateStreak(streak.id, () => streak)}
-              onDelete={() => removeStreak(selectedStreak.id)}
-            />
-          ) : null}
-
-          {selectedChart ? (
-            <ChartBuilder
-              chart={selectedChart}
-              metrics={metrics}
-              onChange={(chart) => updateChart(chart.id, () => chart)}
-              onDelete={() => removeChart(selectedChart.id)}
-            />
-          ) : null}
-
           <AnalyticsPreview
+            mode="overview"
+            overviewMetricIds={viewTabMetrics.map((metric) => metric.id)}
             selectedItem={selectedItem}
             metrics={metrics}
             streaks={streaks}
@@ -310,7 +367,7 @@ export function AdvancedAnalyticsPage() {
             error={runError}
           />
         </div>
-      </div>
+      )}
     </div>
   );
 }
