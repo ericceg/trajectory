@@ -390,7 +390,12 @@ function buildHeartRateZoneBreakdown(
       continue;
     }
 
-    if (previousHrSample != null && elapsedSeconds > previousHrSample.elapsedSeconds) {
+    if (
+      previousHrSample != null &&
+      Number.isFinite(heartRate) &&
+      heartRate > 0 &&
+      elapsedSeconds > previousHrSample.elapsedSeconds
+    ) {
       const deltaSeconds = elapsedSeconds - previousHrSample.elapsedSeconds;
       if (Number.isFinite(deltaSeconds) && deltaSeconds > 0) {
         const zoneIndex = heartRateZoneIndexForBpm(previousHrSample.heartRate, upperBoundsBpm);
