@@ -35,6 +35,27 @@ interface AnalyticsPreviewProps {
   error: string | null;
 }
 
+function trimOuterEmptyBuckets<T>(rows: T[], hasData: (row: T) => boolean): T[] {
+  let first = -1;
+  let last = -1;
+
+  for (let index = 0; index < rows.length; index += 1) {
+    if (!hasData(rows[index])) {
+      continue;
+    }
+    if (first === -1) {
+      first = index;
+    }
+    last = index;
+  }
+
+  if (first === -1 || last === -1) {
+    return rows;
+  }
+
+  return rows.slice(first, last + 1);
+}
+
 function NoticeList({ title, items, tone = 'muted' }: { title: string; items: string[]; tone?: 'muted' | 'error' }) {
   if (items.length === 0) {
     return null;
@@ -71,6 +92,7 @@ function MetricPreview({
       : granularity === 'week'
         ? result?.seriesByGranularity.week ?? []
         : result?.seriesByGranularity.month ?? [];
+  const chartPoints = trimOuterEmptyBuckets(points, (point) => point.value !== null);
   const unit = metricResultUnit(metric, result);
 
   return (
@@ -84,10 +106,12 @@ function MetricPreview({
         <p className="mt-1 text-xs text-muted">Preview granularity: {granularity}</p>
       </div>
 
-      {points.length > 0 ? (
+      {chartPoints.length > 0 ? (
         <div className="h-72 rounded-xl border border-border bg-panel p-3">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={points.map((point) => ({ key: point.key, label: point.label, value: point.value }))}>
+            <LineChart
+              data={chartPoints.map((point) => ({ key: point.key, label: point.label, value: point.value }))}
+            >
               <CartesianGrid stroke="rgba(var(--color-border),0.65)" strokeDasharray="3 3" />
               <XAxis dataKey="key" tick={{ fill: 'rgb(var(--color-muted))', fontSize: 12 }} />
               <YAxis tick={{ fill: 'rgb(var(--color-muted))', fontSize: 12 }} />
@@ -163,6 +187,16 @@ function ChartPreview({
     label: point.label,
     ...point.values
   }));
+  const visibleRows = trimOuterEmptyBuckets(rows, (row) => {
+    if (chart.chartType === 'bar' || chart.chartType === 'stackedBar') {
+      return chart.metricIds.some((metricId) => {
+        const value = row[metricId];
+        return typeof value === 'number' && Math.abs(value) > 1e-9;
+      });
+    }
+
+    return chart.metricIds.some((metricId) => row[metricId] !== null && row[metricId] !== undefined);
+  });
 
   return (
     <div className="space-y-4">
@@ -174,11 +208,11 @@ function ChartPreview({
         </p>
       </div>
 
-      {rows.length > 0 ? (
+      {visibleRows.length > 0 ? (
         <div className="h-80 rounded-xl border border-border bg-panel p-3">
           <ResponsiveContainer width="100%" height="100%">
             {chart.chartType === 'line' ? (
-              <LineChart data={rows}>
+              <LineChart data={visibleRows}>
                 <CartesianGrid stroke="rgba(var(--color-border),0.65)" strokeDasharray="3 3" />
                 <XAxis dataKey="key" tick={{ fill: 'rgb(var(--color-muted))', fontSize: 12 }} />
                 <YAxis tick={{ fill: 'rgb(var(--color-muted))', fontSize: 12 }} />
@@ -197,7 +231,7 @@ function ChartPreview({
                 ))}
               </LineChart>
             ) : (
-              <BarChart data={rows}>
+              <BarChart data={visibleRows}>
                 <CartesianGrid stroke="rgba(var(--color-border),0.65)" strokeDasharray="3 3" />
                 <XAxis dataKey="key" tick={{ fill: 'rgb(var(--color-muted))', fontSize: 12 }} />
                 <YAxis tick={{ fill: 'rgb(var(--color-muted))', fontSize: 12 }} />
