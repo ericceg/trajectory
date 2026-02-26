@@ -92,7 +92,12 @@ function MetricPreview({
       : granularity === 'week'
         ? result?.seriesByGranularity.week ?? []
         : result?.seriesByGranularity.month ?? [];
-  const chartPoints = trimOuterEmptyBuckets(points, (point) => point.value !== null);
+  const chartPoints = trimOuterEmptyBuckets(points, (point) => {
+    if (point.value === null || point.value === undefined) {
+      return false;
+    }
+    return Math.abs(point.value) > 1e-9;
+  });
   const unit = metricResultUnit(metric, result);
 
   return (
