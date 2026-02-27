@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo } from 'react';
 import {
   Bar,
   BarChart,
@@ -14,6 +14,15 @@ import {
 } from 'recharts';
 
 import { formatAnalyticsValue, metricPreviewGranularity, metricResultUnit } from '@/lib/analytics/formatting';
+import {
+  CHART_AXIS_STROKE,
+  CHART_GRID_STROKE,
+  CHART_TOOLTIP_STYLE,
+  CHART_TOOLTIP_WRAPPER_STYLE,
+  isValueInDomain,
+  parseStringChartLabel,
+  usePlotDragZoom
+} from '@/lib/charts/plottingEngine';
 import type { AdvancedAnalyticsSelection } from '@/store/useAdvancedAnalyticsStore';
 import type {
   AdvancedAnalyticsChartDefinition,
@@ -26,26 +35,10 @@ import type {
 } from '@/types';
 
 const CHART_COLORS = ['#2563eb', '#dc2626', '#10b981', '#f59e0b', '#7c3aed'];
-const CHART_DRAG_CLICK_THRESHOLD_PX = 4;
 const CHART_ZOOM_HIGHLIGHT_FILL = 'rgb(var(--color-accent))';
 const CHART_ZOOM_HIGHLIGHT_OPACITY = 0.12;
-const CHART_GRID_STROKE = 'rgba(var(--color-border), 0.75)';
-const CHART_AXIS_STROKE = 'rgb(var(--color-muted))';
-const CHART_TOOLTIP_STYLE = {
-  borderRadius: 10,
-  border: '1px solid rgba(var(--color-border), 0.9)',
-  background: 'rgb(var(--color-panel))',
-  color: 'rgb(var(--color-foreground))',
-  boxShadow: '0 8px 24px rgba(0, 0, 0, 0.12)'
-};
-const CHART_TOOLTIP_WRAPPER_STYLE = {
-  zIndex: 20,
-  pointerEvents: 'none'
-} as const;
-
-type ChartDomain = [string, string];
-type ChartPointer = { key: string; chartX: number };
 type ChartRow = { key: string; label: string } & Record<string, string | number | null>;
+const compareBucketKeys = (left: string, right: string) => left.localeCompare(right);
 
 interface AnalyticsPreviewProps {
   selectedItem: AdvancedAnalyticsSelection;
@@ -80,122 +73,30 @@ function trimOuterEmptyBuckets<T>(rows: T[], hasData: (row: T) => boolean): T[] 
   return rows.slice(first, last + 1);
 }
 
-function readChartPointer(event: unknown): ChartPointer | null {
-  if (!event || typeof event !== 'object') {
-    return null;
-  }
-
-  const maybePointer = event as { activeLabel?: unknown; chartX?: unknown };
-  if (typeof maybePointer.activeLabel !== 'string' || maybePointer.activeLabel.length === 0) {
-    return null;
-  }
-
-  const chartX = Number(maybePointer.chartX);
-  if (!Number.isFinite(chartX)) {
-    return null;
-  }
-
-  return { key: maybePointer.activeLabel, chartX };
-}
-
-function normalizeDomain(a: string, b: string): ChartDomain {
-  return a <= b ? [a, b] : [b, a];
-}
-
-function pointWithinDomain(key: string, domain: ChartDomain) {
-  return key >= domain[0] && key <= domain[1];
-}
-
 function useZoomableRows<T extends { key: string }>(rows: T[]) {
-  const [zoomDomain, setZoomDomain] = useState<ChartDomain | null>(null);
-  const [selectionDomain, setSelectionDomain] = useState<ChartDomain | null>(null);
-  const dragAnchorRef = useRef<ChartPointer | null>(null);
-  const dragCurrentRef = useRef<ChartPointer | null>(null);
-
-  useEffect(() => {
-    if (!zoomDomain) {
-      return;
-    }
-    if (!rows.some((row) => pointWithinDomain(row.key, zoomDomain))) {
-      setZoomDomain(null);
-    }
-  }, [rows, zoomDomain]);
-
+  const keyValues = useMemo(() => rows.map((row) => row.key), [rows]);
+  const plotZoom = usePlotDragZoom<string>({
+    parseLabel: parseStringChartLabel,
+    compareValues: compareBucketKeys,
+    values: keyValues
+  });
+  const activeZoomDomain = plotZoom.zoomDomain;
   const visibleRows = useMemo(
-    () => (zoomDomain ? rows.filter((row) => pointWithinDomain(row.key, zoomDomain)) : rows),
-    [rows, zoomDomain]
+    () =>
+      activeZoomDomain
+        ? rows.filter((row) => isValueInDomain(row.key, activeZoomDomain, compareBucketKeys))
+        : rows,
+    [activeZoomDomain, rows]
   );
-
-  const clearSelection = () => {
-    dragAnchorRef.current = null;
-    dragCurrentRef.current = null;
-    setSelectionDomain(null);
-  };
-
-  const onMouseDown = (event: unknown) => {
-    const pointer = readChartPointer(event);
-    if (!pointer) {
-      return;
-    }
-    dragAnchorRef.current = pointer;
-    dragCurrentRef.current = pointer;
-    setSelectionDomain([pointer.key, pointer.key]);
-  };
-
-  const onMouseMove = (event: unknown) => {
-    const anchor = dragAnchorRef.current;
-    if (!anchor) {
-      return;
-    }
-
-    const pointer = readChartPointer(event);
-    if (!pointer) {
-      return;
-    }
-
-    dragCurrentRef.current = pointer;
-    setSelectionDomain(normalizeDomain(anchor.key, pointer.key));
-  };
-
-  const onMouseUp = (event: unknown) => {
-    const anchor = dragAnchorRef.current;
-    if (!anchor) {
-      return;
-    }
-
-    const pointer = readChartPointer(event) ?? dragCurrentRef.current ?? anchor;
-    const pixelDelta = Math.abs(pointer.chartX - anchor.chartX);
-    clearSelection();
-
-    if (pixelDelta < CHART_DRAG_CLICK_THRESHOLD_PX) {
-      if (zoomDomain) {
-        setZoomDomain(null);
-      }
-      return;
-    }
-
-    if (anchor.key === pointer.key) {
-      return;
-    }
-
-    setZoomDomain(normalizeDomain(anchor.key, pointer.key));
-  };
-
-  const onMouseLeave = () => {
-    if (!dragAnchorRef.current) {
-      return;
-    }
-    clearSelection();
-  };
 
   return {
     visibleRows,
-    selectionDomain,
-    isZoomed: zoomDomain != null,
-    onMouseDown,
-    onMouseMove,
-    onMouseUp,
-    onMouseLeave
+    selectionDomain: plotZoom.selectionDomain,
+    isZoomed: plotZoom.isZoomed,
+    onMouseDown: plotZoom.onMouseDown,
+    onMouseMove: plotZoom.onMouseMove,
+    onMouseUp: plotZoom.onMouseUp,
+    onMouseLeave: plotZoom.onMouseLeave
   };
 }
 

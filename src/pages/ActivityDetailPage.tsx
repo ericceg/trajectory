@@ -25,6 +25,15 @@ import {
   formatPaceMinKm,
   formatSpeedKmh
 } from '@/lib/format';
+import {
+  CHART_AXIS_STROKE,
+  CHART_GRID_STROKE,
+  CHART_TOOLTIP_STYLE,
+  CHART_TOOLTIP_WRAPPER_STYLE,
+  areDomainsEqual,
+  parseNumberChartLabel,
+  usePlotDragZoom
+} from '@/lib/charts/plottingEngine';
 import { US_DEFAULT_CENTER, US_DEFAULT_ZOOM } from '@/lib/mapStyles';
 import { getAccentThemePalette } from '@/lib/theme';
 import { useManagedMapLibre } from '@/lib/useManagedMapLibre';
@@ -39,8 +48,6 @@ const ACTIVITY_ROUTE_HOVER_SOURCE_ID = 'activity-route-hover-source';
 const ACTIVITY_ROUTE_HOVER_OUTER_LAYER_ID = 'activity-route-hover-outer-layer';
 const ACTIVITY_ROUTE_HOVER_INNER_LAYER_ID = 'activity-route-hover-inner-layer';
 const ROUTE_HOVER_MARKER_SMOOTHING_MS = 10;
-const CHART_GRID_STROKE = 'rgba(var(--color-border), 0.75)';
-const CHART_AXIS_STROKE = 'rgb(var(--color-muted))';
 const CHART_LINE_COLORS = {
   speed: '#2563EB', // blue
   pace: '#2563EB', // blue
@@ -48,17 +55,6 @@ const CHART_LINE_COLORS = {
   elevation: '#77C043', // alpine green
   cadence: '#F59E0B', // amber
   power: '#bd08ff', // violet
-} as const;
-const CHART_TOOLTIP_STYLE = {
-  borderRadius: 10,
-  border: '1px solid rgba(var(--color-border), 0.9)',
-  background: 'rgb(var(--color-panel))',
-  color: 'rgb(var(--color-foreground))',
-  boxShadow: '0 8px 24px rgba(0, 0, 0, 0.12)'
-};
-const CHART_TOOLTIP_WRAPPER_STYLE = {
-  zIndex: 20,
-  pointerEvents: 'none'
 } as const;
 const COMBINED_CHART_DOMAIN: [number, number] = [0, 100];
 const COMBINED_CHART_SERIES_ORDER: ChartSeriesKey[] = [
@@ -71,7 +67,6 @@ const COMBINED_CHART_SERIES_ORDER: ChartSeriesKey[] = [
 ];
 const COMBINED_CHART_OUTER_PADDING = 3;
 const COMBINED_CHART_BAND_GAP = 4;
-const CHART_DRAG_CLICK_THRESHOLD_PX = 4;
 const CHART_MIN_ZOOM_SPAN_KM = 0.01;
 const CHART_MIN_ZOOM_SPAN_SECONDS = 15;
 const DEFAULT_HEART_RATE_ZONE_UPPER_BOUNDS_BPM = [120, 140, 160, 180] as const;
@@ -91,7 +86,6 @@ type ChartXAxisMode = 'distance' | 'time';
 type ChartSeriesVisibility = Record<ChartSeriesKey, boolean>;
 type ChartBand = { min: number; max: number };
 type ChartZoomDomain = [number, number];
-type ChartPointer = { value: number; chartX: number };
 type RouteHoverCoordinate = { lat: number; lon: number } | null;
 type ActivityRouteMapHandle = {
   setHoverTarget: (coordinate: RouteHoverCoordinate) => void;
@@ -178,22 +172,6 @@ interface CombinedChartModel {
   maxElapsedSeconds: number;
 }
 
-function readChartPointer(event: unknown): ChartPointer | null {
-  if (!event || typeof event !== 'object') {
-    return null;
-  }
-
-  const maybePointer = event as { activeLabel?: unknown; chartX?: unknown };
-  const value = Number(maybePointer.activeLabel);
-  const chartX = Number(maybePointer.chartX);
-
-  if (!Number.isFinite(value) || !Number.isFinite(chartX)) {
-    return null;
-  }
-
-  return { value, chartX };
-}
-
 function readHoveredRouteCoordinate(event: unknown): RouteHoverCoordinate {
   if (!event || typeof event !== 'object') {
     return null;
@@ -236,37 +214,6 @@ function routeHoverCoordinatesEqual(a: RouteHoverCoordinate, b: RouteHoverCoordi
   }
 
   return Math.abs(a.lat - b.lat) < 1e-7 && Math.abs(a.lon - b.lon) < 1e-7;
-}
-
-function chartDomainsEqual(a: ChartZoomDomain | null, b: ChartZoomDomain | null): boolean {
-  if (a === b) {
-    return true;
-  }
-
-  if (!a || !b) {
-    return false;
-  }
-
-  return Math.abs(a[0] - b[0]) < 1e-6 && Math.abs(a[1] - b[1]) < 1e-6;
-}
-
-function buildSelectionDomain(
-  anchor: ChartPointer | null,
-  current: ChartPointer | null,
-  maxDomainValue: number
-): ChartZoomDomain | null {
-  if (!anchor || !current) {
-    return null;
-  }
-
-  const min = Math.max(0, Math.min(anchor.value, current.value));
-  const max = Math.min(maxDomainValue, Math.max(anchor.value, current.value));
-
-  if (!Number.isFinite(min) || !Number.isFinite(max) || max <= min) {
-    return null;
-  }
-
-  return [min, max];
 }
 
 function formatNumberTick(value: number, digits = 1): string {
@@ -1348,12 +1295,7 @@ export function ActivityDetailPage() {
   const [chartSeriesVisibility, setChartSeriesVisibility] = useState<ChartSeriesVisibility>(() =>
     defaultChartSeriesVisibility()
   );
-  const [chartZoomDomain, setChartZoomDomain] = useState<ChartZoomDomain | null>(null);
-  const [chartSelectionDomain, setChartSelectionDomain] = useState<ChartZoomDomain | null>(null);
   const [hoveredHeartRateZoneIndex, setHoveredHeartRateZoneIndex] = useState<number | null>(null);
-  const chartDragAnchorRef = useRef<ChartPointer | null>(null);
-  const chartDragCurrentRef = useRef<ChartPointer | null>(null);
-  const chartSelectionFrameRef = useRef<number | null>(null);
   const chartSamplesRequestRef = useRef(0);
   const heartRateZoneSamplesRequestRef = useRef(0);
   const routeMapRef = useRef<ActivityRouteMapHandle | null>(null);
@@ -1398,10 +1340,6 @@ export function ActivityDetailPage() {
     }
 
     setChartSeriesVisibility(defaultChartSeriesVisibility(detail.summary.sportType));
-    setChartZoomDomain(null);
-    setChartSelectionDomain(null);
-    chartDragAnchorRef.current = null;
-    chartDragCurrentRef.current = null;
     routeMapRef.current?.clearHoverTarget();
   }, [detail?.summary.id, detail?.summary.sportType]);
 
@@ -1519,22 +1457,50 @@ export function ActivityDetailPage() {
     const summaryDistanceKm = detail ? Math.max(0, detail.summary.distanceM) / 1000 : 0;
     return [0, Math.max(0.1, summaryDistanceKm, combinedChart.maxDistanceKm)];
   }, [chartXAxisMode, combinedChart.maxDistanceKm, combinedChart.maxElapsedSeconds, detail]);
+  const minChartZoomSpan = chartXAxisMode === 'distance' ? CHART_MIN_ZOOM_SPAN_KM : CHART_MIN_ZOOM_SPAN_SECONDS;
+  const chartXAxisValues = useMemo(
+    () =>
+      combinedChart.data.map((point) =>
+        chartXAxisMode === 'distance' ? point.distanceKm : point.elapsedSeconds
+      ),
+    [chartXAxisMode, combinedChart.data]
+  );
+  const chartZoom = usePlotDragZoom<number>({
+    parseLabel: parseNumberChartLabel,
+    compareValues: (left, right) => left - right,
+    values: chartXAxisValues,
+    normalizeDomain: (anchor, current) => {
+      const min = Math.max(0, Math.min(anchor, current));
+      const max = Math.min(fullChartXAxisDomain[1], Math.max(anchor, current));
+
+      if (!Number.isFinite(min) || !Number.isFinite(max) || max - min < minChartZoomSpan) {
+        return null;
+      }
+
+      return [min, max];
+    },
+    areValuesEqual: (left, right) => Math.abs(left - right) < 1e-6,
+    areDomainsEqual: (left, right) =>
+      areDomainsEqual(left, right, (first, second) => Math.abs(first - second) < Number.EPSILON * 100),
+    onPointerMove: (event) => {
+      routeMapRef.current?.setHoverTarget(readHoveredRouteCoordinate(event));
+    }
+  });
+
+  const chartZoomDomain = chartZoom.zoomDomain;
+  const chartSelectionDomain = chartZoom.selectionDomain;
+  const setChartZoomDomain = chartZoom.setZoomDomain;
+  const activeChartXAxisDomain = chartZoomDomain ?? fullChartXAxisDomain;
+  const chartSampleDistanceZoomDomain = chartXAxisMode === 'distance' ? chartZoomDomain : null;
 
   useEffect(() => {
-    if (!chartZoomDomain) {
-      return;
-    }
-
-    const [, zoomMax] = chartZoomDomain;
-    if (zoomMax <= fullChartXAxisDomain[1]) {
+    if (!detail) {
       return;
     }
 
     setChartZoomDomain(null);
-  }, [chartZoomDomain, fullChartXAxisDomain]);
-
-  const activeChartXAxisDomain = chartZoomDomain ?? fullChartXAxisDomain;
-  const chartSampleDistanceZoomDomain = chartXAxisMode === 'distance' ? chartZoomDomain : null;
+    chartZoom.clearSelection();
+  }, [chartXAxisMode, chartZoom.clearSelection, detail?.summary.id, setChartZoomDomain]);
 
   useEffect(() => {
     if (!detail) {
@@ -1681,120 +1647,12 @@ export function ActivityDetailPage() {
     }));
   }, [activeChartXAxisDomain, chartSeriesVisibility, chartXAxisMode, combinedChart.data, combinedChart.has]);
 
-  const cancelChartSelectionFrame = () => {
-    if (chartSelectionFrameRef.current == null) {
-      return;
-    }
-    cancelAnimationFrame(chartSelectionFrameRef.current);
-    chartSelectionFrameRef.current = null;
-  };
-
-  useEffect(() => () => cancelChartSelectionFrame(), []);
-
-  const syncChartSelectionDomain = () => {
-    const nextDomain = buildSelectionDomain(
-      chartDragAnchorRef.current,
-      chartDragCurrentRef.current,
-      fullChartXAxisDomain[1]
-    );
-
-    setChartSelectionDomain((current) => (chartDomainsEqual(current, nextDomain) ? current : nextDomain));
-  };
-
-  const scheduleChartSelectionSync = () => {
-    if (chartSelectionFrameRef.current != null) {
-      return;
-    }
-
-    chartSelectionFrameRef.current = requestAnimationFrame(() => {
-      chartSelectionFrameRef.current = null;
-      syncChartSelectionDomain();
-    });
-  };
-
-  const clearChartSelection = () => {
-    chartDragAnchorRef.current = null;
-    chartDragCurrentRef.current = null;
-    cancelChartSelectionFrame();
-    setChartSelectionDomain(null);
-  };
-
-  const handleChartMouseDown = (event: unknown) => {
-    const pointer = readChartPointer(event);
-    if (!pointer) {
-      clearChartSelection();
-      return;
-    }
-
-    chartDragAnchorRef.current = pointer;
-    chartDragCurrentRef.current = pointer;
-    setChartSelectionDomain(null);
-  };
-
-  const handleChartMouseMove = (event: unknown) => {
-    const hoveredCoordinate = readHoveredRouteCoordinate(event);
-    routeMapRef.current?.setHoverTarget(hoveredCoordinate);
-
-    if (!chartDragAnchorRef.current) {
-      return;
-    }
-
-    const pointer = readChartPointer(event);
-    if (!pointer) {
-      return;
-    }
-
-    const previousPointer = chartDragCurrentRef.current;
-    if (
-      previousPointer &&
-      Math.abs(previousPointer.chartX - pointer.chartX) < 1 &&
-      Math.abs(previousPointer.value - pointer.value) < 1e-6
-    ) {
-      return;
-    }
-
-    chartDragCurrentRef.current = pointer;
-    scheduleChartSelectionSync();
-  };
-
+  const handleChartMouseDown = chartZoom.onMouseDown;
+  const handleChartMouseMove = chartZoom.onMouseMove;
+  const handleChartMouseUp = chartZoom.onMouseUp;
   const handleChartMouseLeave = () => {
     routeMapRef.current?.clearHoverTarget();
-  };
-
-  const handleChartMouseUp = (event: unknown) => {
-    const anchor = chartDragAnchorRef.current;
-    if (!anchor) {
-      return;
-    }
-
-    const pointer = readChartPointer(event) ?? chartDragCurrentRef.current ?? anchor;
-    const pixelDelta = Math.abs(pointer.chartX - anchor.chartX);
-    const min = Math.max(0, Math.min(anchor.value, pointer.value));
-    const max = Math.min(fullChartXAxisDomain[1], Math.max(anchor.value, pointer.value));
-
-    clearChartSelection();
-
-    if (pixelDelta < CHART_DRAG_CLICK_THRESHOLD_PX) {
-      if (chartZoomDomain) {
-        setChartZoomDomain(null);
-      }
-      return;
-    }
-
-    const minZoomSpan = chartXAxisMode === 'distance' ? CHART_MIN_ZOOM_SPAN_KM : CHART_MIN_ZOOM_SPAN_SECONDS;
-    if (!Number.isFinite(min) || !Number.isFinite(max) || max - min < minZoomSpan) {
-      return;
-    }
-
-    const currentMin = activeChartXAxisDomain[0];
-    const currentMax = activeChartXAxisDomain[1];
-    const sameAsCurrent =
-      Math.abs(min - currentMin) < Number.EPSILON * 100 &&
-      Math.abs(max - currentMax) < Number.EPSILON * 100;
-
-    if (!sameAsCurrent) {
-      setChartZoomDomain([min, max]);
-    }
+    chartZoom.onMouseLeave();
   };
 
   if (loading) {

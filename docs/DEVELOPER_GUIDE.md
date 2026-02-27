@@ -43,16 +43,14 @@ Frontend (`src/`):
 - `src/pages/`: route screens (`Dashboard`, `Activities`, `Activity Detail`, `Heatmap`, `Advanced Analytics`, `Settings`, `Onboarding`)
 - `src/components/`: reusable UI pieces (`Sidebar`, `MetricCard`, `ScanStatusCard`, map frame)
 - `src/store/`: Zustand stores (app/runtime state, persisted UI state, advanced analytics definitions)
-- `src/lib/`: Tauri bridge, analytics/formatting helpers, map styles, theming, MapLibre hook
+- `src/lib/`: Tauri bridge, analytics/formatting helpers, central chart plotting engine (`src/lib/charts/plottingEngine.ts`), map styles, theming, MapLibre hook
 - `src/types.ts`: TypeScript command/event payload contracts
 
-Advanced Analytics chart interactions:
+Central plotting engine:
 
-- `src/components/analytics/AnalyticsPreview.tsx` implements chart interaction parity with Activity Detail for analytics metric/chart plots:
-- drag across the x-axis buckets to zoom
-- single-click to reset zoom
-- render/scale from the current zoom window so y-axis domains reflect the visible segment
-- apply Activity Detail-style visual defaults (tooltip shell, axis/grid colors, and cursor behavior)
+- `src/lib/charts/plottingEngine.ts` centralizes shared plotting behavior used by both Activity Detail and Advanced Analytics.
+- Shared exports include chart visual constants (axis/grid/tooltip styles), pointer parsing helpers, and the reusable `usePlotDragZoom` hook.
+- Both `src/pages/ActivityDetailPage.tsx` and `src/components/analytics/AnalyticsPreview.tsx` consume the same drag-to-zoom and click-to-reset interaction core.
 
 Backend (`src-tauri/src/`):
 
