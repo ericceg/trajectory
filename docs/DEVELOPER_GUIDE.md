@@ -51,6 +51,7 @@ Central plotting engine:
 - `src/lib/charts/plottingEngine.ts` centralizes shared plotting behavior used by both Activity Detail and Advanced Analytics.
 - Shared exports include chart visual constants (axis/grid/tooltip styles, selection/cursor defaults, and animation defaults), pointer parsing helpers, and the reusable `usePlotDragZoom` hook.
 - Both `src/pages/ActivityDetailPage.tsx` and `src/components/analytics/AnalyticsPreview.tsx` consume the same drag-to-zoom and click-to-reset interaction core.
+- `src/index.css` applies a global Recharts `user-select: none` rule (`.recharts-responsive-container` and descendants) so drag operations do not accidentally select chart text, including on newly added plots.
 
 Backend (`src-tauri/src/`):
 
