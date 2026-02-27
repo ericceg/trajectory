@@ -15,9 +15,10 @@ export const CHART_TOOLTIP_WRAPPER_STYLE = {
   pointerEvents: 'none'
 } as const;
 export const CHART_TOOLTIP_CURSOR_LINE = { stroke: '#000000', strokeWidth: 1 } as const;
-export const CHART_SELECTION_FILL = 'rgba(var(--color-accent), 0.14)';
-export const CHART_SELECTION_STROKE = 'rgba(var(--color-accent), 0.5)';
-export const CHART_SELECTION_STROKE_OPACITY = 0.9;
+export const CHART_SELECTION_FILL = '#d1d5db';
+export const CHART_SELECTION_FILL_OPACITY = 0.42;
+export const CHART_SELECTION_STROKE = '#e5e7eb';
+export const CHART_SELECTION_STROKE_OPACITY = 1;
 export const CHART_IS_ANIMATION_ACTIVE = false;
 export const CHART_LINE_STROKE_WIDTH = 2;
 export const CHART_LINE_ACTIVE_DOT = { r: 3, strokeWidth: 0 } as const;

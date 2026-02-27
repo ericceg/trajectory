@@ -29,6 +29,7 @@ import {
   CHART_IS_ANIMATION_ACTIVE,
   CHART_LINE_ACTIVE_DOT,
   CHART_SELECTION_FILL,
+  CHART_SELECTION_FILL_OPACITY,
   CHART_SELECTION_STROKE,
   CHART_SELECTION_STROKE_OPACITY,
   CHART_AXIS_STROKE,
@@ -769,8 +770,9 @@ function SplitMetricChart({
                   x1={selectionDomain[0]}
                   x2={selectionDomain[1]}
                   fill={CHART_SELECTION_FILL}
-                            stroke={CHART_SELECTION_STROKE}
-                            strokeOpacity={CHART_SELECTION_STROKE_OPACITY}
+                  fillOpacity={CHART_SELECTION_FILL_OPACITY}
+                  stroke={CHART_SELECTION_STROKE}
+                  strokeOpacity={CHART_SELECTION_STROKE_OPACITY}
                   ifOverflow="extendDomain"
                 />
               ) : null}
@@ -1858,6 +1860,7 @@ export function ActivityDetailPage() {
                             x1={chartSelectionDomain[0]}
                             x2={chartSelectionDomain[1]}
                             fill={CHART_SELECTION_FILL}
+                            fillOpacity={CHART_SELECTION_FILL_OPACITY}
                             stroke={CHART_SELECTION_STROKE}
                             strokeOpacity={CHART_SELECTION_STROKE_OPACITY}
                             ifOverflow="extendDomain"

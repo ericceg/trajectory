@@ -19,6 +19,7 @@ import {
   CHART_LINE_ACTIVE_DOT,
   CHART_LINE_STROKE_WIDTH,
   CHART_SELECTION_FILL,
+  CHART_SELECTION_FILL_OPACITY,
   CHART_SELECTION_STROKE,
   CHART_SELECTION_STROKE_OPACITY,
   CHART_AXIS_STROKE,
@@ -240,6 +241,7 @@ function MetricPreview({
                     x1={zoom.selectionDomain[0]}
                     x2={zoom.selectionDomain[1]}
                     fill={CHART_SELECTION_FILL}
+                    fillOpacity={CHART_SELECTION_FILL_OPACITY}
                     stroke={CHART_SELECTION_STROKE}
                     strokeOpacity={CHART_SELECTION_STROKE_OPACITY}
                   />
@@ -393,6 +395,7 @@ function ChartPreview({
                       x1={zoom.selectionDomain[0]}
                       x2={zoom.selectionDomain[1]}
                       fill={CHART_SELECTION_FILL}
+                      fillOpacity={CHART_SELECTION_FILL_OPACITY}
                       stroke={CHART_SELECTION_STROKE}
                       strokeOpacity={CHART_SELECTION_STROKE_OPACITY}
                     />
@@ -445,6 +448,7 @@ function ChartPreview({
                       x1={zoom.selectionDomain[0]}
                       x2={zoom.selectionDomain[1]}
                       fill={CHART_SELECTION_FILL}
+                      fillOpacity={CHART_SELECTION_FILL_OPACITY}
                       stroke={CHART_SELECTION_STROKE}
                       strokeOpacity={CHART_SELECTION_STROKE_OPACITY}
                     />
