@@ -31,6 +31,7 @@ import {
   parseStringChartLabel,
   usePlotDragZoom
 } from '@/lib/charts/plottingEngine';
+import { formatDuration } from '@/lib/format';
 import type { AdvancedAnalyticsSelection } from '@/store/useAdvancedAnalyticsStore';
 import type {
   AdvancedAnalyticsChartDefinition,
@@ -135,6 +136,33 @@ function formatTooltipNumber(value: number) {
   return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
+function formatDateBucketLabel(label: unknown): string {
+  if (typeof label !== 'string') {
+    return String(label ?? '');
+  }
+
+  const dayMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(label);
+  if (dayMatch) {
+    return `${dayMatch[3]}.${dayMatch[2]}.${dayMatch[1]}`;
+  }
+
+  const monthMatch = /^(\d{4})-(\d{2})$/.exec(label);
+  if (monthMatch) {
+    return `01.${monthMatch[2]}.${monthMatch[1]}`;
+  }
+
+  return label;
+}
+
+function formatTooltipMetricValue(value: number, unit?: string): string {
+  const normalizedUnit = (unit ?? '').trim().toLowerCase();
+  if (normalizedUnit === 's' || normalizedUnit === 'sec' || normalizedUnit === 'seconds') {
+    return formatDuration(value);
+  }
+
+  return formatTooltipNumber(value);
+}
+
 function AnalyticsChartTooltip({
   active,
   label,
@@ -145,23 +173,29 @@ function AnalyticsChartTooltip({
     return null;
   }
 
+  const firstPayload = payload[0] as { payload?: { label?: unknown } };
+  const rawLabel = firstPayload?.payload?.label ?? label;
+  const labelText = formatDateBucketLabel(rawLabel);
+
   return (
     <div style={CHART_TOOLTIP_STYLE} className="min-w-[13rem] p-3 text-sm leading-tight">
-      <p className="font-semibold text-foreground">{label}</p>
+      <p className="font-semibold text-foreground">{labelText}</p>
       <div className="mt-2 space-y-1 text-foreground">
         {payload.map((entry) => {
           const seriesKey = String(entry.dataKey ?? '');
           const numericValue = typeof entry.value === 'number' ? entry.value : Number(entry.value);
           const valueLabel = Number.isFinite(numericValue)
-            ? formatTooltipNumber(numericValue)
+            ? formatTooltipMetricValue(numericValue, unitsByKey?.[seriesKey])
             : String(entry.value ?? 'n/a');
           const unit = unitsByKey?.[seriesKey];
+          const normalizedUnit = (unit ?? '').trim().toLowerCase();
+          const renderUnit = Boolean(unit) && normalizedUnit !== 's' && normalizedUnit !== 'sec' && normalizedUnit !== 'seconds';
 
           return (
             <p key={`${seriesKey}-${entry.name ?? 'value'}`}>
               <span className="font-medium">{entry.name ?? seriesKey}</span>:{' '}
               <span className="font-semibold">{valueLabel}</span>
-              {unit ? ` ${unit}` : ''}
+              {renderUnit ? ` ${unit}` : ''}
             </p>
           );
         })}
@@ -220,6 +254,7 @@ function MetricPreview({
                 <XAxis
                   dataKey="key"
                   stroke={CHART_AXIS_STROKE}
+                  tickFormatter={formatDateBucketLabel}
                   tick={{ fill: 'rgb(var(--color-muted))', fontSize: 12 }}
                   tickMargin={8}
                   minTickGap={24}
@@ -374,6 +409,7 @@ function ChartPreview({
                   <XAxis
                     dataKey="key"
                     stroke={CHART_AXIS_STROKE}
+                    tickFormatter={formatDateBucketLabel}
                     tick={{ fill: 'rgb(var(--color-muted))', fontSize: 12 }}
                     tickMargin={8}
                     minTickGap={24}
@@ -427,6 +463,7 @@ function ChartPreview({
                   <XAxis
                     dataKey="key"
                     stroke={CHART_AXIS_STROKE}
+                    tickFormatter={formatDateBucketLabel}
                     tick={{ fill: 'rgb(var(--color-muted))', fontSize: 12 }}
                     tickMargin={8}
                     minTickGap={24}

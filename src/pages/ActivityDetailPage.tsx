@@ -234,32 +234,11 @@ function formatDistanceAxisTick(km: number): string {
 }
 
 function formatElapsedAxisTick(seconds: number): string {
-  if (!Number.isFinite(seconds)) {
-    return '0:00';
-  }
-
-  const rounded = Math.max(0, Math.round(seconds));
-  const hours = Math.floor(rounded / 3600);
-  const minutes = Math.floor((rounded % 3600) / 60);
-
-  if (hours > 0) {
-    return `${hours}:${String(minutes).padStart(2, '0')}`;
-  }
-
-  return `${minutes}m`;
+  return formatDuration(seconds);
 }
 
 function formatElapsedTooltip(seconds: number): string {
-  const rounded = Math.max(0, Math.round(seconds));
-  const hours = Math.floor(rounded / 3600);
-  const minutes = Math.floor((rounded % 3600) / 60);
-  const secs = rounded % 60;
-
-  if (hours > 0) {
-    return `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-  }
-
-  return `${minutes}:${String(secs).padStart(2, '0')}`;
+  return formatDuration(seconds);
 }
 
 function formatPaceSeconds(secondsPerKm: number | null): string {

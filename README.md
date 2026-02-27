@@ -48,6 +48,7 @@ Prototype (actively evolving).
 - Advanced Analytics supports title-based conditions (e.g. push/pull names) and sample-derived metrics such as heart-rate zone time via `Sample time` rules
 - Advanced Analytics metric/chart plots support Activity Detail-style interactions and visual treatment: drag-to-zoom on x-axis buckets, click-to-reset, zoom-window rendering so y-axes re-fit to the visible range, matching tooltip/axis/grid styling, and no chart animations
 - Chart text/number labels inside plot surfaces are non-selectable to avoid accidental text highlighting during drag-to-zoom
+- Standardized display formatting: durations/times render as `HH:mm:ss`, dates as `dd.MM.yyyy` (or `dd.MM.yyyy HH:mm:ss` where date+time is shown), and distances in kilometers (`km`)
 - Appearance settings for accent theme selection and optional full-opacity heatmap routes (100% opacity)
 - "Reduced complexity" toggle on map views for a grayscale, lower-noise basemap with stronger route contrast
 - Map controls (including reduced-complexity toggles/legend) are overlaid on maps so they remain visible in maximized map mode

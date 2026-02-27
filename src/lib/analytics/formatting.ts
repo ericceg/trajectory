@@ -1,3 +1,4 @@
+import { formatDuration } from '@/lib/format';
 import type { AdvancedAnalyticsMetricDefinition, AdvancedAnalyticsMetricResult } from '@/types';
 
 export function formatAnalyticsValue(value: number | null | undefined, unit?: string | null): string {
@@ -37,16 +38,5 @@ export function metricResultUnit(
 }
 
 function formatSeconds(seconds: number): string {
-  const total = Math.round(seconds);
-  const hrs = Math.floor(total / 3600);
-  const mins = Math.floor((total % 3600) / 60);
-  const secs = total % 60;
-
-  if (hrs > 0) {
-    return `${hrs}h ${mins}m`;
-  }
-  if (mins > 0) {
-    return `${mins}m ${secs}s`;
-  }
-  return `${secs}s`;
+  return formatDuration(seconds);
 }

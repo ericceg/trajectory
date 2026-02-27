@@ -46,6 +46,12 @@ Frontend (`src/`):
 - `src/lib/`: Tauri bridge, analytics/formatting helpers, central chart plotting engine (`src/lib/charts/plottingEngine.ts`), map styles, theming, MapLibre hook
 - `src/types.ts`: TypeScript command/event payload contracts
 
+Display formatting conventions (shared helpers in `src/lib/format.ts`):
+
+- Duration/time values are rendered as `HH:mm:ss`.
+- Dates are rendered as `dd.MM.yyyy` (and `dd.MM.yyyy HH:mm:ss` for date+time).
+- Distances are rendered in kilometers (`km`).
+
 Central plotting engine:
 
 - `src/lib/charts/plottingEngine.ts` centralizes shared plotting behavior used by both Activity Detail and Advanced Analytics.
