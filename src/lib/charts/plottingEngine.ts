@@ -14,6 +14,13 @@ export const CHART_TOOLTIP_WRAPPER_STYLE = {
   zIndex: 20,
   pointerEvents: 'none'
 } as const;
+export const CHART_TOOLTIP_CURSOR_LINE = { stroke: '#000000', strokeWidth: 1 } as const;
+export const CHART_SELECTION_FILL = 'rgba(var(--color-accent), 0.14)';
+export const CHART_SELECTION_STROKE = 'rgba(var(--color-accent), 0.5)';
+export const CHART_SELECTION_STROKE_OPACITY = 0.9;
+export const CHART_IS_ANIMATION_ACTIVE = false;
+export const CHART_LINE_STROKE_WIDTH = 2;
+export const CHART_LINE_ACTIVE_DOT = { r: 3, strokeWidth: 0 } as const;
 
 export type PlotDomain<T> = [T, T];
 export type PlotPointer<T> = { value: T; chartX: number };

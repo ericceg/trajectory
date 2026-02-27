@@ -26,8 +26,15 @@ import {
   formatSpeedKmh
 } from '@/lib/format';
 import {
+  CHART_IS_ANIMATION_ACTIVE,
+  CHART_LINE_ACTIVE_DOT,
+  CHART_LINE_STROKE_WIDTH,
+  CHART_SELECTION_FILL,
+  CHART_SELECTION_STROKE,
+  CHART_SELECTION_STROKE_OPACITY,
   CHART_AXIS_STROKE,
   CHART_GRID_STROKE,
+  CHART_TOOLTIP_CURSOR_LINE,
   CHART_TOOLTIP_STYLE,
   CHART_TOOLTIP_WRAPPER_STYLE,
   areDomainsEqual,
@@ -746,7 +753,7 @@ function SplitMetricChart({
                 allowDataOverflow={Boolean(yDomain)}
               />
               <Tooltip
-                cursor={{ stroke: '#000000', strokeWidth: 1 }}
+                cursor={CHART_TOOLTIP_CURSOR_LINE}
                 content={
                   <SplitMetricTooltip
                     metricKey={dataKey}
@@ -756,15 +763,15 @@ function SplitMetricChart({
                   />
                 }
                 wrapperStyle={CHART_TOOLTIP_WRAPPER_STYLE}
-                isAnimationActive={false}
+                isAnimationActive={CHART_IS_ANIMATION_ACTIVE}
               />
               {selectionDomain ? (
                 <ReferenceArea
                   x1={selectionDomain[0]}
                   x2={selectionDomain[1]}
-                  fill="rgba(var(--color-accent), 0.14)"
-                  stroke="rgba(var(--color-accent), 0.5)"
-                  strokeOpacity={0.9}
+                  fill={CHART_SELECTION_FILL}
+                            stroke={CHART_SELECTION_STROKE}
+                            strokeOpacity={CHART_SELECTION_STROKE_OPACITY}
                   ifOverflow="extendDomain"
                 />
               ) : null}
@@ -788,8 +795,8 @@ function SplitMetricChart({
                   strokeWidth={1.5}
                   dot={false}
                   connectNulls
-                  activeDot={{ r: 3, strokeWidth: 0 }}
-                  isAnimationActive={false}
+                  activeDot={CHART_LINE_ACTIVE_DOT}
+                  isAnimationActive={CHART_IS_ANIMATION_ACTIVE}
                 />
               ) : (
                 <Line
@@ -799,8 +806,8 @@ function SplitMetricChart({
                   strokeWidth={2}
                   dot={false}
                   connectNulls
-                  activeDot={{ r: 3, strokeWidth: 0 }}
-                  isAnimationActive={false}
+                  activeDot={CHART_LINE_ACTIVE_DOT}
+                  isAnimationActive={CHART_IS_ANIMATION_ACTIVE}
                 />
               )}
             </ComposedChart>
@@ -853,7 +860,7 @@ function HeartRateZonesCard({
                 paddingAngle={2}
                 stroke="rgba(var(--color-panel), 1)"
                 strokeWidth={2}
-                isAnimationActive={false}
+                isAnimationActive={CHART_IS_ANIMATION_ACTIVE}
                 onMouseEnter={(entry) => {
                   const slice = entry as HeartRateZoneSlice | undefined;
                   onHoverZoneChange(slice?.zoneIndex ?? null);
@@ -877,7 +884,7 @@ function HeartRateZonesCard({
                 }}
                 contentStyle={CHART_TOOLTIP_STYLE}
                 wrapperStyle={CHART_TOOLTIP_WRAPPER_STYLE}
-                isAnimationActive={false}
+                isAnimationActive={CHART_IS_ANIMATION_ACTIVE}
               />
             </PieChart>
           </ResponsiveContainer>
@@ -1842,18 +1849,18 @@ export function ActivityDetailPage() {
                         />
                         <YAxis hide type="number" domain={COMBINED_CHART_DOMAIN} />
                         <Tooltip
-                          cursor={{ stroke: '#000000', strokeWidth: 1 }}
+                          cursor={CHART_TOOLTIP_CURSOR_LINE}
                           content={<CombinedChartTooltip xAxisMode={chartXAxisMode} />}
                           wrapperStyle={CHART_TOOLTIP_WRAPPER_STYLE}
-                          isAnimationActive={false}
+                          isAnimationActive={CHART_IS_ANIMATION_ACTIVE}
                         />
                         {chartSelectionDomain ? (
                           <ReferenceArea
                             x1={chartSelectionDomain[0]}
                             x2={chartSelectionDomain[1]}
-                            fill="rgba(var(--color-accent), 0.14)"
-                            stroke="rgba(var(--color-accent), 0.5)"
-                            strokeOpacity={0.9}
+                            fill={CHART_SELECTION_FILL}
+                            stroke={CHART_SELECTION_STROKE}
+                            strokeOpacity={CHART_SELECTION_STROKE_OPACITY}
                             ifOverflow="extendDomain"
                           />
                         ) : null}
@@ -1879,7 +1886,7 @@ export function ActivityDetailPage() {
                             dot={false}
                             activeDot={false}
                             connectNulls
-                            isAnimationActive={false}
+                            isAnimationActive={CHART_IS_ANIMATION_ACTIVE}
                           />
                         ) : null}
 
@@ -1891,8 +1898,8 @@ export function ActivityDetailPage() {
                             strokeWidth={2}
                             dot={false}
                             connectNulls
-                            activeDot={{ r: 3, strokeWidth: 0 }}
-                            isAnimationActive={false}
+                            activeDot={CHART_LINE_ACTIVE_DOT}
+                            isAnimationActive={CHART_IS_ANIMATION_ACTIVE}
                           />
                         ) : null}
 
@@ -1904,8 +1911,8 @@ export function ActivityDetailPage() {
                             strokeWidth={2}
                             dot={false}
                             connectNulls
-                            activeDot={{ r: 3, strokeWidth: 0 }}
-                            isAnimationActive={false}
+                            activeDot={CHART_LINE_ACTIVE_DOT}
+                            isAnimationActive={CHART_IS_ANIMATION_ACTIVE}
                           />
                         ) : null}
 
@@ -1917,8 +1924,8 @@ export function ActivityDetailPage() {
                             strokeWidth={2}
                             dot={false}
                             connectNulls
-                            activeDot={{ r: 3, strokeWidth: 0 }}
-                            isAnimationActive={false}
+                            activeDot={CHART_LINE_ACTIVE_DOT}
+                            isAnimationActive={CHART_IS_ANIMATION_ACTIVE}
                           />
                         ) : null}
 
@@ -1930,8 +1937,8 @@ export function ActivityDetailPage() {
                             strokeWidth={2}
                             dot={false}
                             connectNulls
-                            activeDot={{ r: 3, strokeWidth: 0 }}
-                            isAnimationActive={false}
+                            activeDot={CHART_LINE_ACTIVE_DOT}
+                            isAnimationActive={CHART_IS_ANIMATION_ACTIVE}
                           />
                         ) : null}
 
@@ -1943,8 +1950,8 @@ export function ActivityDetailPage() {
                             strokeWidth={2}
                             dot={false}
                             connectNulls
-                            activeDot={{ r: 3, strokeWidth: 0 }}
-                            isAnimationActive={false}
+                            activeDot={CHART_LINE_ACTIVE_DOT}
+                            isAnimationActive={CHART_IS_ANIMATION_ACTIVE}
                           />
                         ) : null}
                       </ComposedChart>

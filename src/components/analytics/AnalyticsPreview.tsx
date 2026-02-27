@@ -15,8 +15,15 @@ import {
 
 import { formatAnalyticsValue, metricPreviewGranularity, metricResultUnit } from '@/lib/analytics/formatting';
 import {
+  CHART_IS_ANIMATION_ACTIVE,
+  CHART_LINE_ACTIVE_DOT,
+  CHART_LINE_STROKE_WIDTH,
+  CHART_SELECTION_FILL,
+  CHART_SELECTION_STROKE,
+  CHART_SELECTION_STROKE_OPACITY,
   CHART_AXIS_STROKE,
   CHART_GRID_STROKE,
+  CHART_TOOLTIP_CURSOR_LINE,
   CHART_TOOLTIP_STYLE,
   CHART_TOOLTIP_WRAPPER_STYLE,
   isValueInDomain,
@@ -35,8 +42,6 @@ import type {
 } from '@/types';
 
 const CHART_COLORS = ['#2563eb', '#dc2626', '#10b981', '#f59e0b', '#7c3aed'];
-const CHART_ZOOM_HIGHLIGHT_FILL = 'rgb(var(--color-accent))';
-const CHART_ZOOM_HIGHLIGHT_OPACITY = 0.12;
 type ChartRow = { key: string; label: string } & Record<string, string | number | null>;
 const compareBucketKeys = (left: string, right: string) => left.localeCompare(right);
 
@@ -215,32 +220,39 @@ function MetricPreview({
                   dataKey="key"
                   stroke={CHART_AXIS_STROKE}
                   tick={{ fill: 'rgb(var(--color-muted))', fontSize: 12 }}
+                  tickMargin={8}
+                  minTickGap={24}
                 />
                 <YAxis
                   stroke={CHART_AXIS_STROKE}
                   tick={{ fill: 'rgb(var(--color-muted))', fontSize: 12 }}
-                  width={60}
+                  tickMargin={8}
+                  width={58}
                 />
                 <Tooltip
-                  cursor={{ stroke: CHART_AXIS_STROKE, strokeWidth: 1 }}
+                  cursor={CHART_TOOLTIP_CURSOR_LINE}
                   content={<AnalyticsChartTooltip unitsByKey={{ value: unit ?? '' }} />}
                   wrapperStyle={CHART_TOOLTIP_WRAPPER_STYLE}
+                  isAnimationActive={CHART_IS_ANIMATION_ACTIVE}
                 />
                 {zoom.selectionDomain ? (
                   <ReferenceArea
                     x1={zoom.selectionDomain[0]}
                     x2={zoom.selectionDomain[1]}
-                    fill={CHART_ZOOM_HIGHLIGHT_FILL}
-                    fillOpacity={CHART_ZOOM_HIGHLIGHT_OPACITY}
+                    fill={CHART_SELECTION_FILL}
+                    stroke={CHART_SELECTION_STROKE}
+                    strokeOpacity={CHART_SELECTION_STROKE_OPACITY}
                   />
                 ) : null}
                 <Line
                   type="monotone"
                   dataKey="value"
                   stroke="rgb(var(--color-accent))"
-                  strokeWidth={2.5}
+                  strokeWidth={CHART_LINE_STROKE_WIDTH}
                   dot={false}
-                  connectNulls={false}
+                  connectNulls
+                  activeDot={CHART_LINE_ACTIVE_DOT}
+                  isAnimationActive={CHART_IS_ANIMATION_ACTIVE}
                 />
               </LineChart>
             </ResponsiveContainer>
@@ -361,23 +373,28 @@ function ChartPreview({
                     dataKey="key"
                     stroke={CHART_AXIS_STROKE}
                     tick={{ fill: 'rgb(var(--color-muted))', fontSize: 12 }}
+                    tickMargin={8}
+                    minTickGap={24}
                   />
                   <YAxis
                     stroke={CHART_AXIS_STROKE}
                     tick={{ fill: 'rgb(var(--color-muted))', fontSize: 12 }}
-                    width={60}
+                    tickMargin={8}
+                    width={58}
                   />
                   <Tooltip
-                    cursor={{ stroke: CHART_AXIS_STROKE, strokeWidth: 1 }}
+                    cursor={CHART_TOOLTIP_CURSOR_LINE}
                     content={<AnalyticsChartTooltip unitsByKey={chartUnitsByMetricId} />}
                     wrapperStyle={CHART_TOOLTIP_WRAPPER_STYLE}
+                    isAnimationActive={CHART_IS_ANIMATION_ACTIVE}
                   />
                   {zoom.selectionDomain ? (
                     <ReferenceArea
                       x1={zoom.selectionDomain[0]}
                       x2={zoom.selectionDomain[1]}
-                      fill={CHART_ZOOM_HIGHLIGHT_FILL}
-                      fillOpacity={CHART_ZOOM_HIGHLIGHT_OPACITY}
+                      fill={CHART_SELECTION_FILL}
+                      stroke={CHART_SELECTION_STROKE}
+                      strokeOpacity={CHART_SELECTION_STROKE_OPACITY}
                     />
                   ) : null}
                   {chart.metricIds.slice(0, 1).map((metricId, index) => (
@@ -387,8 +404,11 @@ function ChartPreview({
                       dataKey={metricId}
                       name={metricsById.get(metricId)?.name ?? metricId}
                       stroke={CHART_COLORS[index % CHART_COLORS.length]}
-                      strokeWidth={2.5}
+                      strokeWidth={CHART_LINE_STROKE_WIDTH}
                       dot={false}
+                      connectNulls
+                      activeDot={CHART_LINE_ACTIVE_DOT}
+                      isAnimationActive={CHART_IS_ANIMATION_ACTIVE}
                     />
                   ))}
                 </LineChart>
@@ -405,23 +425,28 @@ function ChartPreview({
                     dataKey="key"
                     stroke={CHART_AXIS_STROKE}
                     tick={{ fill: 'rgb(var(--color-muted))', fontSize: 12 }}
+                    tickMargin={8}
+                    minTickGap={24}
                   />
                   <YAxis
                     stroke={CHART_AXIS_STROKE}
                     tick={{ fill: 'rgb(var(--color-muted))', fontSize: 12 }}
-                    width={60}
+                    tickMargin={8}
+                    width={58}
                   />
                   <Tooltip
                     cursor={{ fill: 'transparent' }}
                     content={<AnalyticsChartTooltip unitsByKey={chartUnitsByMetricId} />}
                     wrapperStyle={CHART_TOOLTIP_WRAPPER_STYLE}
+                    isAnimationActive={CHART_IS_ANIMATION_ACTIVE}
                   />
                   {zoom.selectionDomain ? (
                     <ReferenceArea
                       x1={zoom.selectionDomain[0]}
                       x2={zoom.selectionDomain[1]}
-                      fill={CHART_ZOOM_HIGHLIGHT_FILL}
-                      fillOpacity={CHART_ZOOM_HIGHLIGHT_OPACITY}
+                      fill={CHART_SELECTION_FILL}
+                      stroke={CHART_SELECTION_STROKE}
+                      strokeOpacity={CHART_SELECTION_STROKE_OPACITY}
                     />
                   ) : null}
                   {chart.metricIds.map((metricId, index) => (
@@ -432,6 +457,7 @@ function ChartPreview({
                       stackId={chart.chartType === 'stackedBar' ? 'stack' : undefined}
                       fill={CHART_COLORS[index % CHART_COLORS.length]}
                       radius={[3, 3, 0, 0]}
+                      isAnimationActive={CHART_IS_ANIMATION_ACTIVE}
                     />
                   ))}
                 </BarChart>
