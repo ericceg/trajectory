@@ -46,6 +46,7 @@ Prototype (actively evolving).
 - Heatmap filters for time span (presets + custom), category, and sport type
 - Advanced Analytics tab (prototype) with locally saved custom metrics, formula metrics, threshold streaks, and time-bucketed charts (bar/line/stacked bar), plus separate Configure/View tabs (View opens by default with an at-a-glance overview)
 - Advanced Analytics supports title-based conditions (e.g. push/pull names) and sample-derived metrics such as heart-rate zone time via `Sample time` rules
+- Advanced Analytics metric/chart plots support Activity Detail-style interactions and visual treatment: drag-to-zoom on x-axis buckets, click-to-reset, zoom-window rendering so y-axes re-fit to the visible range, and matching tooltip/axis/grid styling
 - Appearance settings for accent theme selection and optional full-opacity heatmap routes (100% opacity)
 - "Reduced complexity" toggle on map views for a grayscale, lower-noise basemap with stronger route contrast
 - Map controls (including reduced-complexity toggles/legend) are overlaid on maps so they remain visible in maximized map mode
@@ -93,6 +94,7 @@ npm run tauri dev
    - **Heatmap** for a global path heatmap (overlapping GPS tracks; filter by time span/category/sport)
    - Enable **Reduced complexity (grayscale)** in Heatmap to declutter the map and emphasize route overlap
    - **Advanced Analytics** to build custom metrics/streaks/charts (prototype): guided builder, AND-only conditions, simple title text matching (no regex), time-series charts by day/week/month, and separate Configure/View tabs (View shows all saved analytics at a glance; metrics can be toggled on/off for the View tab)
+   - In **Advanced Analytics** metric/chart previews, click-drag across the plot to zoom the visible time buckets; single-click resets to full range
    - **Activity Detail** for metrics plus a route map (GPS activities) and a chart area that switches between distance-based plots (with GPS) and time-based plots (without GPS); split view hides unavailable metric panels and surfaces cadence/power panels when present
    - Hover **Activity Detail** charts to see the matching point on the route map highlighted with an animated moving dot (when GPS samples exist)
    - In **Activity Detail** charts, click-drag across the plot to zoom into the visible x-axis range (distance or elapsed time); chart Y-axes/overlay scaling automatically re-fit to the visible segment, and single-click resets back to the full range

@@ -46,6 +46,14 @@ Frontend (`src/`):
 - `src/lib/`: Tauri bridge, analytics/formatting helpers, map styles, theming, MapLibre hook
 - `src/types.ts`: TypeScript command/event payload contracts
 
+Advanced Analytics chart interactions:
+
+- `src/components/analytics/AnalyticsPreview.tsx` implements chart interaction parity with Activity Detail for analytics metric/chart plots:
+- drag across the x-axis buckets to zoom
+- single-click to reset zoom
+- render/scale from the current zoom window so y-axis domains reflect the visible segment
+- apply Activity Detail-style visual defaults (tooltip shell, axis/grid colors, and cursor behavior)
+
 Backend (`src-tauri/src/`):
 
 - `main.rs`: Tauri app bootstrap + command handlers

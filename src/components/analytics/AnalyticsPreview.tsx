@@ -1,11 +1,13 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Bar,
   BarChart,
   CartesianGrid,
-  Legend,
   Line,
   LineChart,
+  ReferenceArea,
   ResponsiveContainer,
+  type TooltipProps,
   Tooltip,
   XAxis,
   YAxis
@@ -24,6 +26,26 @@ import type {
 } from '@/types';
 
 const CHART_COLORS = ['#2563eb', '#dc2626', '#10b981', '#f59e0b', '#7c3aed'];
+const CHART_DRAG_CLICK_THRESHOLD_PX = 4;
+const CHART_ZOOM_HIGHLIGHT_FILL = 'rgb(var(--color-accent))';
+const CHART_ZOOM_HIGHLIGHT_OPACITY = 0.12;
+const CHART_GRID_STROKE = 'rgba(var(--color-border), 0.75)';
+const CHART_AXIS_STROKE = 'rgb(var(--color-muted))';
+const CHART_TOOLTIP_STYLE = {
+  borderRadius: 10,
+  border: '1px solid rgba(var(--color-border), 0.9)',
+  background: 'rgb(var(--color-panel))',
+  color: 'rgb(var(--color-foreground))',
+  boxShadow: '0 8px 24px rgba(0, 0, 0, 0.12)'
+};
+const CHART_TOOLTIP_WRAPPER_STYLE = {
+  zIndex: 20,
+  pointerEvents: 'none'
+} as const;
+
+type ChartDomain = [string, string];
+type ChartPointer = { key: string; chartX: number };
+type ChartRow = { key: string; label: string } & Record<string, string | number | null>;
 
 interface AnalyticsPreviewProps {
   selectedItem: AdvancedAnalyticsSelection;
@@ -58,6 +80,125 @@ function trimOuterEmptyBuckets<T>(rows: T[], hasData: (row: T) => boolean): T[] 
   return rows.slice(first, last + 1);
 }
 
+function readChartPointer(event: unknown): ChartPointer | null {
+  if (!event || typeof event !== 'object') {
+    return null;
+  }
+
+  const maybePointer = event as { activeLabel?: unknown; chartX?: unknown };
+  if (typeof maybePointer.activeLabel !== 'string' || maybePointer.activeLabel.length === 0) {
+    return null;
+  }
+
+  const chartX = Number(maybePointer.chartX);
+  if (!Number.isFinite(chartX)) {
+    return null;
+  }
+
+  return { key: maybePointer.activeLabel, chartX };
+}
+
+function normalizeDomain(a: string, b: string): ChartDomain {
+  return a <= b ? [a, b] : [b, a];
+}
+
+function pointWithinDomain(key: string, domain: ChartDomain) {
+  return key >= domain[0] && key <= domain[1];
+}
+
+function useZoomableRows<T extends { key: string }>(rows: T[]) {
+  const [zoomDomain, setZoomDomain] = useState<ChartDomain | null>(null);
+  const [selectionDomain, setSelectionDomain] = useState<ChartDomain | null>(null);
+  const dragAnchorRef = useRef<ChartPointer | null>(null);
+  const dragCurrentRef = useRef<ChartPointer | null>(null);
+
+  useEffect(() => {
+    if (!zoomDomain) {
+      return;
+    }
+    if (!rows.some((row) => pointWithinDomain(row.key, zoomDomain))) {
+      setZoomDomain(null);
+    }
+  }, [rows, zoomDomain]);
+
+  const visibleRows = useMemo(
+    () => (zoomDomain ? rows.filter((row) => pointWithinDomain(row.key, zoomDomain)) : rows),
+    [rows, zoomDomain]
+  );
+
+  const clearSelection = () => {
+    dragAnchorRef.current = null;
+    dragCurrentRef.current = null;
+    setSelectionDomain(null);
+  };
+
+  const onMouseDown = (event: unknown) => {
+    const pointer = readChartPointer(event);
+    if (!pointer) {
+      return;
+    }
+    dragAnchorRef.current = pointer;
+    dragCurrentRef.current = pointer;
+    setSelectionDomain([pointer.key, pointer.key]);
+  };
+
+  const onMouseMove = (event: unknown) => {
+    const anchor = dragAnchorRef.current;
+    if (!anchor) {
+      return;
+    }
+
+    const pointer = readChartPointer(event);
+    if (!pointer) {
+      return;
+    }
+
+    dragCurrentRef.current = pointer;
+    setSelectionDomain(normalizeDomain(anchor.key, pointer.key));
+  };
+
+  const onMouseUp = (event: unknown) => {
+    const anchor = dragAnchorRef.current;
+    if (!anchor) {
+      return;
+    }
+
+    const pointer = readChartPointer(event) ?? dragCurrentRef.current ?? anchor;
+    const pixelDelta = Math.abs(pointer.chartX - anchor.chartX);
+    clearSelection();
+
+    if (pixelDelta < CHART_DRAG_CLICK_THRESHOLD_PX) {
+      if (zoomDomain) {
+        setZoomDomain(null);
+      }
+      return;
+    }
+
+    if (anchor.key === pointer.key) {
+      return;
+    }
+
+    setZoomDomain(normalizeDomain(anchor.key, pointer.key));
+  };
+
+  const onMouseLeave = () => {
+    if (!dragAnchorRef.current) {
+      return;
+    }
+    clearSelection();
+  };
+
+  return {
+    visibleRows,
+    selectionDomain,
+    isZoomed: zoomDomain != null,
+    onMouseDown,
+    onMouseMove,
+    onMouseUp,
+    onMouseLeave
+  };
+}
+
 function NoticeList({ title, items, tone = 'muted' }: { title: string; items: string[]; tone?: 'muted' | 'error' }) {
   if (items.length === 0) {
     return null;
@@ -76,6 +217,48 @@ function NoticeList({ title, items, tone = 'muted' }: { title: string; items: st
           <li key={`${title}-${index}`}>{item}</li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+function formatTooltipNumber(value: number) {
+  if (Math.abs(value) >= 1000) {
+    return value.toLocaleString(undefined, { maximumFractionDigits: 0 });
+  }
+  return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+
+function AnalyticsChartTooltip({
+  active,
+  label,
+  payload,
+  unitsByKey
+}: TooltipProps<number, string> & { unitsByKey?: Record<string, string> }) {
+  if (!active || !payload || payload.length === 0) {
+    return null;
+  }
+
+  return (
+    <div style={CHART_TOOLTIP_STYLE} className="min-w-[13rem] p-3 text-sm leading-tight">
+      <p className="font-semibold text-foreground">{label}</p>
+      <div className="mt-2 space-y-1 text-foreground">
+        {payload.map((entry) => {
+          const seriesKey = String(entry.dataKey ?? '');
+          const numericValue = typeof entry.value === 'number' ? entry.value : Number(entry.value);
+          const valueLabel = Number.isFinite(numericValue)
+            ? formatTooltipNumber(numericValue)
+            : String(entry.value ?? 'n/a');
+          const unit = unitsByKey?.[seriesKey];
+
+          return (
+            <p key={`${seriesKey}-${entry.name ?? 'value'}`}>
+              <span className="font-medium">{entry.name ?? seriesKey}</span>:{' '}
+              <span className="font-semibold">{valueLabel}</span>
+              {unit ? ` ${unit}` : ''}
+            </p>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -101,6 +284,8 @@ function MetricPreview({
     return Math.abs(point.value) > 1e-9;
   });
   const unit = metricResultUnit(metric, result);
+  const rows = chartPoints.map((point) => ({ key: point.key, label: point.label, value: point.value }));
+  const zoom = useZoomableRows(rows);
 
   return (
     <div className="space-y-4">
@@ -114,25 +299,55 @@ function MetricPreview({
       </div>
 
       {chartPoints.length > 0 ? (
-        <div className="h-72 rounded-xl border border-border bg-panel p-3">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart
-              data={chartPoints.map((point) => ({ key: point.key, label: point.label, value: point.value }))}
-            >
-              <CartesianGrid stroke="rgba(var(--color-border),0.65)" strokeDasharray="3 3" />
-              <XAxis dataKey="key" tick={{ fill: 'rgb(var(--color-muted))', fontSize: 12 }} />
-              <YAxis tick={{ fill: 'rgb(var(--color-muted))', fontSize: 12 }} />
-              <Tooltip />
-              <Line
-                type="monotone"
-                dataKey="value"
-                stroke="rgb(var(--color-accent))"
-                strokeWidth={2}
-                dot={false}
-                connectNulls={false}
-              />
-            </LineChart>
-          </ResponsiveContainer>
+        <div className="space-y-2">
+          <div className="h-72 rounded-lg border border-border/80 bg-bg/30 p-3">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart
+                data={zoom.visibleRows}
+                onMouseDown={zoom.onMouseDown}
+                onMouseMove={zoom.onMouseMove}
+                onMouseUp={zoom.onMouseUp}
+                onMouseLeave={zoom.onMouseLeave}
+              >
+                <CartesianGrid stroke={CHART_GRID_STROKE} strokeDasharray="3 3" vertical={false} />
+                <XAxis
+                  dataKey="key"
+                  stroke={CHART_AXIS_STROKE}
+                  tick={{ fill: 'rgb(var(--color-muted))', fontSize: 12 }}
+                />
+                <YAxis
+                  stroke={CHART_AXIS_STROKE}
+                  tick={{ fill: 'rgb(var(--color-muted))', fontSize: 12 }}
+                  width={60}
+                />
+                <Tooltip
+                  cursor={{ stroke: CHART_AXIS_STROKE, strokeWidth: 1 }}
+                  content={<AnalyticsChartTooltip unitsByKey={{ value: unit ?? '' }} />}
+                  wrapperStyle={CHART_TOOLTIP_WRAPPER_STYLE}
+                />
+                {zoom.selectionDomain ? (
+                  <ReferenceArea
+                    x1={zoom.selectionDomain[0]}
+                    x2={zoom.selectionDomain[1]}
+                    fill={CHART_ZOOM_HIGHLIGHT_FILL}
+                    fillOpacity={CHART_ZOOM_HIGHLIGHT_OPACITY}
+                  />
+                ) : null}
+                <Line
+                  type="monotone"
+                  dataKey="value"
+                  stroke="rgb(var(--color-accent))"
+                  strokeWidth={2.5}
+                  dot={false}
+                  connectNulls={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+          <p className="text-xs text-muted">
+            Drag to zoom the x-axis. Click once to reset.
+            {zoom.isZoomed ? ' Showing a zoomed range.' : ''}
+          </p>
         </div>
       ) : (
         <p className="text-sm text-muted">No series points for this metric in the selected range.</p>
@@ -183,13 +398,15 @@ function StreakPreview({
 function ChartPreview({
   chart,
   result,
-  metricsById
+  metricsById,
+  metricResults
 }: {
   chart: AdvancedAnalyticsChartDefinition;
   result?: AdvancedAnalyticsChartResult;
   metricsById: Map<string, AdvancedAnalyticsMetricDefinition>;
+  metricResults: Record<string, AdvancedAnalyticsMetricResult>;
 }) {
-  const rows: Array<Record<string, string | number | null>> = (result?.points ?? []).map((point) => ({
+  const rows: ChartRow[] = (result?.points ?? []).map((point) => ({
     key: point.key,
     label: point.label,
     ...point.values
@@ -204,6 +421,17 @@ function ChartPreview({
 
     return chart.metricIds.some((metricId) => row[metricId] !== null && row[metricId] !== undefined);
   });
+  const zoom = useZoomableRows(visibleRows);
+  const chartUnitsByMetricId = useMemo(
+    () =>
+      Object.fromEntries(
+        chart.metricIds.map((metricId) => [
+          metricId,
+          metricResultUnit(metricsById.get(metricId), metricResults[metricId]) ?? ''
+        ])
+      ),
+    [chart.metricIds, metricResults, metricsById]
+  );
 
   return (
     <div className="space-y-4">
@@ -216,46 +444,103 @@ function ChartPreview({
       </div>
 
       {visibleRows.length > 0 ? (
-        <div className="h-80 rounded-xl border border-border bg-panel p-3">
-          <ResponsiveContainer width="100%" height="100%">
-            {chart.chartType === 'line' ? (
-              <LineChart data={visibleRows}>
-                <CartesianGrid stroke="rgba(var(--color-border),0.65)" strokeDasharray="3 3" />
-                <XAxis dataKey="key" tick={{ fill: 'rgb(var(--color-muted))', fontSize: 12 }} />
-                <YAxis tick={{ fill: 'rgb(var(--color-muted))', fontSize: 12 }} />
-                <Tooltip />
-                <Legend />
-                {chart.metricIds.slice(0, 1).map((metricId, index) => (
-                  <Line
-                    key={metricId}
-                    type="monotone"
-                    dataKey={metricId}
-                    name={metricsById.get(metricId)?.name ?? metricId}
-                    stroke={CHART_COLORS[index % CHART_COLORS.length]}
-                    strokeWidth={2}
-                    dot={false}
+        <div className="space-y-2">
+          <div className="h-80 rounded-lg border border-border/80 bg-bg/30 p-3">
+            <ResponsiveContainer width="100%" height="100%">
+              {chart.chartType === 'line' ? (
+                <LineChart
+                  data={zoom.visibleRows}
+                  onMouseDown={zoom.onMouseDown}
+                  onMouseMove={zoom.onMouseMove}
+                  onMouseUp={zoom.onMouseUp}
+                  onMouseLeave={zoom.onMouseLeave}
+                >
+                  <CartesianGrid stroke={CHART_GRID_STROKE} strokeDasharray="3 3" vertical={false} />
+                  <XAxis
+                    dataKey="key"
+                    stroke={CHART_AXIS_STROKE}
+                    tick={{ fill: 'rgb(var(--color-muted))', fontSize: 12 }}
                   />
-                ))}
-              </LineChart>
-            ) : (
-              <BarChart data={visibleRows}>
-                <CartesianGrid stroke="rgba(var(--color-border),0.65)" strokeDasharray="3 3" />
-                <XAxis dataKey="key" tick={{ fill: 'rgb(var(--color-muted))', fontSize: 12 }} />
-                <YAxis tick={{ fill: 'rgb(var(--color-muted))', fontSize: 12 }} />
-                <Tooltip />
-                <Legend />
-                {chart.metricIds.map((metricId, index) => (
-                  <Bar
-                    key={metricId}
-                    dataKey={metricId}
-                    name={metricsById.get(metricId)?.name ?? metricId}
-                    stackId={chart.chartType === 'stackedBar' ? 'stack' : undefined}
-                    fill={CHART_COLORS[index % CHART_COLORS.length]}
+                  <YAxis
+                    stroke={CHART_AXIS_STROKE}
+                    tick={{ fill: 'rgb(var(--color-muted))', fontSize: 12 }}
+                    width={60}
                   />
-                ))}
-              </BarChart>
-            )}
-          </ResponsiveContainer>
+                  <Tooltip
+                    cursor={{ stroke: CHART_AXIS_STROKE, strokeWidth: 1 }}
+                    content={<AnalyticsChartTooltip unitsByKey={chartUnitsByMetricId} />}
+                    wrapperStyle={CHART_TOOLTIP_WRAPPER_STYLE}
+                  />
+                  {zoom.selectionDomain ? (
+                    <ReferenceArea
+                      x1={zoom.selectionDomain[0]}
+                      x2={zoom.selectionDomain[1]}
+                      fill={CHART_ZOOM_HIGHLIGHT_FILL}
+                      fillOpacity={CHART_ZOOM_HIGHLIGHT_OPACITY}
+                    />
+                  ) : null}
+                  {chart.metricIds.slice(0, 1).map((metricId, index) => (
+                    <Line
+                      key={metricId}
+                      type="monotone"
+                      dataKey={metricId}
+                      name={metricsById.get(metricId)?.name ?? metricId}
+                      stroke={CHART_COLORS[index % CHART_COLORS.length]}
+                      strokeWidth={2.5}
+                      dot={false}
+                    />
+                  ))}
+                </LineChart>
+              ) : (
+                <BarChart
+                  data={zoom.visibleRows}
+                  onMouseDown={zoom.onMouseDown}
+                  onMouseMove={zoom.onMouseMove}
+                  onMouseUp={zoom.onMouseUp}
+                  onMouseLeave={zoom.onMouseLeave}
+                >
+                  <CartesianGrid stroke={CHART_GRID_STROKE} strokeDasharray="3 3" vertical={false} />
+                  <XAxis
+                    dataKey="key"
+                    stroke={CHART_AXIS_STROKE}
+                    tick={{ fill: 'rgb(var(--color-muted))', fontSize: 12 }}
+                  />
+                  <YAxis
+                    stroke={CHART_AXIS_STROKE}
+                    tick={{ fill: 'rgb(var(--color-muted))', fontSize: 12 }}
+                    width={60}
+                  />
+                  <Tooltip
+                    cursor={{ fill: 'transparent' }}
+                    content={<AnalyticsChartTooltip unitsByKey={chartUnitsByMetricId} />}
+                    wrapperStyle={CHART_TOOLTIP_WRAPPER_STYLE}
+                  />
+                  {zoom.selectionDomain ? (
+                    <ReferenceArea
+                      x1={zoom.selectionDomain[0]}
+                      x2={zoom.selectionDomain[1]}
+                      fill={CHART_ZOOM_HIGHLIGHT_FILL}
+                      fillOpacity={CHART_ZOOM_HIGHLIGHT_OPACITY}
+                    />
+                  ) : null}
+                  {chart.metricIds.map((metricId, index) => (
+                    <Bar
+                      key={metricId}
+                      dataKey={metricId}
+                      name={metricsById.get(metricId)?.name ?? metricId}
+                      stackId={chart.chartType === 'stackedBar' ? 'stack' : undefined}
+                      fill={CHART_COLORS[index % CHART_COLORS.length]}
+                      radius={[3, 3, 0, 0]}
+                    />
+                  ))}
+                </BarChart>
+              )}
+            </ResponsiveContainer>
+          </div>
+          <p className="text-xs text-muted">
+            Drag to zoom the x-axis. Click once to reset.
+            {zoom.isZoomed ? ' Showing a zoomed range.' : ''}
+          </p>
         </div>
       ) : (
         <p className="text-sm text-muted">No chart points for this chart in the selected range.</p>
@@ -350,6 +635,7 @@ export function AnalyticsPreview({
                 chart={chart}
                 result={chartResults[chart.id]}
                 metricsById={metricsById}
+                metricResults={metricResults}
               />
             ))}
           </section>
@@ -395,7 +681,12 @@ export function AnalyticsPreview({
         <StreakPreview streak={selectedStreak} result={streakResults[selectedStreak.id]} />
       ) : null}
       {selectedChart ? (
-        <ChartPreview chart={selectedChart} result={chartResults[selectedChart.id]} metricsById={metricsById} />
+        <ChartPreview
+          chart={selectedChart}
+          result={chartResults[selectedChart.id]}
+          metricsById={metricsById}
+          metricResults={metricResults}
+        />
       ) : null}
     </div>
   );
