@@ -3,8 +3,10 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
+  Legend,
   Line,
   LineChart,
+  Rectangle,
   ReferenceArea,
   ResponsiveContainer,
   type TooltipProps,
@@ -382,6 +384,26 @@ function ChartPreview({
       ),
     [chart.metricIds, metricResults, metricsById]
   );
+  const stackedTopMetricIdByRowKey = useMemo(() => {
+    if (chart.chartType !== 'stackedBar') {
+      return new Map<string, string>();
+    }
+
+    const topByKey = new Map<string, string>();
+    for (const row of zoom.visibleRows) {
+      for (let index = chart.metricIds.length - 1; index >= 0; index -= 1) {
+        const metricId = chart.metricIds[index];
+        const value = row[metricId];
+        if (typeof value !== 'number' || !Number.isFinite(value) || Math.abs(value) <= 1e-9) {
+          continue;
+        }
+        topByKey.set(row.key, metricId);
+        break;
+      }
+    }
+
+    return topByKey;
+  }, [chart.chartType, chart.metricIds, zoom.visibleRows]);
 
   return (
     <div className="space-y-4">
@@ -434,6 +456,13 @@ function ChartPreview({
                       fillOpacity={CHART_SELECTION_FILL_OPACITY}
                       stroke={CHART_SELECTION_STROKE}
                       strokeOpacity={CHART_SELECTION_STROKE_OPACITY}
+                    />
+                  ) : null}
+                  {chart.metricIds.length > 1 ? (
+                    <Legend
+                      iconType="circle"
+                      iconSize={8}
+                      wrapperStyle={{ fontSize: 12, lineHeight: '20px', paddingBottom: 4 }}
                     />
                   ) : null}
                   {chart.metricIds.slice(0, 1).map((metricId, index) => (
@@ -490,17 +519,39 @@ function ChartPreview({
                       strokeOpacity={CHART_SELECTION_STROKE_OPACITY}
                     />
                   ) : null}
-                  {chart.metricIds.map((metricId, index) => (
-                    <Bar
-                      key={metricId}
-                      dataKey={metricId}
-                      name={metricsById.get(metricId)?.name ?? metricId}
-                      stackId={chart.chartType === 'stackedBar' ? 'stack' : undefined}
-                      fill={CHART_COLORS[index % CHART_COLORS.length]}
-                      radius={[3, 3, 0, 0]}
-                      isAnimationActive={CHART_IS_ANIMATION_ACTIVE}
+                  {chart.metricIds.length > 1 ? (
+                    <Legend
+                      iconType="circle"
+                      iconSize={8}
+                      wrapperStyle={{ fontSize: 12, lineHeight: '20px', paddingBottom: 4 }}
                     />
-                  ))}
+                  ) : null}
+                  {chart.metricIds.map((metricId, index) => {
+                    const isStacked = chart.chartType === 'stackedBar';
+                    return (
+                      <Bar
+                        key={metricId}
+                        dataKey={metricId}
+                        name={metricsById.get(metricId)?.name ?? metricId}
+                        stackId={isStacked ? 'stack' : undefined}
+                        fill={CHART_COLORS[index % CHART_COLORS.length]}
+                        radius={isStacked ? [0, 0, 0, 0] : [3, 3, 0, 0]}
+                        shape={
+                          isStacked
+                            ? ((shapeProps: unknown) => {
+                                const props = shapeProps as { payload?: { key?: string } } & Record<string, unknown>;
+                                const rowKey = props.payload?.key;
+                                const roundTop =
+                                  typeof rowKey === 'string' &&
+                                  stackedTopMetricIdByRowKey.get(rowKey) === metricId;
+                                return <Rectangle {...props} radius={roundTop ? [3, 3, 0, 0] : [0, 0, 0, 0]} />;
+                              })
+                            : undefined
+                        }
+                        isAnimationActive={CHART_IS_ANIMATION_ACTIVE}
+                      />
+                    );
+                  })}
                 </BarChart>
               )}
             </ResponsiveContainer>

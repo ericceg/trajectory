@@ -540,6 +540,7 @@ Key behaviors:
   - formula metrics (`+`, `-`, `/`, `%`)
   - daily/weekly threshold streaks
   - time-bucketed chart views (`bar`, `line`, `stackedBar`)
+- Multi-series chart previews render a legend; stacked bars use per-segment corner logic so only the top visible segment per stack bucket has rounded top corners (internal joins stay square)
 - Guided builder UI only (no DSL), AND-only conditions
 - UI separates analytics editing vs preview into Configure/View tabs (View is default and renders an at-a-glance overview); metrics include a persisted `showInView` toggle used to filter the View metrics section
 - Uses Settings heart-rate zone cutoffs for HR-zone sample conditions
