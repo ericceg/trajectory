@@ -46,6 +46,7 @@ Prototype (actively evolving).
 - Heatmap filters for time span (presets + custom), category, and sport type
 - Advanced Analytics tab (prototype) with locally saved custom metrics, formula metrics, threshold streaks, and time-bucketed charts (bar/line/stacked bar), plus separate Configure/View tabs (View opens by default with an at-a-glance overview)
 - Advanced Analytics supports title-based conditions (e.g. push/pull names) and sample-derived metrics such as heart-rate zone time via `Sample time` rules
+- Advanced Analytics metric builders use a predefined unit-display dropdown (for example `%`, `s`, `count`, `km`, `bpm`) instead of free-form text input, and metric values/series are converted to the selected compatible display unit (not just relabeled)
 - Advanced Analytics metric/chart plots support Activity Detail-style interactions and visual treatment: drag-to-zoom on x-axis buckets, click-to-reset, zoom-window rendering so y-axes re-fit to the visible range, matching tooltip/axis/grid styling, no chart animations, multi-series legends, and stacked bars that round only the true stack top (internal segment joins stay square)
 - Chart text/number labels inside plot surfaces are non-selectable to avoid accidental text highlighting during drag-to-zoom
 - Standardized display formatting: durations/times render as `HH:mm:ss`, dates as `dd.MM.yyyy` (or `dd.MM.yyyy HH:mm:ss` where date+time is shown), and distances in kilometers (`km`)

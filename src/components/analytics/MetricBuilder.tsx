@@ -23,6 +23,23 @@ const BASE_MEASURE_OPTIONS: Array<{ value: AdvancedAnalyticsBaseMeasure; label: 
   { value: 'sampleTime', label: 'Sample time' }
 ];
 
+const UNIT_DISPLAY_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: '', label: 'None' },
+  { value: 'count', label: 'Count' },
+  { value: '%', label: 'Percent (%)' },
+  { value: 's', label: 'Seconds (s)' },
+  { value: 'min', label: 'Minutes (min)' },
+  { value: 'h', label: 'Hours (h)' },
+  { value: 'km', label: 'Kilometers (km)' },
+  { value: 'm', label: 'Meters (m)' },
+  { value: 'mi', label: 'Miles (mi)' },
+  { value: 'km/h', label: 'Speed (km/h)' },
+  { value: 'm/s', label: 'Speed (m/s)' },
+  { value: 'bpm', label: 'Heart rate (bpm)' },
+  { value: 'W', label: 'Power (W)' },
+  { value: 'rpm', label: 'Cadence (rpm)' }
+];
+
 const ACTIVITY_FIELD_OPTIONS: Array<{ value: AdvancedAnalyticsActivityConditionField; label: string }> = [
   { value: 'title', label: 'Title' },
   { value: 'category', label: 'Category' },
@@ -102,6 +119,14 @@ function displayOperator(label: string) {
     .replace(/^./, (ch) => ch.toUpperCase());
 }
 
+function unitDisplayOptionsForValue(value?: string | null): Array<{ value: string; label: string }> {
+  const currentValue = value ?? '';
+  if (!currentValue || UNIT_DISPLAY_OPTIONS.some((option) => option.value === currentValue)) {
+    return UNIT_DISPLAY_OPTIONS;
+  }
+  return [{ value: currentValue, label: `Custom (${currentValue})` }, ...UNIT_DISPLAY_OPTIONS];
+}
+
 interface MetricBuilderProps {
   metric: AdvancedAnalyticsMetricDefinition;
   allMetrics: AdvancedAnalyticsMetricDefinition[];
@@ -123,6 +148,8 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
     rightMetricId: allMetrics.find((candidate) => candidate.id !== metric.id)?.id ?? '',
     displayUnit: '%'
   };
+  const baseDisplayUnitOptions = unitDisplayOptionsForValue(base.displayUnit);
+  const formulaDisplayUnitOptions = unitDisplayOptionsForValue(formula.displayUnit);
 
   const updateActivityCondition = (
     conditionId: string,
@@ -271,7 +298,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
 
           <label className="space-y-1 text-sm">
             <span className="text-muted">Unit display (optional override)</span>
-            <input
+            <select
               value={base.displayUnit ?? ''}
               onChange={(event) =>
                 onChange({
@@ -283,9 +310,14 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                   }
                 })
               }
-              placeholder="e.g. s, %, count"
               className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm"
-            />
+            >
+              {baseDisplayUnitOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </label>
 
           <div className="space-y-2 rounded-lg border border-border bg-bg/30 p-3">
@@ -628,7 +660,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
 
           <label className="space-y-1 text-sm">
             <span className="text-muted">Unit display</span>
-            <input
+            <select
               value={formula.displayUnit ?? ''}
               onChange={(event) =>
                 onChange({
@@ -637,9 +669,14 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                   formula: { ...formula, displayUnit: event.target.value }
                 })
               }
-              placeholder="e.g. %, ratio"
               className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm"
-            />
+            >
+              {formulaDisplayUnitOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </label>
         </div>
       )}

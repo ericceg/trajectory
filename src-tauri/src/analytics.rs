@@ -43,6 +43,7 @@ struct InternalMetricResult {
     name: String,
     scalar_value: Option<f64>,
     unit: Option<String>,
+    value_unit: Option<String>,
     day: BucketSeries,
     week: BucketSeries,
     month: BucketSeries,
@@ -258,6 +259,7 @@ fn error_metric(metric_id: &str, name: &str, message: &str) -> InternalMetricRes
         name: name.to_string(),
         scalar_value: None,
         unit: None,
+        value_unit: None,
         day: BTreeMap::new(),
         week: BTreeMap::new(),
         month: BTreeMap::new(),
@@ -272,11 +274,13 @@ fn compute_formula_metric(
     left: Option<InternalMetricResult>,
     right: Option<InternalMetricResult>,
 ) -> InternalMetricResult {
+    let display_unit_override = normalized_unit_option(formula.display_unit.as_deref());
     let mut result = InternalMetricResult {
         metric_id: metric.id.clone(),
         name: metric.name.clone(),
         scalar_value: None,
-        unit: formula.display_unit.clone(),
+        unit: display_unit_override.clone(),
+        value_unit: None,
         day: BTreeMap::new(),
         week: BTreeMap::new(),
         month: BTreeMap::new(),
@@ -291,7 +295,7 @@ fn compute_formula_metric(
         ));
         return result;
     };
-    let Some(right) = right else {
+    let Some(mut right) = right else {
         result.errors.push(format!(
             "Right metric '{}' not found.",
             formula.right_metric_id
@@ -310,14 +314,30 @@ fn compute_formula_metric(
             .push(format!("Right metric '{}' has errors.", right.name));
     }
 
-    result.scalar_value = apply_formula(formula.operator, left.scalar_value, right.scalar_value);
-    if result.unit.is_none() {
-        result.unit = left.unit.clone().or(right.unit.clone());
-    }
+    result.value_unit = match formula.operator {
+        AdvancedAnalyticsFormulaOperator::Add | AdvancedAnalyticsFormulaOperator::Subtract => {
+            align_formula_units_for_add_subtract(&left, &mut right, &mut result.warnings)
+        }
+        AdvancedAnalyticsFormulaOperator::Divide => infer_division_value_unit(
+            left.value_unit.as_deref().or(left.unit.as_deref()),
+            right.value_unit.as_deref().or(right.unit.as_deref()),
+        ),
+        AdvancedAnalyticsFormulaOperator::Percent => Some("%".to_string()),
+    };
 
+    result.scalar_value = apply_formula(formula.operator, left.scalar_value, right.scalar_value);
     result.day = combine_series_with_formula(formula.operator, &left.day, &right.day);
     result.week = combine_series_with_formula(formula.operator, &left.week, &right.week);
     result.month = combine_series_with_formula(formula.operator, &left.month, &right.month);
+
+    if result.unit.is_none() {
+        result.unit = result
+            .value_unit
+            .clone()
+            .or_else(|| left.unit.clone().or(right.unit.clone()));
+    }
+    let output_unit = result.unit.clone();
+    apply_display_unit_conversion(&mut result, output_unit);
 
     result
 }
@@ -389,14 +409,15 @@ fn compute_base_metric(
     sample_cache: &mut HashMap<i64, Vec<ActivitySample>>,
     hr_zone_upper_bounds: &[u16],
 ) -> Result<InternalMetricResult> {
+    let display_unit_override = normalized_unit_option(base.display_unit.as_deref());
+    let source_unit = default_unit_for_measure(base.measure).map(ToString::to_string);
+    let display_unit = display_unit_override.or_else(|| source_unit.clone());
     let mut result = InternalMetricResult {
         metric_id: metric.id.clone(),
         name: metric.name.clone(),
         scalar_value: Some(0.0),
-        unit: base
-            .display_unit
-            .clone()
-            .or_else(|| default_unit_for_measure(base.measure).map(ToString::to_string)),
+        unit: display_unit.clone(),
+        value_unit: source_unit,
         day: BTreeMap::new(),
         week: BTreeMap::new(),
         month: BTreeMap::new(),
@@ -538,7 +559,177 @@ fn compute_base_metric(
             .push("Sample conditions are ignored unless measure is Sample time.".to_string());
     }
 
+    apply_display_unit_conversion(&mut result, display_unit);
+
     Ok(result)
+}
+
+fn normalized_unit_option(unit: Option<&str>) -> Option<String> {
+    unit.and_then(|raw| {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    })
+}
+
+fn normalized_unit_key(unit: &str) -> String {
+    match unit.trim().to_lowercase().as_str() {
+        "sec" | "second" | "seconds" => "s".to_string(),
+        "mins" | "minute" | "minutes" => "min".to_string(),
+        "hour" | "hours" | "hr" | "hrs" => "h".to_string(),
+        "meter" | "meters" => "m".to_string(),
+        "kilometer" | "kilometers" => "km".to_string(),
+        "mile" | "miles" => "mi".to_string(),
+        "kmh" | "kph" => "km/h".to_string(),
+        "mps" => "m/s".to_string(),
+        "mph" => "mi/h".to_string(),
+        other => other.to_string(),
+    }
+}
+
+fn distance_to_meters_factor(unit_key: &str) -> Option<f64> {
+    match unit_key {
+        "m" => Some(1.0),
+        "km" => Some(1000.0),
+        "mi" => Some(1609.344),
+        _ => None,
+    }
+}
+
+fn duration_to_seconds_factor(unit_key: &str) -> Option<f64> {
+    match unit_key {
+        "s" => Some(1.0),
+        "min" => Some(60.0),
+        "h" => Some(3600.0),
+        _ => None,
+    }
+}
+
+fn speed_to_mps_factor(unit_key: &str) -> Option<f64> {
+    match unit_key {
+        "m/s" => Some(1.0),
+        "km/h" => Some(1000.0 / 3600.0),
+        "mi/h" => Some(1609.344 / 3600.0),
+        _ => None,
+    }
+}
+
+fn unit_multiplier(from_key: &str, to_key: &str) -> Option<f64> {
+    if from_key == to_key {
+        return Some(1.0);
+    }
+    if let (Some(from), Some(to)) = (
+        distance_to_meters_factor(from_key),
+        distance_to_meters_factor(to_key),
+    ) {
+        return Some(from / to);
+    }
+    if let (Some(from), Some(to)) = (
+        duration_to_seconds_factor(from_key),
+        duration_to_seconds_factor(to_key),
+    ) {
+        return Some(from / to);
+    }
+    if let (Some(from), Some(to)) = (speed_to_mps_factor(from_key), speed_to_mps_factor(to_key)) {
+        return Some(from / to);
+    }
+    None
+}
+
+fn apply_series_multiplier(series: &mut BucketSeries, multiplier: f64) {
+    for point in series.values_mut() {
+        point.value = point.value.map(|value| value * multiplier);
+    }
+}
+
+fn apply_metric_multiplier(metric: &mut InternalMetricResult, multiplier: f64) {
+    metric.scalar_value = metric.scalar_value.map(|value| value * multiplier);
+    apply_series_multiplier(&mut metric.day, multiplier);
+    apply_series_multiplier(&mut metric.week, multiplier);
+    apply_series_multiplier(&mut metric.month, multiplier);
+}
+
+fn apply_display_unit_conversion(metric: &mut InternalMetricResult, display_unit: Option<String>) {
+    let Some(target_unit) = display_unit.and_then(|unit| normalized_unit_option(Some(&unit)))
+    else {
+        return;
+    };
+    metric.unit = Some(target_unit.clone());
+
+    let Some(source_unit) = metric.value_unit.clone() else {
+        return;
+    };
+    let source_key = normalized_unit_key(&source_unit);
+    let target_key = normalized_unit_key(&target_unit);
+
+    let Some(multiplier) = unit_multiplier(&source_key, &target_key) else {
+        if source_key != target_key {
+            metric.warnings.push(format!(
+                "Cannot convert values from '{}' to '{}'; using raw values.",
+                source_unit, target_unit
+            ));
+        }
+        return;
+    };
+
+    if (multiplier - 1.0).abs() > f64::EPSILON {
+        apply_metric_multiplier(metric, multiplier);
+    }
+    metric.value_unit = Some(target_unit);
+}
+
+fn align_formula_units_for_add_subtract(
+    left: &InternalMetricResult,
+    right: &mut InternalMetricResult,
+    warnings: &mut Vec<String>,
+) -> Option<String> {
+    let left_unit = left
+        .value_unit
+        .as_deref()
+        .or(left.unit.as_deref())
+        .and_then(|unit| normalized_unit_option(Some(unit)));
+    let right_unit = right
+        .value_unit
+        .as_deref()
+        .or(right.unit.as_deref())
+        .and_then(|unit| normalized_unit_option(Some(unit)));
+
+    match (left_unit, right_unit) {
+        (Some(left_unit), Some(right_unit)) => {
+            let left_key = normalized_unit_key(&left_unit);
+            let right_key = normalized_unit_key(&right_unit);
+            if let Some(multiplier) = unit_multiplier(&right_key, &left_key) {
+                if (multiplier - 1.0).abs() > f64::EPSILON {
+                    apply_metric_multiplier(right, multiplier);
+                }
+                right.value_unit = Some(left_unit.clone());
+            } else {
+                warnings.push(format!(
+                    "Formula operands use incompatible units ('{}' and '{}'); operation used raw values.",
+                    left_unit, right_unit
+                ));
+            }
+            Some(left_unit)
+        }
+        (Some(left_unit), None) => Some(left_unit),
+        (None, Some(right_unit)) => Some(right_unit),
+        (None, None) => None,
+    }
+}
+
+fn infer_division_value_unit(left_unit: Option<&str>, right_unit: Option<&str>) -> Option<String> {
+    let left_key = normalized_unit_option(left_unit).map(|unit| normalized_unit_key(&unit))?;
+    let right_key = normalized_unit_option(right_unit).map(|unit| normalized_unit_key(&unit))?;
+
+    match (left_key.as_str(), right_key.as_str()) {
+        ("m", "s") => Some("m/s".to_string()),
+        ("km", "h") => Some("km/h".to_string()),
+        ("mi", "h") => Some("mi/h".to_string()),
+        _ => None,
+    }
 }
 
 fn default_unit_for_measure(measure: AdvancedAnalyticsBaseMeasure) -> Option<&'static str> {
@@ -1385,6 +1576,7 @@ mod tests {
             name: "Metric".into(),
             scalar_value: Some(2.0),
             unit: Some("count".into()),
+            value_unit: Some("count".into()),
             day: BTreeMap::new(),
             week: BTreeMap::new(),
             month: BTreeMap::new(),
@@ -1428,5 +1620,76 @@ mod tests {
 
         assert_eq!(metric.week.len(), 2);
         assert_eq!(metric.month.len(), 1);
+    }
+
+    #[test]
+    fn conversion_helpers_convert_distance_time_and_speed_units() {
+        let km_to_mi = unit_multiplier("km", "mi").expect("km->mi conversion");
+        assert!((km_to_mi - 0.621_371).abs() < 1e-6);
+
+        let sec_to_hour = unit_multiplier("s", "h").expect("s->h conversion");
+        assert!((sec_to_hour - (1.0 / 3600.0)).abs() < 1e-9);
+
+        let mps_to_kmh = unit_multiplier("m/s", "km/h").expect("m/s->km/h conversion");
+        assert!((mps_to_kmh - 3.6).abs() < 1e-9);
+    }
+
+    #[test]
+    fn display_unit_conversion_updates_scalar_and_series_values() {
+        let mut metric = InternalMetricResult {
+            metric_id: "distance".into(),
+            name: "Distance".into(),
+            scalar_value: Some(3000.0),
+            unit: Some("km".into()),
+            value_unit: Some("m".into()),
+            day: BTreeMap::new(),
+            week: BTreeMap::new(),
+            month: BTreeMap::new(),
+            errors: Vec::new(),
+            warnings: Vec::new(),
+        };
+        metric.day.insert(
+            "2026-02-01".into(),
+            BucketValue {
+                label: "2026-02-01".into(),
+                value: Some(1500.0),
+            },
+        );
+
+        apply_display_unit_conversion(&mut metric, Some("km".into()));
+
+        assert_eq!(metric.unit.as_deref(), Some("km"));
+        assert_eq!(metric.value_unit.as_deref(), Some("km"));
+        assert!((metric.scalar_value.unwrap_or_default() - 3.0).abs() < 1e-9);
+        let day_value = metric
+            .day
+            .get("2026-02-01")
+            .and_then(|point| point.value)
+            .unwrap_or_default();
+        assert!((day_value - 1.5).abs() < 1e-9);
+    }
+
+    #[test]
+    fn empty_display_unit_is_treated_as_missing_override() {
+        assert_eq!(normalized_unit_option(Some("")), None);
+        assert_eq!(normalized_unit_option(Some("   ")), None);
+        assert_eq!(normalized_unit_option(Some(" km ")).as_deref(), Some("km"));
+    }
+
+    #[test]
+    fn infer_division_units_for_common_speed_combinations() {
+        assert_eq!(
+            infer_division_value_unit(Some("m"), Some("s")).as_deref(),
+            Some("m/s")
+        );
+        assert_eq!(
+            infer_division_value_unit(Some("km"), Some("h")).as_deref(),
+            Some("km/h")
+        );
+        assert_eq!(
+            infer_division_value_unit(Some("mi"), Some("h")).as_deref(),
+            Some("mi/h")
+        );
+        assert_eq!(infer_division_value_unit(Some("count"), Some("s")), None);
     }
 }
