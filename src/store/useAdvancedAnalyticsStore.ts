@@ -4,211 +4,216 @@ import { persist } from 'zustand/middleware';
 
 import type {
   AdvancedAnalyticsActivityCondition,
+  AdvancedAnalyticsActivityConditionGroup,
   AdvancedAnalyticsBaseMetricDefinition,
-  AdvancedAnalyticsChartDefinition,
+  AdvancedAnalyticsBaseMeasure,
   AdvancedAnalyticsMetricDefinition,
   AdvancedAnalyticsSampleCondition,
-  AdvancedAnalyticsStreakDefinition
+  AdvancedAnalyticsSampleConditionGroup
 } from '@/types';
 
 export type AdvancedAnalyticsTimeRangePreset = 'all' | '30d' | '90d' | '365d' | 'custom';
-export type AdvancedAnalyticsSelection =
-  | { kind: 'metric'; id: string }
-  | { kind: 'streak'; id: string }
-  | { kind: 'chart'; id: string }
-  | null;
 
 interface AdvancedAnalyticsState {
   schemaVersion: number;
   metrics: AdvancedAnalyticsMetricDefinition[];
-  streaks: AdvancedAnalyticsStreakDefinition[];
-  charts: AdvancedAnalyticsChartDefinition[];
   timeRangePreset: AdvancedAnalyticsTimeRangePreset;
   customStartDate: string;
   customEndDate: string;
   autoRun: boolean;
-  selectedItem: AdvancedAnalyticsSelection;
   setTimeRangePreset: (preset: AdvancedAnalyticsTimeRangePreset) => void;
   setCustomStartDate: (value: string) => void;
   setCustomEndDate: (value: string) => void;
   setAutoRun: (value: boolean) => void;
-  setSelectedItem: (selection: AdvancedAnalyticsSelection) => void;
-  addMetric: (kind?: 'base' | 'formula') => void;
+  addMetric: (template?: 'activitiesCount' | 'sampleTime') => string;
   updateMetric: (id: string, updater: (metric: AdvancedAnalyticsMetricDefinition) => AdvancedAnalyticsMetricDefinition) => void;
   removeMetric: (id: string) => void;
-  addStreak: () => void;
-  updateStreak: (id: string, updater: (streak: AdvancedAnalyticsStreakDefinition) => AdvancedAnalyticsStreakDefinition) => void;
-  removeStreak: (id: string) => void;
-  addChart: () => void;
-  updateChart: (id: string, updater: (chart: AdvancedAnalyticsChartDefinition) => AdvancedAnalyticsChartDefinition) => void;
-  removeChart: (id: string) => void;
 }
 
 const today = new Date();
-
-const defaultBaseMetric = (): AdvancedAnalyticsBaseMetricDefinition => ({
-  measure: 'activitiesCount',
-  activityConditions: [],
-  sampleConditions: [],
-  defaultChartGranularity: 'week',
-  displayUnit: ''
-});
 
 const newId = (prefix: string) =>
   typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
     ? `${prefix}_${crypto.randomUUID().slice(0, 8)}`
     : `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
 
-const blankActivityCondition = (): AdvancedAnalyticsActivityCondition => ({
+const normalizeMetricName = (index: number) => `Metric ${index + 1}`;
+
+const defaultBaseMetric = (
+  measure: AdvancedAnalyticsBaseMeasure
+): AdvancedAnalyticsBaseMetricDefinition => ({
+  measure,
+  activityConditions: [],
+  activityConditionGroups: [],
+  sampleConditions: [],
+  sampleConditionGroups: [],
+  defaultChartGranularity: 'week' as const,
+  displayUnit: ''
+});
+
+export const createBlankActivityCondition = (): AdvancedAnalyticsActivityCondition => ({
   id: newId('ac'),
-  field: 'title',
+  field: 'sportType',
   operator: 'contains',
   value: ''
 });
 
-const blankSampleCondition = (): AdvancedAnalyticsSampleCondition => ({
+export const createBlankActivityConditionGroup = (): AdvancedAnalyticsActivityConditionGroup => ({
+  id: newId('ag'),
+  conditions: [createBlankActivityCondition()]
+});
+
+export const createBlankSampleCondition = (): AdvancedAnalyticsSampleCondition => ({
   id: newId('sc'),
   field: 'heartRateZone',
   operator: 'is',
   zone: 2
 });
 
-export const createBlankActivityCondition = blankActivityCondition;
-export const createBlankSampleCondition = blankSampleCondition;
+export const createBlankSampleConditionGroup = (): AdvancedAnalyticsSampleConditionGroup => ({
+  id: newId('sg'),
+  conditions: [createBlankSampleCondition()]
+});
+
+const createMetric = (index: number, template: 'activitiesCount' | 'sampleTime'): AdvancedAnalyticsMetricDefinition => {
+  const id = newId('metric');
+  const base = defaultBaseMetric(template);
+
+  if (template === 'sampleTime') {
+    base.displayUnit = 'h';
+    base.sampleConditionGroups = [createBlankSampleConditionGroup()];
+  }
+
+  return {
+    id,
+    name: normalizeMetricName(index),
+    kind: 'base',
+    showInView: true,
+    base
+  };
+};
+
+function migrateMetrics(rawMetrics: unknown): AdvancedAnalyticsMetricDefinition[] {
+  if (!Array.isArray(rawMetrics)) {
+    return [];
+  }
+
+  const migrated: AdvancedAnalyticsMetricDefinition[] = [];
+
+  for (const item of rawMetrics) {
+    if (!item || typeof item !== 'object') {
+      continue;
+    }
+
+    const metric = item as AdvancedAnalyticsMetricDefinition;
+    if (metric.kind !== 'base' || !metric.base) {
+      continue;
+    }
+
+    const legacyActivityConditions = metric.base.activityConditions ?? [];
+    const legacySampleConditions = metric.base.sampleConditions ?? [];
+
+    const activityConditionGroups =
+      metric.base.activityConditionGroups && metric.base.activityConditionGroups.length > 0
+        ? metric.base.activityConditionGroups
+        : legacyActivityConditions.length > 0
+          ? [
+              {
+                id: newId('ag'),
+                conditions: legacyActivityConditions
+              }
+            ]
+          : [];
+
+    const sampleConditionGroups =
+      metric.base.sampleConditionGroups && metric.base.sampleConditionGroups.length > 0
+        ? metric.base.sampleConditionGroups
+        : legacySampleConditions.length > 0
+          ? [
+              {
+                id: newId('sg'),
+                conditions: legacySampleConditions
+              }
+            ]
+          : [];
+
+    migrated.push({
+      ...metric,
+      kind: 'base',
+      formula: undefined,
+      base: {
+        ...defaultBaseMetric(metric.base.measure ?? 'activitiesCount'),
+        ...metric.base,
+        activityConditions: legacyActivityConditions,
+        sampleConditions: legacySampleConditions,
+        activityConditionGroups,
+        sampleConditionGroups
+      }
+    });
+  }
+
+  return migrated;
+}
 
 export const useAdvancedAnalyticsStore = create<AdvancedAnalyticsState>()(
   persist(
     (set) => ({
-      schemaVersion: 1,
+      schemaVersion: 2,
       metrics: [],
-      streaks: [],
-      charts: [],
       timeRangePreset: '90d',
       customStartDate: format(subDays(today, 30), 'yyyy-MM-dd'),
       customEndDate: format(today, 'yyyy-MM-dd'),
       autoRun: true,
-      selectedItem: null,
       setTimeRangePreset: (preset) => set({ timeRangePreset: preset }),
       setCustomStartDate: (value) => set({ customStartDate: value }),
       setCustomEndDate: (value) => set({ customEndDate: value }),
       setAutoRun: (value) => set({ autoRun: value }),
-      setSelectedItem: (selection) => set({ selectedItem: selection }),
-      addMetric: (kind = 'base') =>
+      addMetric: (template = 'activitiesCount') => {
+        let createdMetricId = '';
         set((state) => {
-          const metric: AdvancedAnalyticsMetricDefinition =
-            kind === 'formula'
-              ? {
-                  id: newId('metric'),
-                  name: `Formula Metric ${state.metrics.filter((m) => m.kind === 'formula').length + 1}`,
-                  kind: 'formula',
-                  showInView: true,
-                  formula: {
-                    leftMetricId: state.metrics.find((m) => m.kind === 'base')?.id ?? '',
-                    operator: 'divide',
-                    rightMetricId: state.metrics.find((m) => m.kind === 'base')?.id ?? '',
-                    displayUnit: '%'
-                  }
-                }
-              : {
-                  id: newId('metric'),
-                  name: `Metric ${state.metrics.filter((m) => m.kind === 'base').length + 1}`,
-                  kind: 'base',
-                  showInView: true,
-                  base: defaultBaseMetric()
-                };
-
-          return {
-            metrics: [...state.metrics, metric],
-            selectedItem: { kind: 'metric', id: metric.id }
-          };
-        }),
+          const metric = createMetric(state.metrics.length, template);
+          createdMetricId = metric.id;
+          return { metrics: [...state.metrics, metric] };
+        });
+        return createdMetricId;
+      },
       updateMetric: (id, updater) =>
         set((state) => ({
           metrics: state.metrics.map((metric) => (metric.id === id ? updater(metric) : metric))
         })),
       removeMetric: (id) =>
         set((state) => ({
-          metrics: state.metrics.filter((metric) => metric.id !== id),
-          streaks: state.streaks.map((streak) =>
-            streak.metricId === id ? { ...streak, metricId: '' } : streak
-          ),
-          charts: state.charts.map((chart) => ({
-            ...chart,
-            metricIds: chart.metricIds.filter((metricId) => metricId !== id)
-          })),
-          selectedItem:
-            state.selectedItem?.kind === 'metric' && state.selectedItem.id === id
-              ? null
-              : state.selectedItem
-        })),
-      addStreak: () =>
-        set((state) => {
-          const streak: AdvancedAnalyticsStreakDefinition = {
-            id: newId('streak'),
-            name: `Streak ${state.streaks.length + 1}`,
-            metricId: state.metrics[0]?.id ?? '',
-            period: 'week',
-            thresholdOperator: 'greaterThanOrEqual',
-            thresholdValue: 60 * 60
-          };
-          return {
-            streaks: [...state.streaks, streak],
-            selectedItem: { kind: 'streak', id: streak.id }
-          };
-        }),
-      updateStreak: (id, updater) =>
-        set((state) => ({
-          streaks: state.streaks.map((streak) => (streak.id === id ? updater(streak) : streak))
-        })),
-      removeStreak: (id) =>
-        set((state) => ({
-          streaks: state.streaks.filter((streak) => streak.id !== id),
-          selectedItem:
-            state.selectedItem?.kind === 'streak' && state.selectedItem.id === id
-              ? null
-              : state.selectedItem
-        })),
-      addChart: () =>
-        set((state) => {
-          const defaultMetricIds = state.metrics.slice(0, 2).map((metric) => metric.id);
-          const chart: AdvancedAnalyticsChartDefinition = {
-            id: newId('chart'),
-            name: `Chart ${state.charts.length + 1}`,
-            chartType: defaultMetricIds.length >= 2 ? 'stackedBar' : 'bar',
-            metricIds:
-              defaultMetricIds.length >= 2 ? defaultMetricIds : defaultMetricIds.slice(0, 1),
-            granularity: 'week'
-          };
-          return {
-            charts: [...state.charts, chart],
-            selectedItem: { kind: 'chart', id: chart.id }
-          };
-        }),
-      updateChart: (id, updater) =>
-        set((state) => ({
-          charts: state.charts.map((chart) => (chart.id === id ? updater(chart) : chart))
-        })),
-      removeChart: (id) =>
-        set((state) => ({
-          charts: state.charts.filter((chart) => chart.id !== id),
-          selectedItem:
-            state.selectedItem?.kind === 'chart' && state.selectedItem.id === id
-              ? null
-              : state.selectedItem
+          metrics: state.metrics.filter((metric) => metric.id !== id)
         }))
     }),
     {
       name: 'trajectory-advanced-analytics',
+      version: 2,
+      migrate: (persistedState) => {
+        const state = persistedState as Partial<AdvancedAnalyticsState> & {
+          metrics?: unknown;
+          timeRangePreset?: AdvancedAnalyticsTimeRangePreset;
+          customStartDate?: string;
+          customEndDate?: string;
+          autoRun?: boolean;
+        };
+
+        return {
+          schemaVersion: 2,
+          metrics: migrateMetrics(state.metrics),
+          timeRangePreset: state.timeRangePreset ?? '90d',
+          customStartDate: state.customStartDate ?? format(subDays(today, 30), 'yyyy-MM-dd'),
+          customEndDate: state.customEndDate ?? format(today, 'yyyy-MM-dd'),
+          autoRun: state.autoRun ?? true
+        };
+      },
       partialize: (state) => ({
         schemaVersion: state.schemaVersion,
         metrics: state.metrics,
-        streaks: state.streaks,
-        charts: state.charts,
         timeRangePreset: state.timeRangePreset,
         customStartDate: state.customStartDate,
         customEndDate: state.customEndDate,
-        autoRun: state.autoRun,
-        selectedItem: state.selectedItem
+        autoRun: state.autoRun
       })
     }
   )

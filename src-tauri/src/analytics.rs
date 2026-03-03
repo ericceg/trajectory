@@ -8,6 +8,7 @@ use crate::{
     db,
     models::{
         ActivityFilters, ActivitySample, ActivitySummary, AdvancedAnalyticsActivityCondition,
+        AdvancedAnalyticsActivityConditionGroup,
         AdvancedAnalyticsActivityConditionField, AdvancedAnalyticsActivityConditionOperator,
         AdvancedAnalyticsBaseMeasure, AdvancedAnalyticsBucketPoint,
         AdvancedAnalyticsChartBucketPoint, AdvancedAnalyticsChartDefinition,
@@ -17,7 +18,8 @@ use crate::{
         AdvancedAnalyticsMetricKind, AdvancedAnalyticsMetricResult, AdvancedAnalyticsPeriod,
         AdvancedAnalyticsRunRequest, AdvancedAnalyticsRunResponse,
         AdvancedAnalyticsSampleCondition, AdvancedAnalyticsSampleConditionField,
-        AdvancedAnalyticsSampleConditionOperator, AdvancedAnalyticsSeriesByGranularity,
+        AdvancedAnalyticsSampleConditionGroup, AdvancedAnalyticsSampleConditionOperator,
+        AdvancedAnalyticsSeriesByGranularity,
         AdvancedAnalyticsStreakDefinition, AdvancedAnalyticsStreakResult,
         AdvancedAnalyticsStreakStatus, AdvancedAnalyticsThresholdOperator,
     },
@@ -427,7 +429,13 @@ fn compute_base_metric(
 
     let matched: Vec<&ActivitySummary> = activities
         .iter()
-        .filter(|activity| activity_matches_conditions(activity, &base.activity_conditions))
+        .filter(|activity| {
+            activity_matches_conditions(
+                activity,
+                &base.activity_conditions,
+                &base.activity_condition_groups,
+            )
+        })
         .collect();
 
     match base.measure {
@@ -504,7 +512,7 @@ fn compute_base_metric(
         }
         AdvancedAnalyticsBaseMeasure::SampleTime => {
             let mut scalar = 0.0;
-            if base.sample_conditions.is_empty() {
+            if base.sample_conditions.is_empty() && base.sample_condition_groups.is_empty() {
                 result
                     .warnings
                     .push("Sample time metric has no sample conditions; counting all tracked sample intervals.".to_string());
@@ -525,6 +533,7 @@ fn compute_base_metric(
                 let seconds = compute_matching_sample_time_seconds(
                     samples,
                     &base.sample_conditions,
+                    &base.sample_condition_groups,
                     hr_zone_upper_bounds,
                 );
                 scalar += seconds;
@@ -552,7 +561,7 @@ fn compute_base_metric(
     }
 
     if base.measure != AdvancedAnalyticsBaseMeasure::SampleTime
-        && !base.sample_conditions.is_empty()
+        && (!base.sample_conditions.is_empty() || !base.sample_condition_groups.is_empty())
     {
         result
             .warnings
@@ -910,7 +919,18 @@ fn next_bucket_start(date: NaiveDate, granularity: AdvancedAnalyticsGranularity)
 fn activity_matches_conditions(
     activity: &ActivitySummary,
     conditions: &[AdvancedAnalyticsActivityCondition],
+    condition_groups: &[AdvancedAnalyticsActivityConditionGroup],
 ) -> bool {
+    if !condition_groups.is_empty() {
+        return condition_groups.iter().any(|group| {
+            !group.conditions.is_empty()
+                && group
+                    .conditions
+                    .iter()
+                    .all(|condition| activity_matches_condition(activity, condition))
+        });
+    }
+
     conditions
         .iter()
         .all(|condition| activity_matches_condition(activity, condition))
@@ -1088,6 +1108,7 @@ fn bool_condition_matches(
 fn compute_matching_sample_time_seconds(
     samples: &[ActivitySample],
     conditions: &[AdvancedAnalyticsSampleCondition],
+    condition_groups: &[AdvancedAnalyticsSampleConditionGroup],
     hr_zone_upper_bounds: &[u16],
 ) -> f64 {
     if samples.len() < 2 {
@@ -1104,9 +1125,18 @@ fn compute_matching_sample_time_seconds(
             if end_elapsed.is_finite() && start_elapsed.is_finite() && end_elapsed > start_elapsed {
                 let delta = end_elapsed - start_elapsed;
                 if delta.is_finite() && delta > 0.0 {
-                    let matches = conditions.iter().all(|condition| {
-                        sample_matches_condition(prev, condition, hr_zone_upper_bounds)
-                    });
+                    let matches = if !condition_groups.is_empty() {
+                        condition_groups.iter().any(|group| {
+                            !group.conditions.is_empty()
+                                && group.conditions.iter().all(|condition| {
+                                    sample_matches_condition(prev, condition, hr_zone_upper_bounds)
+                                })
+                        })
+                    } else {
+                        conditions.iter().all(|condition| {
+                            sample_matches_condition(prev, condition, hr_zone_upper_bounds)
+                        })
+                    };
                     if matches {
                         total += delta;
                     }
@@ -1530,8 +1560,12 @@ mod tests {
             zone: Some(2),
         }];
 
-        let seconds =
-            compute_matching_sample_time_seconds(&samples, &conditions, &[120, 140, 160, 180]);
+        let seconds = compute_matching_sample_time_seconds(
+            &samples,
+            &conditions,
+            &[],
+            &[120, 140, 160, 180],
+        );
         assert_eq!(seconds, 20.0);
     }
 

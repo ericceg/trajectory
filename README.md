@@ -44,10 +44,10 @@ Prototype (actively evolving).
 - Map views support in-place maximize/minimize (with `Esc` to close expanded view)
 - Global path-based heatmap page that overlays all matching GPS tracks
 - Heatmap filters for time span (presets + custom), category, and sport type
-- Advanced Analytics tab (prototype) with locally saved custom metrics, formula metrics, threshold streaks, and time-bucketed charts (bar/line/stacked bar), plus separate Configure/View tabs (View opens by default with an at-a-glance overview)
-- Advanced Analytics supports title-based conditions (e.g. push/pull names) and sample-derived metrics such as heart-rate zone time via `Sample time` rules
-- Advanced Analytics metric builders use a predefined unit-display dropdown (for example `%`, `s`, `count`, `km`, `bpm`) instead of free-form text input, and metric values/series are converted to the selected compatible display unit (not just relabeled)
-- Advanced Analytics metric/chart plots support Activity Detail-style interactions and visual treatment: drag-to-zoom on x-axis buckets, click-to-reset, zoom-window rendering so y-axes re-fit to the visible range, matching tooltip/axis/grid styling, no chart animations, multi-series legends, and stacked bars that round only the true stack top (internal segment joins stay square)
+- Advanced Analytics tab focused on custom metrics with a results-first view and an `Add metric` menu (configurator opens only when adding/editing a metric)
+- Advanced Analytics supports conditional metrics with rule groups: `AND` within each group and `OR` across groups (for both activity filters and sample-time filters)
+- Advanced Analytics metric editor uses predefined unit-display options (for example `%`, `s`, `count`, `km`, `bpm`) and backend analytics converts scalar/series values to compatible display units (not just relabeling)
+- Advanced Analytics keeps per-metric time-series plots (day/week/month)
 - Chart text/number labels inside plot surfaces are non-selectable to avoid accidental text highlighting during drag-to-zoom
 - Standardized display formatting: durations/times render as `HH:mm:ss`, dates as `dd.MM.yyyy` (or `dd.MM.yyyy HH:mm:ss` where date+time is shown), and distances in kilometers (`km`)
 - Appearance settings for accent theme selection and optional full-opacity heatmap routes (100% opacity)
@@ -96,8 +96,8 @@ npm run tauri dev
    - **Activities** for filtering/sorting workouts (category + distance filters auto-apply)
    - **Heatmap** for a global path heatmap (overlapping GPS tracks; filter by time span/category/sport)
    - Enable **Reduced complexity (grayscale)** in Heatmap to declutter the map and emphasize route overlap
-   - **Advanced Analytics** to build custom metrics/streaks/charts (prototype): guided builder, AND-only conditions, simple title text matching (no regex), time-series charts by day/week/month, and separate Configure/View tabs (View shows all saved analytics at a glance; metrics can be toggled on/off for the View tab)
-   - In **Advanced Analytics** metric/chart previews, click-drag across the plot to zoom the visible time buckets; single-click resets to full range
+   - **Advanced Analytics** to build custom metrics with an `Add metric` menu and an edit sheet; results stay visible while configuration stays hidden
+   - In **Advanced Analytics**, metric conditions support `(A and B) or (C and D)` style logic using rule groups
    - **Activity Detail** for metrics plus a route map (GPS activities) and a chart area that switches between distance-based plots (with GPS) and time-based plots (without GPS); split view hides unavailable metric panels and surfaces cadence/power panels when present
    - Hover **Activity Detail** charts to see the matching point on the route map highlighted with an animated moving dot (when GPS samples exist)
    - In **Activity Detail** charts, click-drag across the plot to zoom into the visible x-axis range (distance or elapsed time); chart Y-axes/overlay scaling automatically re-fit to the visible segment, and single-click resets back to the full range
@@ -222,6 +222,9 @@ Implemented commands:
 - `metrics` (base + formula metric definitions)
 - `streaks` (daily/weekly threshold streak definitions)
 - `charts` (bar/line/stacked-bar time-series chart definitions)
+- Base metric definitions also support grouped conditions:
+  - `activityConditionGroups` (`OR` across groups, `AND` within a group)
+  - `sampleConditionGroups` (`OR` across groups, `AND` within a group)
 
 Progress events:
 

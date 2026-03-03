@@ -162,6 +162,11 @@ export interface AdvancedAnalyticsActivityCondition {
   boolValue?: boolean;
 }
 
+export interface AdvancedAnalyticsActivityConditionGroup {
+  id: string;
+  conditions: AdvancedAnalyticsActivityCondition[];
+}
+
 export type AdvancedAnalyticsSampleConditionField =
   | 'heartRate'
   | 'heartRateZone'
@@ -186,10 +191,17 @@ export interface AdvancedAnalyticsSampleCondition {
   zone?: number;
 }
 
+export interface AdvancedAnalyticsSampleConditionGroup {
+  id: string;
+  conditions: AdvancedAnalyticsSampleCondition[];
+}
+
 export interface AdvancedAnalyticsBaseMetricDefinition {
   measure: AdvancedAnalyticsBaseMeasure;
   activityConditions: AdvancedAnalyticsActivityCondition[];
+  activityConditionGroups?: AdvancedAnalyticsActivityConditionGroup[];
   sampleConditions: AdvancedAnalyticsSampleCondition[];
+  sampleConditionGroups?: AdvancedAnalyticsSampleConditionGroup[];
   defaultChartGranularity?: AdvancedAnalyticsGranularity;
   displayUnit?: string;
 }

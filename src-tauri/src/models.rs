@@ -249,7 +249,11 @@ pub struct AdvancedAnalyticsBaseMetricDefinition {
     #[serde(default)]
     pub activity_conditions: Vec<AdvancedAnalyticsActivityCondition>,
     #[serde(default)]
+    pub activity_condition_groups: Vec<AdvancedAnalyticsActivityConditionGroup>,
+    #[serde(default)]
     pub sample_conditions: Vec<AdvancedAnalyticsSampleCondition>,
+    #[serde(default)]
+    pub sample_condition_groups: Vec<AdvancedAnalyticsSampleConditionGroup>,
     #[serde(default)]
     pub default_chart_granularity: Option<AdvancedAnalyticsGranularity>,
     #[serde(default)]
@@ -303,6 +307,14 @@ pub struct AdvancedAnalyticsActivityCondition {
     pub bool_value: Option<bool>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdvancedAnalyticsActivityConditionGroup {
+    pub id: String,
+    #[serde(default)]
+    pub conditions: Vec<AdvancedAnalyticsActivityCondition>,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum AdvancedAnalyticsActivityConditionField {
@@ -347,6 +359,14 @@ pub struct AdvancedAnalyticsSampleCondition {
     pub number_value: Option<f64>,
     #[serde(default)]
     pub zone: Option<u8>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdvancedAnalyticsSampleConditionGroup {
+    pub id: String,
+    #[serde(default)]
+    pub conditions: Vec<AdvancedAnalyticsSampleCondition>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

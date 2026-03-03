@@ -54,9 +54,9 @@ Display formatting conventions (shared helpers in `src/lib/format.ts`):
 
 Central plotting engine:
 
-- `src/lib/charts/plottingEngine.ts` centralizes shared plotting behavior used by both Activity Detail and Advanced Analytics.
+- `src/lib/charts/plottingEngine.ts` centralizes shared plotting behavior used by Activity Detail charts.
 - Shared exports include chart visual constants (axis/grid/tooltip styles, selection/cursor defaults, and animation defaults), pointer parsing helpers, and the reusable `usePlotDragZoom` hook.
-- Both `src/pages/ActivityDetailPage.tsx` and `src/components/analytics/AnalyticsPreview.tsx` consume the same drag-to-zoom and click-to-reset interaction core.
+- `src/pages/ActivityDetailPage.tsx` consumes the drag-to-zoom and click-to-reset interaction core from this module.
 - `src/index.css` applies a global Recharts `user-select: none` rule (`.recharts-responsive-container` and descendants) so drag operations do not accidentally select chart text, including on newly added plots.
 
 Backend (`src-tauri/src/`):
@@ -131,7 +131,7 @@ Implemented Tauri commands (current):
 Notes:
 
 - `scan_import_folder` supports an optional `full_rescan` boolean (defaults to `false`).
-- `run_advanced_analytics(request)` evaluates custom metric/streak/chart definitions in one backend roundtrip and returns per-item errors/warnings when possible instead of failing the whole page.
+- `run_advanced_analytics(request)` evaluates custom analytics definitions in one backend roundtrip and returns per-item errors/warnings when possible instead of failing the whole page.
 
 ### 4.2 `src-tauri/src/models.rs`
 
@@ -151,7 +151,8 @@ Important serialized types:
   - `summary`, `track`, `samples`, `original_sample_count`
 - `HeatmapFilters` / `HeatmapData`
 - `AdvancedAnalytics*`
-  - request/definition/result DTOs for custom metrics, streaks, and chart views
+  - request/definition/result DTOs for custom metrics plus optional streak/chart definitions
+  - base metric definitions include `activity_condition_groups` and `sample_condition_groups` (`AND` inside each group, `OR` across groups)
 - `ScanProgressEvent` / `ScanDoneEvent`
 
 Internal/shared (lower-level/internal structs):
@@ -408,10 +409,7 @@ Uses `zustand/middleware/persist` under key `trajectory-advanced-analytics`.
 
 Persists:
 
-- custom metric definitions (base + formula)
-- custom streak definitions
-- chart view definitions
-- selected analytics item
+- custom metric definitions (base metrics used by current UI)
 - advanced analytics time range / custom dates / auto-run toggle
 
 Computed analytics results are **not** persisted.
@@ -529,7 +527,7 @@ Rendering features:
 
 #### `AdvancedAnalyticsPage.tsx`
 
-Prototype custom analytics builder page.
+Custom analytics page with a results-first flow.
 
 Key behaviors:
 
@@ -537,13 +535,9 @@ Key behaviors:
 - Runs analytics via `runAdvancedAnalytics(...)` (Tauri command `run_advanced_analytics`)
 - Supports:
   - base metrics (summary aggregates + sample-time metrics)
-  - formula metrics (`+`, `-`, `/`, `%`)
-  - daily/weekly threshold streaks
-  - time-bucketed chart views (`bar`, `line`, `stackedBar`)
-- Multi-series chart previews render a legend; stacked bars use per-segment corner logic so only the top visible segment per stack bucket has rounded top corners (internal joins stay square)
-- Guided builder UI only (no DSL), AND-only conditions
-- Metric unit display is selected from predefined dropdown options (no free-form unit text input), and backend analytics converts scalar/series values to compatible display units before previews/charts/streaks consume them
-- UI separates analytics editing vs preview into Configure/View tabs (View is default and renders an at-a-glance overview); metrics include a persisted `showInView` toggle used to filter the View metrics section
+  - condition groups (`AND` inside a group, `OR` across groups)
+- UI keeps plots/results visible and opens configuration in an `Add metric` / edit sheet (configurator hidden by default)
+- Metric unit display is selected from predefined dropdown options (no free-form unit text input), and backend analytics converts scalar/series values to compatible display units before previews
 - Uses Settings heart-rate zone cutoffs for HR-zone sample conditions
 
 ### 5.5 Shared components and utilities
@@ -553,7 +547,7 @@ Components:
 - `src/components/Sidebar.tsx`
   - section navigation with last-route memory (except `Activities`, which always goes to `/activities`), including Advanced Analytics
 - `src/components/analytics/*`
-  - advanced analytics library list, builders, and preview UI (library can run in configure or view-only mode)
+  - `MetricEditorSheet.tsx`: compact advanced-analytics metric editor with grouped rule UI
 - `src/components/MetricCard.tsx`
   - reusable metric display card
 - `src/components/ScanStatusCard.tsx`
@@ -567,8 +561,6 @@ Libraries/helpers:
 
 - `src/lib/format.ts`
   - UI formatting helpers for distance/time/speed/pace/date values
-- `src/lib/analytics/validation.ts`
-  - frontend validation for definition shape and chart metric-count constraints
 - `src/lib/analytics/formatting.ts`
   - formatting helpers for advanced analytics values/units and previews
 - `src/lib/theme.ts`
@@ -708,7 +700,7 @@ A likely next extension is reusing the new analytics evaluator infrastructure to
 Current codebase deviations from the original prototype spec in `AGENTS.md`:
 
 - The app now includes an **Advanced Analytics** prototype page and `run_advanced_analytics(request)` command instead of a generic `get_stats()` API.
-- Advanced Analytics is intentionally limited to a guided builder, AND-only conditions, simple title text matching (no regex), and time-series charts only in the current prototype.
+- Advanced Analytics is intentionally limited to a guided metric editor, grouped conditions (`AND` within group / `OR` across groups), simple title text matching (no regex), and per-metric time-series plots in the current UI.
 - The app currently supports **FIT** in addition to TCX/TXC (an expansion beyond the original TCX-only spec).
 - `MonthCalendar.tsx` is present but not used by the current dashboard implementation.
 - There is no automated test suite in the repository yet (the `test/` folder contains sample FIT files, not test code).
