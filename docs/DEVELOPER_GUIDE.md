@@ -541,7 +541,7 @@ Key behaviors:
   - daily/weekly threshold streaks
   - time-bucketed chart views (`bar`, `line`, `stackedBar`)
 - Multi-series chart previews render a legend; stacked bars use per-segment corner logic so only the top visible segment per stack bucket has rounded top corners (internal joins stay square)
-- Guided builder UI only (no DSL), AND-only conditions
+- Guided builder UI only (no DSL), grouped activity/sample filters (`OR` between groups, `AND` within each group)
 - Metric unit display is selected from predefined dropdown options (no free-form unit text input), and backend analytics converts scalar/series values to compatible display units before previews/charts/streaks consume them
 - UI separates analytics editing vs preview into Configure/View tabs (View is default and renders an at-a-glance overview); metrics include a persisted `showInView` toggle used to filter the View metrics section
 - Uses Settings heart-rate zone cutoffs for HR-zone sample conditions
@@ -708,7 +708,7 @@ A likely next extension is reusing the new analytics evaluator infrastructure to
 Current codebase deviations from the original prototype spec in `AGENTS.md`:
 
 - The app now includes an **Advanced Analytics** prototype page and `run_advanced_analytics(request)` command instead of a generic `get_stats()` API.
-- Advanced Analytics is intentionally limited to a guided builder, AND-only conditions, simple title text matching (no regex), and time-series charts only in the current prototype.
+- Advanced Analytics is intentionally limited to a guided builder, simple title text matching (no regex), grouped conditions (`OR` between groups, `AND` within each group), and time-series charts only in the current prototype.
 - The app currently supports **FIT** in addition to TCX/TXC (an expansion beyond the original TCX-only spec).
 - `MonthCalendar.tsx` is present but not used by the current dashboard implementation.
 - There is no automated test suite in the repository yet (the `test/` folder contains sample FIT files, not test code).

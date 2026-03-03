@@ -1,15 +1,21 @@
 import {
   createBlankActivityCondition,
-  createBlankSampleCondition
+  createBlankActivityConditionGroup,
+  createBlankSampleCondition,
+  createBlankSampleConditionGroup
 } from '@/store/useAdvancedAnalyticsStore';
 import type {
   AdvancedAnalyticsActivityCondition,
   AdvancedAnalyticsActivityConditionField,
+  AdvancedAnalyticsActivityConditionGroup,
   AdvancedAnalyticsActivityConditionOperator,
+  AdvancedAnalyticsBaseMetricDefinition,
   AdvancedAnalyticsBaseMeasure,
+  AdvancedAnalyticsConditionJoin,
   AdvancedAnalyticsMetricDefinition,
   AdvancedAnalyticsSampleCondition,
   AdvancedAnalyticsSampleConditionField,
+  AdvancedAnalyticsSampleConditionGroup,
   AdvancedAnalyticsSampleConditionOperator
 } from '@/types';
 
@@ -103,9 +109,7 @@ function activityOperatorsForField(
 ): AdvancedAnalyticsActivityConditionOperator[] {
   const kind = activityFieldKind(field);
   if (kind === 'text') {
-    return field === 'weekday'
-      ? ['equals', 'is', 'isNot']
-      : TEXT_OPERATORS;
+    return field === 'weekday' ? ['equals', 'is', 'isNot'] : TEXT_OPERATORS;
   }
   if (kind === 'bool') {
     return BOOL_OPERATORS;
@@ -127,6 +131,60 @@ function unitDisplayOptionsForValue(value?: string | null): Array<{ value: strin
   return [{ value: currentValue, label: `Custom (${currentValue})` }, ...UNIT_DISPLAY_OPTIONS];
 }
 
+function normalizeActivityConditionGroups(
+  base: AdvancedAnalyticsBaseMetricDefinition
+): AdvancedAnalyticsActivityConditionGroup[] {
+  if ((base.activityConditionGroups ?? []).length > 0) {
+    return (base.activityConditionGroups ?? []).map((group, index) => ({
+      id: group.id || `activity_group_${index}`,
+      conditions: group.conditions ?? []
+    }));
+  }
+  if (base.activityConditions.length === 0) {
+    return [];
+  }
+  const join: AdvancedAnalyticsConditionJoin = base.activityConditionJoin ?? 'and';
+  if (join === 'or') {
+    return base.activityConditions.map((condition, index) => ({
+      id: `legacy_activity_group_${index}`,
+      conditions: [condition]
+    }));
+  }
+  return [
+    {
+      id: 'legacy_activity_group_0',
+      conditions: base.activityConditions
+    }
+  ];
+}
+
+function normalizeSampleConditionGroups(
+  base: AdvancedAnalyticsBaseMetricDefinition
+): AdvancedAnalyticsSampleConditionGroup[] {
+  if ((base.sampleConditionGroups ?? []).length > 0) {
+    return (base.sampleConditionGroups ?? []).map((group, index) => ({
+      id: group.id || `sample_group_${index}`,
+      conditions: group.conditions ?? []
+    }));
+  }
+  if (base.sampleConditions.length === 0) {
+    return [];
+  }
+  const join: AdvancedAnalyticsConditionJoin = base.sampleConditionJoin ?? 'and';
+  if (join === 'or') {
+    return base.sampleConditions.map((condition, index) => ({
+      id: `legacy_sample_group_${index}`,
+      conditions: [condition]
+    }));
+  }
+  return [
+    {
+      id: 'legacy_sample_group_0',
+      conditions: base.sampleConditions
+    }
+  ];
+}
+
 interface MetricBuilderProps {
   metric: AdvancedAnalyticsMetricDefinition;
   allMetrics: AdvancedAnalyticsMetricDefinition[];
@@ -135,12 +193,17 @@ interface MetricBuilderProps {
 }
 
 export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: MetricBuilderProps) {
-  const base = metric.base ?? {
+  const base: AdvancedAnalyticsBaseMetricDefinition = {
     measure: 'activitiesCount',
     activityConditions: [],
     sampleConditions: [],
+    activityConditionGroups: [],
+    sampleConditionGroups: [],
+    activityConditionJoin: 'and',
+    sampleConditionJoin: 'and',
     defaultChartGranularity: 'week',
-    displayUnit: ''
+    displayUnit: '',
+    ...metric.base
   };
   const formula = metric.formula ?? {
     leftMetricId: allMetrics.find((candidate) => candidate.id !== metric.id)?.id ?? '',
@@ -150,37 +213,72 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
   };
   const baseDisplayUnitOptions = unitDisplayOptionsForValue(base.displayUnit);
   const formulaDisplayUnitOptions = unitDisplayOptionsForValue(formula.displayUnit);
+  const activityConditionGroups = normalizeActivityConditionGroups(base);
+  const sampleConditionGroups = normalizeSampleConditionGroups(base);
 
-  const updateActivityCondition = (
-    conditionId: string,
-    updater: (condition: AdvancedAnalyticsActivityCondition) => AdvancedAnalyticsActivityCondition
-  ) => {
+  const updateBase = (patch: Partial<AdvancedAnalyticsBaseMetricDefinition>) => {
     onChange({
       ...metric,
       kind: 'base',
       base: {
         ...base,
-        activityConditions: base.activityConditions.map((condition) =>
-          condition.id === conditionId ? updater(condition) : condition
-        )
+        ...patch
       }
     });
   };
 
+  const updateActivityGroups = (groups: AdvancedAnalyticsActivityConditionGroup[]) => {
+    updateBase({
+      activityConditionGroups: groups,
+      activityConditions: [],
+      activityConditionJoin: 'and'
+    });
+  };
+
+  const updateSampleGroups = (groups: AdvancedAnalyticsSampleConditionGroup[]) => {
+    updateBase({
+      sampleConditionGroups: groups,
+      sampleConditions: [],
+      sampleConditionJoin: 'and'
+    });
+  };
+
+  const updateActivityCondition = (
+    groupId: string,
+    conditionId: string,
+    updater: (condition: AdvancedAnalyticsActivityCondition) => AdvancedAnalyticsActivityCondition
+  ) => {
+    updateActivityGroups(
+      activityConditionGroups.map((group) =>
+        group.id === groupId
+          ? {
+              ...group,
+              conditions: group.conditions.map((condition) =>
+                condition.id === conditionId ? updater(condition) : condition
+              )
+            }
+          : group
+      )
+    );
+  };
+
   const updateSampleCondition = (
+    groupId: string,
     conditionId: string,
     updater: (condition: AdvancedAnalyticsSampleCondition) => AdvancedAnalyticsSampleCondition
   ) => {
-    onChange({
-      ...metric,
-      kind: 'base',
-      base: {
-        ...base,
-        sampleConditions: base.sampleConditions.map((condition) =>
-          condition.id === conditionId ? updater(condition) : condition
-        )
-      }
-    });
+    updateSampleGroups(
+      sampleConditionGroups.map((group) =>
+        group.id === groupId
+          ? {
+              ...group,
+              conditions: group.conditions.map((condition) =>
+                condition.id === conditionId ? updater(condition) : condition
+              )
+            }
+          : group
+      )
+    );
   };
 
   return (
@@ -255,13 +353,8 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
               <select
                 value={base.measure}
                 onChange={(event) =>
-                  onChange({
-                    ...metric,
-                    kind: 'base',
-                    base: {
-                      ...base,
-                      measure: event.target.value as AdvancedAnalyticsBaseMeasure
-                    }
+                  updateBase({
+                    measure: event.target.value as AdvancedAnalyticsBaseMeasure
                   })
                 }
                 className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm"
@@ -278,13 +371,8 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
               <select
                 value={base.defaultChartGranularity ?? 'week'}
                 onChange={(event) =>
-                  onChange({
-                    ...metric,
-                    kind: 'base',
-                    base: {
-                      ...base,
-                      defaultChartGranularity: event.target.value as 'day' | 'week' | 'month'
-                    }
+                  updateBase({
+                    defaultChartGranularity: event.target.value as 'day' | 'week' | 'month'
                   })
                 }
                 className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm"
@@ -301,13 +389,8 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
             <select
               value={base.displayUnit ?? ''}
               onChange={(event) =>
-                onChange({
-                  ...metric,
-                  kind: 'base',
-                  base: {
-                    ...base,
-                    displayUnit: event.target.value
-                  }
+                updateBase({
+                  displayUnit: event.target.value
                 })
               }
               className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm"
@@ -323,142 +406,207 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
           <div className="space-y-2 rounded-lg border border-border bg-bg/30 p-3">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-foreground">Where (AND conditions)</p>
-                <p className="text-xs text-muted">All conditions must match the activity.</p>
+                <p className="text-sm font-medium text-foreground">Where groups (OR)</p>
+                <p className="text-xs text-muted">
+                  If any group matches, the activity is included. Conditions inside each group use
+                  AND.
+                </p>
               </div>
               <button
                 type="button"
                 onClick={() =>
-                  onChange({
-                    ...metric,
-                    kind: 'base',
-                    base: {
-                      ...base,
-                      activityConditions: [...base.activityConditions, createBlankActivityCondition()]
-                    }
-                  })
+                  updateActivityGroups([
+                    ...activityConditionGroups,
+                    createBlankActivityConditionGroup()
+                  ])
                 }
                 className="rounded-md border border-border px-2 py-1 text-xs"
               >
-                + Condition
+                + Group
               </button>
             </div>
-            {base.activityConditions.length === 0 ? (
-              <p className="text-xs text-muted">No activity conditions (matches all activities).</p>
+            {activityConditionGroups.length === 0 ? (
+              <p className="text-xs text-muted">No activity groups (matches all activities).</p>
             ) : (
-              base.activityConditions.map((condition) => {
-                const kind = activityFieldKind(condition.field);
-                const operators = activityOperatorsForField(condition.field);
-                return (
-                  <div key={condition.id} className="grid gap-2 rounded-md border border-border p-2 md:grid-cols-12">
-                    <select
-                      value={condition.field}
-                      onChange={(event) => {
-                        const nextField = event.target.value as AdvancedAnalyticsActivityConditionField;
-                        const nextOperator = activityOperatorsForField(nextField)[0];
-                        updateActivityCondition(condition.id, (current) => ({
-                          ...current,
-                          field: nextField,
-                          operator: nextOperator,
-                          value:
-                            activityFieldKind(nextField) === 'text'
-                              ? current.value ?? ''
-                              : activityFieldKind(nextField) === 'bool'
-                                ? 'true'
-                                : '',
-                          numberValue:
-                            activityFieldKind(nextField) === 'number'
-                              ? Number.isFinite(current.numberValue) ? current.numberValue : 0
-                              : undefined,
-                          boolValue:
-                            activityFieldKind(nextField) === 'bool'
-                              ? current.boolValue ?? true
-                              : undefined
-                        }));
-                      }}
-                      className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-3"
-                    >
-                      {ACTIVITY_FIELD_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      value={condition.operator}
-                      onChange={(event) =>
-                        updateActivityCondition(condition.id, (current) => ({
-                          ...current,
-                          operator: event.target.value as AdvancedAnalyticsActivityConditionOperator
-                        }))
-                      }
-                      className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-3"
-                    >
-                      {operators.map((operator) => (
-                        <option key={operator} value={operator}>
-                          {displayOperator(operator)}
-                        </option>
-                      ))}
-                    </select>
-                    {kind === 'text' ? (
-                      <input
-                        value={condition.value ?? ''}
-                        onChange={(event) =>
-                          updateActivityCondition(condition.id, (current) => ({
-                            ...current,
-                            value: event.target.value
-                          }))
+              activityConditionGroups.map((group, groupIndex) => (
+                <div key={group.id} className="space-y-2 rounded-md border border-border p-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-medium text-foreground">Group {groupIndex + 1} (AND)</p>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateActivityGroups(
+                            activityConditionGroups.map((currentGroup) =>
+                              currentGroup.id === group.id
+                                ? {
+                                    ...currentGroup,
+                                    conditions: [
+                                      ...currentGroup.conditions,
+                                      createBlankActivityCondition()
+                                    ]
+                                  }
+                                : currentGroup
+                            )
+                          )
                         }
-                        placeholder={condition.operator === 'containsAny' || condition.operator === 'containsAll' ? 'comma-separated' : 'value'}
-                        className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-5"
-                      />
-                    ) : kind === 'bool' ? (
-                      <select
-                        value={String(condition.boolValue ?? true)}
-                        onChange={(event) =>
-                          updateActivityCondition(condition.id, (current) => ({
-                            ...current,
-                            boolValue: event.target.value === 'true',
-                            value: event.target.value
-                          }))
-                        }
-                        className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-5"
+                        className="rounded-md border border-border px-2 py-1 text-xs"
                       >
-                        <option value="true">True</option>
-                        <option value="false">False</option>
-                      </select>
-                    ) : (
-                      <input
-                        type="number"
-                        value={condition.numberValue ?? 0}
-                        onChange={(event) =>
-                          updateActivityCondition(condition.id, (current) => ({
-                            ...current,
-                            numberValue: Number(event.target.value)
-                          }))
+                        + Condition
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          updateActivityGroups(
+                            activityConditionGroups.filter(
+                              (currentGroup) => currentGroup.id !== group.id
+                            )
+                          )
                         }
-                        className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-5"
-                      />
-                    )}
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onChange({
-                          ...metric,
-                          kind: 'base',
-                          base: {
-                            ...base,
-                            activityConditions: base.activityConditions.filter((item) => item.id !== condition.id)
-                          }
-                        })
-                      }
-                      className="rounded-md border border-border px-2 py-2 text-xs text-muted md:col-span-1"
-                    >
-                      Remove
-                    </button>
+                        className="rounded-md border border-border px-2 py-1 text-xs text-muted"
+                      >
+                        Remove Group
+                      </button>
+                    </div>
                   </div>
-                );
-              })
+                  {group.conditions.length === 0 ? (
+                    <p className="text-xs text-muted">
+                      Empty group (ignored until at least one condition is added).
+                    </p>
+                  ) : (
+                    group.conditions.map((condition) => {
+                      const kind = activityFieldKind(condition.field);
+                      const operators = activityOperatorsForField(condition.field);
+                      return (
+                        <div
+                          key={condition.id}
+                          className="grid gap-2 rounded-md border border-border p-2 md:grid-cols-12"
+                        >
+                          <select
+                            value={condition.field}
+                            onChange={(event) => {
+                              const nextField =
+                                event.target.value as AdvancedAnalyticsActivityConditionField;
+                              const nextOperator = activityOperatorsForField(nextField)[0];
+                              updateActivityCondition(group.id, condition.id, (current) => ({
+                                ...current,
+                                field: nextField,
+                                operator: nextOperator,
+                                value:
+                                  activityFieldKind(nextField) === 'text'
+                                    ? current.value ?? ''
+                                    : activityFieldKind(nextField) === 'bool'
+                                      ? 'true'
+                                      : '',
+                                numberValue:
+                                  activityFieldKind(nextField) === 'number'
+                                    ? Number.isFinite(current.numberValue)
+                                      ? current.numberValue
+                                      : 0
+                                    : undefined,
+                                boolValue:
+                                  activityFieldKind(nextField) === 'bool'
+                                    ? current.boolValue ?? true
+                                    : undefined
+                              }));
+                            }}
+                            className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-3"
+                          >
+                            {ACTIVITY_FIELD_OPTIONS.map((option) => (
+                              <option key={option.value} value={option.value}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                          <select
+                            value={condition.operator}
+                            onChange={(event) =>
+                              updateActivityCondition(group.id, condition.id, (current) => ({
+                                ...current,
+                                operator:
+                                  event.target
+                                    .value as AdvancedAnalyticsActivityConditionOperator
+                              }))
+                            }
+                            className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-3"
+                          >
+                            {operators.map((operator) => (
+                              <option key={operator} value={operator}>
+                                {displayOperator(operator)}
+                              </option>
+                            ))}
+                          </select>
+                          {kind === 'text' ? (
+                            <input
+                              value={condition.value ?? ''}
+                              onChange={(event) =>
+                                updateActivityCondition(group.id, condition.id, (current) => ({
+                                  ...current,
+                                  value: event.target.value
+                                }))
+                              }
+                              placeholder={
+                                condition.operator === 'containsAny' ||
+                                condition.operator === 'containsAll'
+                                  ? 'comma-separated'
+                                  : 'value'
+                              }
+                              className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-5"
+                            />
+                          ) : kind === 'bool' ? (
+                            <select
+                              value={String(condition.boolValue ?? true)}
+                              onChange={(event) =>
+                                updateActivityCondition(group.id, condition.id, (current) => ({
+                                  ...current,
+                                  boolValue: event.target.value === 'true',
+                                  value: event.target.value
+                                }))
+                              }
+                              className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-5"
+                            >
+                              <option value="true">True</option>
+                              <option value="false">False</option>
+                            </select>
+                          ) : (
+                            <input
+                              type="number"
+                              value={condition.numberValue ?? 0}
+                              onChange={(event) =>
+                                updateActivityCondition(group.id, condition.id, (current) => ({
+                                  ...current,
+                                  numberValue: Number(event.target.value)
+                                }))
+                              }
+                              className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-5"
+                            />
+                          )}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              updateActivityGroups(
+                                activityConditionGroups.map((currentGroup) =>
+                                  currentGroup.id === group.id
+                                    ? {
+                                        ...currentGroup,
+                                        conditions: currentGroup.conditions.filter(
+                                          (item) => item.id !== condition.id
+                                        )
+                                      }
+                                    : currentGroup
+                                )
+                              )
+                            }
+                            className="rounded-md border border-border px-2 py-2 text-xs text-muted md:col-span-1"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              ))
             )}
           </div>
 
@@ -466,121 +614,187 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
             <div className="space-y-2 rounded-lg border border-border bg-bg/30 p-3">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-foreground">Sample conditions (AND)</p>
+                  <p className="text-sm font-medium text-foreground">Sample groups (OR)</p>
                   <p className="text-xs text-muted">
-                    Time is accumulated over matching sample intervals (previous sample semantics).
+                    Time is accumulated for intervals where any group matches. Conditions inside each
+                    group use AND.
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={() =>
-                    onChange({
-                      ...metric,
-                      kind: 'base',
-                      base: {
-                        ...base,
-                        sampleConditions: [...base.sampleConditions, createBlankSampleCondition()]
-                      }
-                    })
+                    updateSampleGroups([
+                      ...sampleConditionGroups,
+                      createBlankSampleConditionGroup()
+                    ])
                   }
                   className="rounded-md border border-border px-2 py-1 text-xs"
                 >
-                  + Sample Condition
+                  + Group
                 </button>
               </div>
-              {base.sampleConditions.length === 0 ? (
-                <p className="text-xs text-muted">No sample conditions: all tracked sample intervals count.</p>
+              {sampleConditionGroups.length === 0 ? (
+                <p className="text-xs text-muted">
+                  No sample groups: all tracked sample intervals count.
+                </p>
               ) : (
-                base.sampleConditions.map((condition) => {
-                  const isZone = condition.field === 'heartRateZone';
-                  const operators = isZone ? (['is'] as const) : SAMPLE_NUM_OPERATORS;
-                  return (
-                    <div key={condition.id} className="grid gap-2 rounded-md border border-border p-2 md:grid-cols-12">
-                      <select
-                        value={condition.field}
-                        onChange={(event) => {
-                          const field = event.target.value as AdvancedAnalyticsSampleConditionField;
-                          updateSampleCondition(condition.id, (current) => ({
-                            ...current,
-                            field,
-                            operator: field === 'heartRateZone' ? 'is' : 'greaterThanOrEqual',
-                            zone: field === 'heartRateZone' ? current.zone ?? 2 : undefined,
-                            numberValue: field === 'heartRateZone' ? undefined : current.numberValue ?? 0
-                          }));
-                        }}
-                        className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-4"
-                      >
-                        {SAMPLE_FIELD_OPTIONS.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
-                      <select
-                        value={condition.operator}
-                        onChange={(event) =>
-                          updateSampleCondition(condition.id, (current) => ({
-                            ...current,
-                            operator: event.target.value as AdvancedAnalyticsSampleConditionOperator
-                          }))
-                        }
-                        className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-3"
-                      >
-                        {operators.map((operator) => (
-                          <option key={operator} value={operator}>
-                            {displayOperator(operator)}
-                          </option>
-                        ))}
-                      </select>
-                      {isZone ? (
-                        <select
-                          value={String(condition.zone ?? 2)}
-                          onChange={(event) =>
-                            updateSampleCondition(condition.id, (current) => ({
-                              ...current,
-                              zone: Number(event.target.value)
-                            }))
+                sampleConditionGroups.map((group, groupIndex) => (
+                  <div key={group.id} className="space-y-2 rounded-md border border-border p-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-medium text-foreground">
+                        Group {groupIndex + 1} (AND)
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            updateSampleGroups(
+                              sampleConditionGroups.map((currentGroup) =>
+                                currentGroup.id === group.id
+                                  ? {
+                                      ...currentGroup,
+                                      conditions: [
+                                        ...currentGroup.conditions,
+                                        createBlankSampleCondition()
+                                      ]
+                                    }
+                                  : currentGroup
+                              )
+                            )
                           }
-                          className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-4"
+                          className="rounded-md border border-border px-2 py-1 text-xs"
                         >
-                          {[1, 2, 3, 4, 5].map((zone) => (
-                            <option key={zone} value={zone}>
-                              Z{zone}
-                            </option>
-                          ))}
-                        </select>
-                      ) : (
-                        <input
-                          type="number"
-                          value={condition.numberValue ?? 0}
-                          onChange={(event) =>
-                            updateSampleCondition(condition.id, (current) => ({
-                              ...current,
-                              numberValue: Number(event.target.value)
-                            }))
+                          + Condition
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            updateSampleGroups(
+                              sampleConditionGroups.filter(
+                                (currentGroup) => currentGroup.id !== group.id
+                              )
+                            )
                           }
-                          className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-4"
-                        />
-                      )}
-                      <button
-                        type="button"
-                        onClick={() =>
-                          onChange({
-                            ...metric,
-                            kind: 'base',
-                            base: {
-                              ...base,
-                              sampleConditions: base.sampleConditions.filter((item) => item.id !== condition.id)
-                            }
-                          })
-                        }
-                        className="rounded-md border border-border px-2 py-2 text-xs text-muted md:col-span-1"
-                      >
-                        Remove
-                      </button>
+                          className="rounded-md border border-border px-2 py-1 text-xs text-muted"
+                        >
+                          Remove Group
+                        </button>
+                      </div>
                     </div>
-                  );
-                })
+                    {group.conditions.length === 0 ? (
+                      <p className="text-xs text-muted">
+                        Empty group (ignored until at least one condition is added).
+                      </p>
+                    ) : (
+                      group.conditions.map((condition) => {
+                        const isZone = condition.field === 'heartRateZone';
+                        const operators = isZone ? (['is'] as const) : SAMPLE_NUM_OPERATORS;
+                        return (
+                          <div
+                            key={condition.id}
+                            className="grid gap-2 rounded-md border border-border p-2 md:grid-cols-12"
+                          >
+                            <select
+                              value={condition.field}
+                              onChange={(event) => {
+                                const field =
+                                  event.target.value as AdvancedAnalyticsSampleConditionField;
+                                updateSampleCondition(group.id, condition.id, (current) => ({
+                                  ...current,
+                                  field,
+                                  operator:
+                                    field === 'heartRateZone'
+                                      ? 'is'
+                                      : 'greaterThanOrEqual',
+                                  zone: field === 'heartRateZone' ? current.zone ?? 2 : undefined,
+                                  numberValue:
+                                    field === 'heartRateZone'
+                                      ? undefined
+                                      : current.numberValue ?? 0
+                                }));
+                              }}
+                              className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-4"
+                            >
+                              {SAMPLE_FIELD_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                            <select
+                              value={condition.operator}
+                              onChange={(event) =>
+                                updateSampleCondition(group.id, condition.id, (current) => ({
+                                  ...current,
+                                  operator:
+                                    event.target
+                                      .value as AdvancedAnalyticsSampleConditionOperator
+                                }))
+                              }
+                              className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-3"
+                            >
+                              {operators.map((operator) => (
+                                <option key={operator} value={operator}>
+                                  {displayOperator(operator)}
+                                </option>
+                              ))}
+                            </select>
+                            {isZone ? (
+                              <select
+                                value={String(condition.zone ?? 2)}
+                                onChange={(event) =>
+                                  updateSampleCondition(group.id, condition.id, (current) => ({
+                                    ...current,
+                                    zone: Number(event.target.value)
+                                  }))
+                                }
+                                className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-4"
+                              >
+                                {[1, 2, 3, 4, 5].map((zone) => (
+                                  <option key={zone} value={zone}>
+                                    Z{zone}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <input
+                                type="number"
+                                value={condition.numberValue ?? 0}
+                                onChange={(event) =>
+                                  updateSampleCondition(group.id, condition.id, (current) => ({
+                                    ...current,
+                                    numberValue: Number(event.target.value)
+                                  }))
+                                }
+                                className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-4"
+                              />
+                            )}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updateSampleGroups(
+                                  sampleConditionGroups.map((currentGroup) =>
+                                    currentGroup.id === group.id
+                                      ? {
+                                          ...currentGroup,
+                                          conditions: currentGroup.conditions.filter(
+                                            (item) => item.id !== condition.id
+                                          )
+                                        }
+                                      : currentGroup
+                                  )
+                                )
+                              }
+                              className="rounded-md border border-border px-2 py-2 text-xs text-muted md:col-span-1"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                ))
               )}
             </div>
           ) : null}

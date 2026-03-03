@@ -9,17 +9,18 @@ use crate::{
     models::{
         ActivityFilters, ActivitySample, ActivitySummary, AdvancedAnalyticsActivityCondition,
         AdvancedAnalyticsActivityConditionField, AdvancedAnalyticsActivityConditionOperator,
-        AdvancedAnalyticsBaseMeasure, AdvancedAnalyticsBucketPoint,
-        AdvancedAnalyticsChartBucketPoint, AdvancedAnalyticsChartDefinition,
-        AdvancedAnalyticsChartResult, AdvancedAnalyticsChartType,
-        AdvancedAnalyticsFormulaMetricDefinition, AdvancedAnalyticsFormulaOperator,
-        AdvancedAnalyticsGranularity, AdvancedAnalyticsMetricDefinition,
-        AdvancedAnalyticsMetricKind, AdvancedAnalyticsMetricResult, AdvancedAnalyticsPeriod,
-        AdvancedAnalyticsRunRequest, AdvancedAnalyticsRunResponse,
-        AdvancedAnalyticsSampleCondition, AdvancedAnalyticsSampleConditionField,
-        AdvancedAnalyticsSampleConditionOperator, AdvancedAnalyticsSeriesByGranularity,
-        AdvancedAnalyticsStreakDefinition, AdvancedAnalyticsStreakResult,
-        AdvancedAnalyticsStreakStatus, AdvancedAnalyticsThresholdOperator,
+        AdvancedAnalyticsBaseMeasure, AdvancedAnalyticsBaseMetricDefinition,
+        AdvancedAnalyticsBucketPoint, AdvancedAnalyticsChartBucketPoint,
+        AdvancedAnalyticsChartDefinition, AdvancedAnalyticsChartResult, AdvancedAnalyticsChartType,
+        AdvancedAnalyticsConditionJoin, AdvancedAnalyticsFormulaMetricDefinition,
+        AdvancedAnalyticsFormulaOperator, AdvancedAnalyticsGranularity,
+        AdvancedAnalyticsMetricDefinition, AdvancedAnalyticsMetricKind,
+        AdvancedAnalyticsMetricResult, AdvancedAnalyticsPeriod, AdvancedAnalyticsRunRequest,
+        AdvancedAnalyticsRunResponse, AdvancedAnalyticsSampleCondition,
+        AdvancedAnalyticsSampleConditionField, AdvancedAnalyticsSampleConditionOperator,
+        AdvancedAnalyticsSeriesByGranularity, AdvancedAnalyticsStreakDefinition,
+        AdvancedAnalyticsStreakResult, AdvancedAnalyticsStreakStatus,
+        AdvancedAnalyticsThresholdOperator,
     },
 };
 
@@ -403,7 +404,7 @@ fn combine_series_with_formula(
 
 fn compute_base_metric(
     metric: &AdvancedAnalyticsMetricDefinition,
-    base: &crate::models::AdvancedAnalyticsBaseMetricDefinition,
+    base: &AdvancedAnalyticsBaseMetricDefinition,
     activities: &[ActivitySummary],
     conn: &Connection,
     sample_cache: &mut HashMap<i64, Vec<ActivitySample>>,
@@ -424,10 +425,12 @@ fn compute_base_metric(
         errors: Vec::new(),
         warnings: Vec::new(),
     };
+    let activity_condition_groups = normalized_activity_condition_groups(base);
+    let sample_condition_groups = normalized_sample_condition_groups(base);
 
     let matched: Vec<&ActivitySummary> = activities
         .iter()
-        .filter(|activity| activity_matches_conditions(activity, &base.activity_conditions))
+        .filter(|activity| activity_matches_condition_groups(activity, &activity_condition_groups))
         .collect();
 
     match base.measure {
@@ -504,7 +507,7 @@ fn compute_base_metric(
         }
         AdvancedAnalyticsBaseMeasure::SampleTime => {
             let mut scalar = 0.0;
-            if base.sample_conditions.is_empty() {
+            if sample_condition_groups.is_empty() {
                 result
                     .warnings
                     .push("Sample time metric has no sample conditions; counting all tracked sample intervals.".to_string());
@@ -524,7 +527,7 @@ fn compute_base_metric(
                     .expect("sample cache populated");
                 let seconds = compute_matching_sample_time_seconds(
                     samples,
-                    &base.sample_conditions,
+                    &sample_condition_groups,
                     hr_zone_upper_bounds,
                 );
                 scalar += seconds;
@@ -552,7 +555,7 @@ fn compute_base_metric(
     }
 
     if base.measure != AdvancedAnalyticsBaseMeasure::SampleTime
-        && !base.sample_conditions.is_empty()
+        && !sample_condition_groups.is_empty()
     {
         result
             .warnings
@@ -907,13 +910,75 @@ fn next_bucket_start(date: NaiveDate, granularity: AdvancedAnalyticsGranularity)
     }
 }
 
-fn activity_matches_conditions(
-    activity: &ActivitySummary,
-    conditions: &[AdvancedAnalyticsActivityCondition],
-) -> bool {
-    conditions
+fn normalized_activity_condition_groups(
+    base: &AdvancedAnalyticsBaseMetricDefinition,
+) -> Vec<Vec<AdvancedAnalyticsActivityCondition>> {
+    let grouped: Vec<Vec<AdvancedAnalyticsActivityCondition>> = base
+        .activity_condition_groups
         .iter()
-        .all(|condition| activity_matches_condition(activity, condition))
+        .map(|group| group.conditions.clone())
+        .filter(|conditions| !conditions.is_empty())
+        .collect();
+    if !grouped.is_empty() {
+        return grouped;
+    }
+
+    if base.activity_conditions.is_empty() {
+        return Vec::new();
+    }
+
+    match base.activity_condition_join {
+        AdvancedAnalyticsConditionJoin::And => vec![base.activity_conditions.clone()],
+        AdvancedAnalyticsConditionJoin::Or => base
+            .activity_conditions
+            .iter()
+            .cloned()
+            .map(|condition| vec![condition])
+            .collect(),
+    }
+}
+
+fn normalized_sample_condition_groups(
+    base: &AdvancedAnalyticsBaseMetricDefinition,
+) -> Vec<Vec<AdvancedAnalyticsSampleCondition>> {
+    let grouped: Vec<Vec<AdvancedAnalyticsSampleCondition>> = base
+        .sample_condition_groups
+        .iter()
+        .map(|group| group.conditions.clone())
+        .filter(|conditions| !conditions.is_empty())
+        .collect();
+    if !grouped.is_empty() {
+        return grouped;
+    }
+
+    if base.sample_conditions.is_empty() {
+        return Vec::new();
+    }
+
+    match base.sample_condition_join {
+        AdvancedAnalyticsConditionJoin::And => vec![base.sample_conditions.clone()],
+        AdvancedAnalyticsConditionJoin::Or => base
+            .sample_conditions
+            .iter()
+            .cloned()
+            .map(|condition| vec![condition])
+            .collect(),
+    }
+}
+
+fn activity_matches_condition_groups(
+    activity: &ActivitySummary,
+    condition_groups: &[Vec<AdvancedAnalyticsActivityCondition>],
+) -> bool {
+    if condition_groups.is_empty() {
+        return true;
+    }
+
+    condition_groups.iter().any(|conditions| {
+        conditions
+            .iter()
+            .all(|condition| activity_matches_condition(activity, condition))
+    })
 }
 
 fn activity_matches_condition(
@@ -1087,7 +1152,7 @@ fn bool_condition_matches(
 
 fn compute_matching_sample_time_seconds(
     samples: &[ActivitySample],
-    conditions: &[AdvancedAnalyticsSampleCondition],
+    condition_groups: &[Vec<AdvancedAnalyticsSampleCondition>],
     hr_zone_upper_bounds: &[u16],
 ) -> f64 {
     if samples.len() < 2 {
@@ -1104,9 +1169,15 @@ fn compute_matching_sample_time_seconds(
             if end_elapsed.is_finite() && start_elapsed.is_finite() && end_elapsed > start_elapsed {
                 let delta = end_elapsed - start_elapsed;
                 if delta.is_finite() && delta > 0.0 {
-                    let matches = conditions.iter().all(|condition| {
-                        sample_matches_condition(prev, condition, hr_zone_upper_bounds)
-                    });
+                    let matches = if condition_groups.is_empty() {
+                        true
+                    } else {
+                        condition_groups.iter().any(|conditions| {
+                            conditions.iter().all(|condition| {
+                                sample_matches_condition(prev, condition, hr_zone_upper_bounds)
+                            })
+                        })
+                    };
                     if matches {
                         total += delta;
                     }
@@ -1444,9 +1515,11 @@ mod tests {
     use super::*;
     use crate::models::{
         AdvancedAnalyticsActivityCondition, AdvancedAnalyticsActivityConditionField,
-        AdvancedAnalyticsActivityConditionOperator, AdvancedAnalyticsFormulaOperator,
-        AdvancedAnalyticsSampleCondition, AdvancedAnalyticsSampleConditionField,
-        AdvancedAnalyticsSampleConditionOperator, AdvancedAnalyticsThresholdOperator,
+        AdvancedAnalyticsActivityConditionOperator, AdvancedAnalyticsBaseMeasure,
+        AdvancedAnalyticsBaseMetricDefinition, AdvancedAnalyticsConditionJoin,
+        AdvancedAnalyticsFormulaOperator, AdvancedAnalyticsSampleCondition,
+        AdvancedAnalyticsSampleConditionField, AdvancedAnalyticsSampleConditionOperator,
+        AdvancedAnalyticsThresholdOperator,
     };
 
     #[test]
@@ -1530,9 +1603,179 @@ mod tests {
             zone: Some(2),
         }];
 
-        let seconds =
-            compute_matching_sample_time_seconds(&samples, &conditions, &[120, 140, 160, 180]);
+        let condition_groups = vec![conditions];
+        let seconds = compute_matching_sample_time_seconds(
+            &samples,
+            &condition_groups,
+            &[120, 140, 160, 180],
+        );
         assert_eq!(seconds, 20.0);
+    }
+
+    #[test]
+    fn activity_conditions_support_or_join() {
+        let activity = ActivitySummary {
+            id: 1,
+            source_path: "a.fit".into(),
+            activity_start: "2026-02-01T08:00:00Z".into(),
+            title: "Easy Run".into(),
+            category: "Running".into(),
+            sport_type: "running".into(),
+            duration_seconds: 1800.0,
+            moving_duration_seconds: 1700.0,
+            distance_m: 5000.0,
+            elevation_gain_m: 50.0,
+            avg_speed_mps: Some(2.9),
+            max_speed_mps: Some(4.2),
+            avg_hr: Some(142.0),
+            min_hr: Some(110.0),
+            max_hr: Some(165.0),
+            has_gps: true,
+        };
+
+        let conditions = vec![
+            AdvancedAnalyticsActivityCondition {
+                id: "distance".into(),
+                field: AdvancedAnalyticsActivityConditionField::DistanceM,
+                operator: AdvancedAnalyticsActivityConditionOperator::GreaterThan,
+                value: None,
+                values: None,
+                number_value: Some(10000.0),
+                bool_value: None,
+            },
+            AdvancedAnalyticsActivityCondition {
+                id: "title".into(),
+                field: AdvancedAnalyticsActivityConditionField::Title,
+                operator: AdvancedAnalyticsActivityConditionOperator::Contains,
+                value: Some("run".into()),
+                values: None,
+                number_value: None,
+                bool_value: None,
+            },
+        ];
+
+        let and_groups = vec![conditions.clone()];
+        let or_groups = conditions
+            .iter()
+            .cloned()
+            .map(|condition| vec![condition])
+            .collect::<Vec<_>>();
+
+        assert!(!activity_matches_condition_groups(&activity, &and_groups));
+        assert!(activity_matches_condition_groups(&activity, &or_groups));
+    }
+
+    #[test]
+    fn sample_time_conditions_support_or_join() {
+        let samples = vec![
+            ActivitySample {
+                elapsed_seconds: 0.0,
+                distance_m: None,
+                speed_mps: Some(3.2),
+                heart_rate: Some(130.0),
+                cadence: Some(80.0),
+                power_watts: None,
+                altitude_m: None,
+                lat: None,
+                lon: None,
+                timestamp: None,
+            },
+            ActivitySample {
+                elapsed_seconds: 10.0,
+                distance_m: None,
+                speed_mps: Some(2.5),
+                heart_rate: Some(155.0),
+                cadence: Some(70.0),
+                power_watts: None,
+                altitude_m: None,
+                lat: None,
+                lon: None,
+                timestamp: None,
+            },
+            ActivitySample {
+                elapsed_seconds: 20.0,
+                distance_m: None,
+                speed_mps: Some(3.1),
+                heart_rate: Some(145.0),
+                cadence: Some(85.0),
+                power_watts: None,
+                altitude_m: None,
+                lat: None,
+                lon: None,
+                timestamp: None,
+            },
+        ];
+
+        let conditions = vec![
+            AdvancedAnalyticsSampleCondition {
+                id: "hr".into(),
+                field: AdvancedAnalyticsSampleConditionField::HeartRate,
+                operator: AdvancedAnalyticsSampleConditionOperator::GreaterThan,
+                number_value: Some(150.0),
+                zone: None,
+            },
+            AdvancedAnalyticsSampleCondition {
+                id: "speed".into(),
+                field: AdvancedAnalyticsSampleConditionField::SpeedMps,
+                operator: AdvancedAnalyticsSampleConditionOperator::GreaterThan,
+                number_value: Some(3.0),
+                zone: None,
+            },
+        ];
+
+        let and_groups = vec![conditions.clone()];
+        let or_groups = conditions
+            .iter()
+            .cloned()
+            .map(|condition| vec![condition])
+            .collect::<Vec<_>>();
+
+        let and_seconds =
+            compute_matching_sample_time_seconds(&samples, &and_groups, &[120, 140, 160, 180]);
+        let or_seconds =
+            compute_matching_sample_time_seconds(&samples, &or_groups, &[120, 140, 160, 180]);
+
+        assert_eq!(and_seconds, 0.0);
+        assert_eq!(or_seconds, 20.0);
+    }
+
+    #[test]
+    fn legacy_or_activity_conditions_are_normalized_to_groups() {
+        let base = AdvancedAnalyticsBaseMetricDefinition {
+            measure: AdvancedAnalyticsBaseMeasure::ActivitiesCount,
+            activity_conditions: vec![
+                AdvancedAnalyticsActivityCondition {
+                    id: "a".into(),
+                    field: AdvancedAnalyticsActivityConditionField::Title,
+                    operator: AdvancedAnalyticsActivityConditionOperator::Contains,
+                    value: Some("run".into()),
+                    values: None,
+                    number_value: None,
+                    bool_value: None,
+                },
+                AdvancedAnalyticsActivityCondition {
+                    id: "b".into(),
+                    field: AdvancedAnalyticsActivityConditionField::Category,
+                    operator: AdvancedAnalyticsActivityConditionOperator::Equals,
+                    value: Some("running".into()),
+                    values: None,
+                    number_value: None,
+                    bool_value: None,
+                },
+            ],
+            activity_condition_groups: Vec::new(),
+            activity_condition_join: AdvancedAnalyticsConditionJoin::Or,
+            sample_conditions: Vec::new(),
+            sample_condition_groups: Vec::new(),
+            sample_condition_join: AdvancedAnalyticsConditionJoin::And,
+            default_chart_granularity: None,
+            display_unit: None,
+        };
+
+        let groups = normalized_activity_condition_groups(&base);
+        assert_eq!(groups.len(), 2);
+        assert_eq!(groups[0].len(), 1);
+        assert_eq!(groups[1].len(), 1);
     }
 
     #[test]

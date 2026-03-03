@@ -186,10 +186,26 @@ export interface AdvancedAnalyticsSampleCondition {
   zone?: number;
 }
 
+export type AdvancedAnalyticsConditionJoin = 'and' | 'or';
+
+export interface AdvancedAnalyticsActivityConditionGroup {
+  id: string;
+  conditions: AdvancedAnalyticsActivityCondition[];
+}
+
+export interface AdvancedAnalyticsSampleConditionGroup {
+  id: string;
+  conditions: AdvancedAnalyticsSampleCondition[];
+}
+
 export interface AdvancedAnalyticsBaseMetricDefinition {
   measure: AdvancedAnalyticsBaseMeasure;
   activityConditions: AdvancedAnalyticsActivityCondition[];
   sampleConditions: AdvancedAnalyticsSampleCondition[];
+  activityConditionGroups?: AdvancedAnalyticsActivityConditionGroup[];
+  sampleConditionGroups?: AdvancedAnalyticsSampleConditionGroup[];
+  activityConditionJoin?: AdvancedAnalyticsConditionJoin;
+  sampleConditionJoin?: AdvancedAnalyticsConditionJoin;
   defaultChartGranularity?: AdvancedAnalyticsGranularity;
   displayUnit?: string;
 }

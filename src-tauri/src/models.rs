@@ -249,11 +249,46 @@ pub struct AdvancedAnalyticsBaseMetricDefinition {
     #[serde(default)]
     pub activity_conditions: Vec<AdvancedAnalyticsActivityCondition>,
     #[serde(default)]
+    pub activity_condition_groups: Vec<AdvancedAnalyticsActivityConditionGroup>,
+    #[serde(default = "default_advanced_analytics_condition_join")]
+    pub activity_condition_join: AdvancedAnalyticsConditionJoin,
+    #[serde(default)]
     pub sample_conditions: Vec<AdvancedAnalyticsSampleCondition>,
+    #[serde(default)]
+    pub sample_condition_groups: Vec<AdvancedAnalyticsSampleConditionGroup>,
+    #[serde(default = "default_advanced_analytics_condition_join")]
+    pub sample_condition_join: AdvancedAnalyticsConditionJoin,
     #[serde(default)]
     pub default_chart_granularity: Option<AdvancedAnalyticsGranularity>,
     #[serde(default)]
     pub display_unit: Option<String>,
+}
+
+fn default_advanced_analytics_condition_join() -> AdvancedAnalyticsConditionJoin {
+    AdvancedAnalyticsConditionJoin::And
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum AdvancedAnalyticsConditionJoin {
+    And,
+    Or,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdvancedAnalyticsActivityConditionGroup {
+    pub id: String,
+    #[serde(default)]
+    pub conditions: Vec<AdvancedAnalyticsActivityCondition>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdvancedAnalyticsSampleConditionGroup {
+    pub id: String,
+    #[serde(default)]
+    pub conditions: Vec<AdvancedAnalyticsSampleCondition>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

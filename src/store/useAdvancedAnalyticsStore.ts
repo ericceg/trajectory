@@ -4,10 +4,12 @@ import { persist } from 'zustand/middleware';
 
 import type {
   AdvancedAnalyticsActivityCondition,
+  AdvancedAnalyticsActivityConditionGroup,
   AdvancedAnalyticsBaseMetricDefinition,
   AdvancedAnalyticsChartDefinition,
   AdvancedAnalyticsMetricDefinition,
   AdvancedAnalyticsSampleCondition,
+  AdvancedAnalyticsSampleConditionGroup,
   AdvancedAnalyticsStreakDefinition
 } from '@/types';
 
@@ -50,6 +52,10 @@ const defaultBaseMetric = (): AdvancedAnalyticsBaseMetricDefinition => ({
   measure: 'activitiesCount',
   activityConditions: [],
   sampleConditions: [],
+  activityConditionGroups: [],
+  sampleConditionGroups: [],
+  activityConditionJoin: 'and',
+  sampleConditionJoin: 'and',
   defaultChartGranularity: 'week',
   displayUnit: ''
 });
@@ -73,8 +79,20 @@ const blankSampleCondition = (): AdvancedAnalyticsSampleCondition => ({
   zone: 2
 });
 
+const blankActivityConditionGroup = (): AdvancedAnalyticsActivityConditionGroup => ({
+  id: newId('ag'),
+  conditions: [blankActivityCondition()]
+});
+
+const blankSampleConditionGroup = (): AdvancedAnalyticsSampleConditionGroup => ({
+  id: newId('sg'),
+  conditions: [blankSampleCondition()]
+});
+
 export const createBlankActivityCondition = blankActivityCondition;
 export const createBlankSampleCondition = blankSampleCondition;
+export const createBlankActivityConditionGroup = blankActivityConditionGroup;
+export const createBlankSampleConditionGroup = blankSampleConditionGroup;
 
 export const useAdvancedAnalyticsStore = create<AdvancedAnalyticsState>()(
   persist(
