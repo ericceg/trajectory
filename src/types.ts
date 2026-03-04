@@ -107,6 +107,7 @@ export interface ScanDoneEvent {
 export type AdvancedAnalyticsGranularity = 'day' | 'week' | 'month';
 export type AdvancedAnalyticsChartType = 'bar' | 'line' | 'stackedBar';
 export type AdvancedAnalyticsMetricKind = 'base' | 'formula';
+export type AdvancedAnalyticsTimeRangePreset = 'all' | '7d' | '30d' | '90d' | '365d' | 'custom';
 export type AdvancedAnalyticsBaseMeasure =
   | 'activitiesCount'
   | 'activeDaysCount'
@@ -223,13 +224,21 @@ export interface AdvancedAnalyticsMetricDefinition {
   name: string;
   kind: AdvancedAnalyticsMetricKind;
   showInView?: boolean;
+  timeRange?: AdvancedAnalyticsTimeRangeConfig;
   base?: AdvancedAnalyticsBaseMetricDefinition;
   formula?: AdvancedAnalyticsFormulaMetricDefinition;
+}
+
+export interface AdvancedAnalyticsTimeRangeConfig {
+  preset?: AdvancedAnalyticsTimeRangePreset;
+  customStartDate?: string;
+  customEndDate?: string;
 }
 
 export interface AdvancedAnalyticsStreakDefinition {
   id: string;
   name: string;
+  timeRange?: AdvancedAnalyticsTimeRangeConfig;
   metricId: string;
   period: AdvancedAnalyticsPeriod;
   thresholdOperator: AdvancedAnalyticsThresholdOperator;
@@ -239,6 +248,7 @@ export interface AdvancedAnalyticsStreakDefinition {
 export interface AdvancedAnalyticsChartDefinition {
   id: string;
   name: string;
+  timeRange?: AdvancedAnalyticsTimeRangeConfig;
   chartType: AdvancedAnalyticsChartType;
   metricIds: string[];
   granularity: AdvancedAnalyticsGranularity;

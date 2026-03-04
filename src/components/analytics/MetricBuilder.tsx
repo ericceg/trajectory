@@ -4,6 +4,7 @@ import {
   createBlankSampleCondition,
   createBlankSampleConditionGroup
 } from '@/store/useAdvancedAnalyticsStore';
+import { TimeRangeControl } from '@/components/analytics/TimeRangeControl';
 import type {
   AdvancedAnalyticsActivityCondition,
   AdvancedAnalyticsActivityConditionField,
@@ -350,6 +351,14 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
         />
         Show in View tab
       </label>
+
+      <div className="space-y-2 rounded-lg border border-border bg-bg/30 p-3">
+        <p className="text-sm font-medium text-foreground">Card time range (View tab)</p>
+        <TimeRangeControl
+          value={metric.timeRange}
+          onChange={(timeRange) => onChange({ ...metric, timeRange })}
+        />
+      </div>
 
       {metric.kind === 'base' ? (
         <div className="space-y-4">

@@ -413,7 +413,9 @@ Persists:
 - custom streak definitions
 - chart view definitions
 - selected analytics item
-- advanced analytics time range / custom dates / auto-run toggle
+- legacy global advanced analytics time range fields (no longer used by the current page UI)
+- per-definition card time ranges (`metric.timeRange`, `streak.timeRange`, `chart.timeRange`)
+- auto-run toggle
 
 Computed analytics results are **not** persisted.
 
@@ -549,7 +551,11 @@ Key behaviors:
 - `Sample time` metric preview activity rows are clickable and open `ActivityDetailPage` (`/activities/:id`) while passing return context (`fromPath`/`fromLabel`) so Activity Detail can route back to Advanced Analytics
 - Metric unit display is selected from predefined dropdown options with `Auto` as the default (no free-form unit text input), and backend analytics converts scalar/series values to compatible display units before previews/charts/streaks consume them (including dimensionless ratio -> `%` scaling)
 - UI separates analytics editing vs preview into Configure/View tabs (View is default and renders an at-a-glance overview); the active tab is persisted in UI state, and metrics include a persisted `showInView` toggle used to filter the View metrics section
-- Advanced Analytics results are cached in-memory in `useAppStore` by a cache key derived from request payload + `settings.lastScanTimestamp`; auto-run reuses cache and skips backend calls when the key is unchanged (manual `Recompute` still forces a run)
+- Each metric/streak/chart definition includes its own persisted card time range config (`all`, `7d`, `30d`, `90d`, `365d`, `custom` + optional dates), and the page computes one backend analytics request per unique range in the current tab
+- Time ranges are editable in Configure only; View is read-only and displays each card's active range as an indicator
+- View tab metric cards intentionally render scalar values only in a responsive multi-column grid; charts in View are shown only for explicit Chart View definitions
+- `Sample time` activity timeline previews are shown in Configure previews, not in View metric cards
+- Advanced Analytics results are cached in-memory in `useAppStore` by request payload + `settings.lastScanTimestamp`; auto-run reuses cache and only runs missing request variants, while manual `Recompute` forces all current-tab requests
 - Uses Settings heart-rate zone cutoffs for HR-zone sample conditions
 
 ### 5.5 Shared components and utilities
@@ -577,6 +583,8 @@ Libraries/helpers:
   - frontend validation for definition shape and chart metric-count constraints
 - `src/lib/analytics/formatting.ts`
   - formatting helpers for advanced analytics values/units and previews
+- `src/lib/analytics/timeRange.ts`
+  - shared advanced-analytics time-range presets/defaults/normalization + request-range resolution
 - `src/lib/theme.ts`
   - accent theme IDs/palettes and CSS variable application
 - `src/lib/mapStyles.ts`

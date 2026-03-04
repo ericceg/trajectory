@@ -2,6 +2,7 @@ import type {
   AdvancedAnalyticsChartDefinition,
   AdvancedAnalyticsMetricDefinition
 } from '@/types';
+import { TimeRangeControl } from '@/components/analytics/TimeRangeControl';
 
 interface ChartBuilderProps {
   chart: AdvancedAnalyticsChartDefinition;
@@ -77,6 +78,14 @@ export function ChartBuilder({ chart, metrics, onChange, onDelete }: ChartBuilde
             ? 'Pick 2-5 metrics'
             : 'Pick exactly 1 metric'}
         </div>
+      </div>
+
+      <div className="space-y-2 rounded-lg border border-border bg-bg/30 p-3">
+        <p className="text-sm font-medium text-foreground">Card time range (View tab)</p>
+        <TimeRangeControl
+          value={chart.timeRange}
+          onChange={(timeRange) => onChange({ ...chart, timeRange })}
+        />
       </div>
 
       <div className="space-y-2 rounded-lg border border-border bg-bg/30 p-3">

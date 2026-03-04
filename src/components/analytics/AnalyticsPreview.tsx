@@ -17,6 +17,8 @@ import {
 } from 'recharts';
 
 import { formatAnalyticsValue, metricPreviewGranularity, metricResultUnit } from '@/lib/analytics/formatting';
+import { normalizeAdvancedAnalyticsTimeRange } from '@/lib/analytics/timeRange';
+import { TimeRangeControl } from '@/components/analytics/TimeRangeControl';
 import {
   CHART_IS_ANIMATION_ACTIVE,
   CHART_LINE_ACTIVE_DOT,
@@ -44,7 +46,8 @@ import type {
   AdvancedAnalyticsRunResponse,
   AdvancedAnalyticsSampleTimeActivityPreview,
   AdvancedAnalyticsStreakDefinition,
-  AdvancedAnalyticsStreakResult
+  AdvancedAnalyticsStreakResult,
+  AdvancedAnalyticsTimeRangeConfig
 } from '@/types';
 
 const CHART_COLORS = ['#2563eb', '#dc2626', '#10b981', '#f59e0b', '#7c3aed'];
@@ -60,8 +63,31 @@ interface AnalyticsPreviewProps {
   mode?: 'selected' | 'overview';
   overviewMetricIds?: string[];
   response: AdvancedAnalyticsRunResponse | null;
+  overviewMetricResultsById?: Record<string, AdvancedAnalyticsMetricResult | undefined>;
+  overviewStreakResultsById?: Record<string, AdvancedAnalyticsStreakResult | undefined>;
+  overviewChartResultsById?: Record<string, AdvancedAnalyticsChartResult | undefined>;
+  onMetricTimeRangeChange?: (metricId: string, timeRange: AdvancedAnalyticsTimeRangeConfig) => void;
+  onStreakTimeRangeChange?: (streakId: string, timeRange: AdvancedAnalyticsTimeRangeConfig) => void;
+  onChartTimeRangeChange?: (chartId: string, timeRange: AdvancedAnalyticsTimeRangeConfig) => void;
   loading: boolean;
   error: string | null;
+}
+
+function timeRangeIndicator(range: AdvancedAnalyticsTimeRangeConfig | undefined): string {
+  const normalized = normalizeAdvancedAnalyticsTimeRange(range);
+  if (normalized.preset === 'custom') {
+    if (normalized.customStartDate && normalized.customEndDate) {
+      return `${normalized.customStartDate} -> ${normalized.customEndDate}`;
+    }
+    if (normalized.customStartDate) {
+      return `from ${normalized.customStartDate}`;
+    }
+    if (normalized.customEndDate) {
+      return `until ${normalized.customEndDate}`;
+    }
+    return 'custom';
+  }
+  return normalized.preset;
 }
 
 function trimOuterEmptyBuckets<T>(rows: T[], hasData: (row: T) => boolean): T[] {
@@ -211,10 +237,16 @@ function AnalyticsChartTooltip({
 
 function MetricPreview({
   metric,
-  result
+  result,
+  showChart = true,
+  showSamplePreview = true,
+  onTimeRangeChange
 }: {
   metric: AdvancedAnalyticsMetricDefinition;
   result?: AdvancedAnalyticsMetricResult;
+  showChart?: boolean;
+  showSamplePreview?: boolean;
+  onTimeRangeChange?: (timeRange: AdvancedAnalyticsTimeRangeConfig) => void;
 }) {
   const granularity = metricPreviewGranularity(metric);
   const points =
@@ -238,13 +270,24 @@ function MetricPreview({
       <div className="rounded-xl border border-border bg-panel p-4">
         <p className="text-xs uppercase tracking-[0.12em] text-muted">Metric Result</p>
         <h3 className="mt-1 text-xl font-semibold text-foreground">{metric.name || 'Untitled metric'}</h3>
+        {onTimeRangeChange ? (
+          <div className="mt-3">
+            <TimeRangeControl
+              value={metric.timeRange}
+              onChange={onTimeRangeChange}
+              compact
+            />
+          </div>
+        ) : (
+          <p className="mt-2 text-xs text-muted">Range: {timeRangeIndicator(metric.timeRange)}</p>
+        )}
         <p className="mt-3 text-3xl font-semibold text-foreground">
           {formatAnalyticsValue(result?.scalarValue, unit)}
         </p>
-        <p className="mt-1 text-xs text-muted">Preview granularity: {granularity}</p>
+        {showChart ? <p className="mt-1 text-xs text-muted">Preview granularity: {granularity}</p> : null}
       </div>
 
-      {chartPoints.length > 0 ? (
+      {showChart && chartPoints.length > 0 ? (
         <div className="space-y-2">
           <div className="h-72 rounded-lg border border-border/80 bg-bg/30 p-3">
             <ResponsiveContainer width="100%" height="100%">
@@ -304,13 +347,16 @@ function MetricPreview({
             {zoom.isZoomed ? ' Showing a zoomed range.' : ''}
           </p>
         </div>
-      ) : (
+      ) : showChart ? (
         <p className="text-sm text-muted">No series points for this metric in the selected range.</p>
-      )}
+      ) : null}
 
       <NoticeList title="Metric Errors" items={result?.errors ?? []} tone="error" />
       <NoticeList title="Metric Warnings" items={result?.warnings ?? []} />
-      {metric.kind === 'base' && metric.base?.measure === 'sampleTime' && result?.sampleTimePreview ? (
+      {showSamplePreview &&
+      metric.kind === 'base' &&
+      metric.base?.measure === 'sampleTime' &&
+      result?.sampleTimePreview ? (
         <SampleTimeActivityPreview preview={result.sampleTimePreview} />
       ) : null}
     </div>
@@ -473,16 +519,29 @@ function SampleTimeActivityRow({
 
 function StreakPreview({
   streak,
-  result
+  result,
+  onTimeRangeChange
 }: {
   streak: AdvancedAnalyticsStreakDefinition;
   result?: AdvancedAnalyticsStreakResult;
+  onTimeRangeChange?: (timeRange: AdvancedAnalyticsTimeRangeConfig) => void;
 }) {
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-border bg-panel p-4">
         <p className="text-xs uppercase tracking-[0.12em] text-muted">Streak Result</p>
         <h3 className="mt-1 text-xl font-semibold text-foreground">{streak.name || 'Untitled streak'}</h3>
+        {onTimeRangeChange ? (
+          <div className="mt-3">
+            <TimeRangeControl
+              value={streak.timeRange}
+              onChange={onTimeRangeChange}
+              compact
+            />
+          </div>
+        ) : (
+          <p className="mt-2 text-xs text-muted">Range: {timeRangeIndicator(streak.timeRange)}</p>
+        )}
         <div className="mt-4 grid gap-3 md:grid-cols-3">
           <div className="rounded-lg border border-border bg-bg/30 p-3">
             <p className="text-xs text-muted">Current streak</p>
@@ -511,12 +570,14 @@ function ChartPreview({
   chart,
   result,
   metricsById,
-  metricResults
+  metricResults,
+  onTimeRangeChange
 }: {
   chart: AdvancedAnalyticsChartDefinition;
   result?: AdvancedAnalyticsChartResult;
   metricsById: Map<string, AdvancedAnalyticsMetricDefinition>;
-  metricResults: Record<string, AdvancedAnalyticsMetricResult>;
+  metricResults: Record<string, AdvancedAnalyticsMetricResult | undefined>;
+  onTimeRangeChange?: (timeRange: AdvancedAnalyticsTimeRangeConfig) => void;
 }) {
   const rows: ChartRow[] = (result?.points ?? []).map((point) => ({
     key: point.key,
@@ -570,6 +631,17 @@ function ChartPreview({
       <div className="rounded-xl border border-border bg-panel p-4">
         <p className="text-xs uppercase tracking-[0.12em] text-muted">Chart Preview</p>
         <h3 className="mt-1 text-xl font-semibold text-foreground">{chart.name || 'Untitled chart'}</h3>
+        {onTimeRangeChange ? (
+          <div className="mt-3">
+            <TimeRangeControl
+              value={chart.timeRange}
+              onChange={onTimeRangeChange}
+              compact
+            />
+          </div>
+        ) : (
+          <p className="mt-2 text-xs text-muted">Range: {timeRangeIndicator(chart.timeRange)}</p>
+        )}
         <p className="text-sm text-muted">
           {chart.chartType} · {chart.granularity} · {chart.metricIds.length} metric(s)
         </p>
@@ -739,6 +811,12 @@ export function AnalyticsPreview({
   mode = 'selected',
   overviewMetricIds,
   response,
+  overviewMetricResultsById,
+  overviewStreakResultsById,
+  overviewChartResultsById,
+  onMetricTimeRangeChange,
+  onStreakTimeRangeChange,
+  onChartTimeRangeChange,
   loading,
   error
 }: AnalyticsPreviewProps) {
@@ -746,6 +824,9 @@ export function AnalyticsPreview({
   const metricResults = response?.metricResults ?? {};
   const streakResults = response?.streakResults ?? {};
   const chartResults = response?.chartResults ?? {};
+  const resolvedOverviewMetricResults = overviewMetricResultsById ?? metricResults;
+  const resolvedOverviewStreakResults = overviewStreakResultsById ?? streakResults;
+  const resolvedOverviewChartResults = overviewChartResultsById ?? chartResults;
   const overviewMetricIdSet = overviewMetricIds ? new Set(overviewMetricIds) : null;
   const overviewMetrics =
     mode === 'overview'
@@ -782,11 +863,21 @@ export function AnalyticsPreview({
           <section className="space-y-4">
             <div>
               <h3 className="text-lg font-semibold text-foreground">Metrics</h3>
-              <p className="text-sm text-muted">Metrics enabled for the View tab.</p>
+              <p className="text-sm text-muted">
+                Metrics enabled for the View tab. Charts appear only in Chart Views.
+              </p>
             </div>
-            {overviewMetrics.map((metric) => (
-              <MetricPreview key={metric.id} metric={metric} result={metricResults[metric.id]} />
-            ))}
+            <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+              {overviewMetrics.map((metric) => (
+                <MetricPreview
+                  key={metric.id}
+                  metric={metric}
+                  result={resolvedOverviewMetricResults[metric.id]}
+                  showChart={false}
+                  showSamplePreview={false}
+                />
+              ))}
+            </div>
           </section>
         ) : null}
 
@@ -797,7 +888,11 @@ export function AnalyticsPreview({
               <p className="text-sm text-muted">Current streak statuses at a glance.</p>
             </div>
             {streaks.map((streak) => (
-              <StreakPreview key={streak.id} streak={streak} result={streakResults[streak.id]} />
+              <StreakPreview
+                key={streak.id}
+                streak={streak}
+                result={resolvedOverviewStreakResults[streak.id]}
+              />
             ))}
           </section>
         ) : null}
@@ -806,15 +901,15 @@ export function AnalyticsPreview({
           <section className="space-y-4">
             <div>
               <h3 className="text-lg font-semibold text-foreground">Charts</h3>
-              <p className="text-sm text-muted">Saved chart views for the selected time range.</p>
+              <p className="text-sm text-muted">Saved chart views.</p>
             </div>
             {charts.map((chart) => (
               <ChartPreview
                 key={chart.id}
                 chart={chart}
-                result={chartResults[chart.id]}
+                result={resolvedOverviewChartResults[chart.id]}
                 metricsById={metricsById}
-                metricResults={metricResults}
+                metricResults={resolvedOverviewMetricResults}
               />
             ))}
           </section>
@@ -854,10 +949,26 @@ export function AnalyticsPreview({
       ) : null}
 
       {selectedMetric ? (
-        <MetricPreview metric={selectedMetric} result={metricResults[selectedMetric.id]} />
+        <MetricPreview
+          metric={selectedMetric}
+          result={metricResults[selectedMetric.id]}
+          onTimeRangeChange={
+            onMetricTimeRangeChange
+              ? (timeRange) => onMetricTimeRangeChange(selectedMetric.id, timeRange)
+              : undefined
+          }
+        />
       ) : null}
       {selectedStreak ? (
-        <StreakPreview streak={selectedStreak} result={streakResults[selectedStreak.id]} />
+        <StreakPreview
+          streak={selectedStreak}
+          result={streakResults[selectedStreak.id]}
+          onTimeRangeChange={
+            onStreakTimeRangeChange
+              ? (timeRange) => onStreakTimeRangeChange(selectedStreak.id, timeRange)
+              : undefined
+          }
+        />
       ) : null}
       {selectedChart ? (
         <ChartPreview
@@ -865,6 +976,11 @@ export function AnalyticsPreview({
           result={chartResults[selectedChart.id]}
           metricsById={metricsById}
           metricResults={metricResults}
+          onTimeRangeChange={
+            onChartTimeRangeChange
+              ? (timeRange) => onChartTimeRangeChange(selectedChart.id, timeRange)
+              : undefined
+          }
         />
       ) : null}
     </div>

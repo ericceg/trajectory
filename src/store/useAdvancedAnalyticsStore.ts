@@ -2,6 +2,7 @@ import { format, subDays } from 'date-fns';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+import { defaultAdvancedAnalyticsTimeRange } from '@/lib/analytics/timeRange';
 import type {
   AdvancedAnalyticsActivityCondition,
   AdvancedAnalyticsActivityConditionGroup,
@@ -10,10 +11,9 @@ import type {
   AdvancedAnalyticsMetricDefinition,
   AdvancedAnalyticsSampleCondition,
   AdvancedAnalyticsSampleConditionGroup,
-  AdvancedAnalyticsStreakDefinition
+  AdvancedAnalyticsStreakDefinition,
+  AdvancedAnalyticsTimeRangePreset
 } from '@/types';
-
-export type AdvancedAnalyticsTimeRangePreset = 'all' | '30d' | '90d' | '365d' | 'custom';
 export type AdvancedAnalyticsSelection =
   | { kind: 'metric'; id: string }
   | { kind: 'streak'; id: string }
@@ -121,6 +121,7 @@ export const useAdvancedAnalyticsStore = create<AdvancedAnalyticsState>()(
                   name: `Formula Metric ${state.metrics.filter((m) => m.kind === 'formula').length + 1}`,
                   kind: 'formula',
                   showInView: true,
+                  timeRange: defaultAdvancedAnalyticsTimeRange(),
                   formula: {
                     leftMetricId: state.metrics.find((m) => m.kind === 'base')?.id ?? '',
                     operator: 'divide',
@@ -133,6 +134,7 @@ export const useAdvancedAnalyticsStore = create<AdvancedAnalyticsState>()(
                   name: `Metric ${state.metrics.filter((m) => m.kind === 'base').length + 1}`,
                   kind: 'base',
                   showInView: true,
+                  timeRange: defaultAdvancedAnalyticsTimeRange(),
                   base: defaultBaseMetric()
                 };
 
@@ -165,6 +167,7 @@ export const useAdvancedAnalyticsStore = create<AdvancedAnalyticsState>()(
           const streak: AdvancedAnalyticsStreakDefinition = {
             id: newId('streak'),
             name: `Streak ${state.streaks.length + 1}`,
+            timeRange: defaultAdvancedAnalyticsTimeRange(),
             metricId: state.metrics[0]?.id ?? '',
             period: 'week',
             thresholdOperator: 'greaterThanOrEqual',
@@ -193,6 +196,7 @@ export const useAdvancedAnalyticsStore = create<AdvancedAnalyticsState>()(
           const chart: AdvancedAnalyticsChartDefinition = {
             id: newId('chart'),
             name: `Chart ${state.charts.length + 1}`,
+            timeRange: defaultAdvancedAnalyticsTimeRange(),
             chartType: defaultMetricIds.length >= 2 ? 'stackedBar' : 'bar',
             metricIds:
               defaultMetricIds.length >= 2 ? defaultMetricIds : defaultMetricIds.slice(0, 1),

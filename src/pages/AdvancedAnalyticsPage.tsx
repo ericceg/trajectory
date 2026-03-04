@@ -1,39 +1,51 @@
 import { useEffect, useMemo, useState } from 'react';
-import { format, subDays } from 'date-fns';
 
 import { AnalyticsLibrary } from '@/components/analytics/AnalyticsLibrary';
 import { AnalyticsPreview } from '@/components/analytics/AnalyticsPreview';
 import { ChartBuilder } from '@/components/analytics/ChartBuilder';
 import { MetricBuilder } from '@/components/analytics/MetricBuilder';
 import { StreakBuilder } from '@/components/analytics/StreakBuilder';
-import { runAdvancedAnalytics } from '@/lib/tauri';
+import { resolveAdvancedAnalyticsTimeRange } from '@/lib/analytics/timeRange';
 import { validateAdvancedAnalyticsDefinitions } from '@/lib/analytics/validation';
+import { runAdvancedAnalytics } from '@/lib/tauri';
 import { useAdvancedAnalyticsStore } from '@/store/useAdvancedAnalyticsStore';
 import { useAppStore } from '@/store/useAppStore';
 import { useUiStateStore } from '@/store/useUiStateStore';
-import type { AdvancedAnalyticsRunRequest, AdvancedAnalyticsRunResponse } from '@/types';
+import type {
+  AdvancedAnalyticsChartResult,
+  AdvancedAnalyticsMetricResult,
+  AdvancedAnalyticsRunRequest,
+  AdvancedAnalyticsRunResponse,
+  AdvancedAnalyticsStreakResult,
+  AdvancedAnalyticsTimeRangeConfig
+} from '@/types';
 
-function resolveTimeRange(
-  preset: 'all' | '30d' | '90d' | '365d' | 'custom',
-  customStartDate: string,
-  customEndDate: string
-) {
-  const today = new Date();
-  if (preset === 'all') {
-    return { startDate: undefined, endDate: undefined };
-  }
-  if (preset === 'custom') {
-    return {
-      startDate: customStartDate || undefined,
-      endDate: customEndDate || undefined
-    };
-  }
+interface RequestEntry {
+  cacheKey: string;
+  request: AdvancedAnalyticsRunRequest;
+}
 
-  const days = preset === '30d' ? 29 : preset === '90d' ? 89 : 364;
+function requestCacheKey(request: AdvancedAnalyticsRunRequest, dataVersion: string | null) {
+  return JSON.stringify({ request, dataVersion });
+}
+
+function buildRequest(
+  range: { startDate?: string; endDate?: string },
+  metrics: AdvancedAnalyticsRunRequest['metrics'],
+  streaks: AdvancedAnalyticsRunRequest['streaks'],
+  charts: AdvancedAnalyticsRunRequest['charts']
+): AdvancedAnalyticsRunRequest {
   return {
-    startDate: format(subDays(today, days), 'yyyy-MM-dd'),
-    endDate: format(today, 'yyyy-MM-dd')
+    startDate: range.startDate,
+    endDate: range.endDate,
+    metrics,
+    streaks,
+    charts
   };
+}
+
+function rangeKeyFromConfig(timeRange: AdvancedAnalyticsTimeRangeConfig | undefined): string {
+  return JSON.stringify(resolveAdvancedAnalyticsTimeRange(timeRange));
 }
 
 export function AdvancedAnalyticsPage() {
@@ -43,14 +55,8 @@ export function AdvancedAnalyticsPage() {
   const metrics = useAdvancedAnalyticsStore((state) => state.metrics);
   const streaks = useAdvancedAnalyticsStore((state) => state.streaks);
   const charts = useAdvancedAnalyticsStore((state) => state.charts);
-  const timeRangePreset = useAdvancedAnalyticsStore((state) => state.timeRangePreset);
-  const customStartDate = useAdvancedAnalyticsStore((state) => state.customStartDate);
-  const customEndDate = useAdvancedAnalyticsStore((state) => state.customEndDate);
   const autoRun = useAdvancedAnalyticsStore((state) => state.autoRun);
   const selectedItem = useAdvancedAnalyticsStore((state) => state.selectedItem);
-  const setTimeRangePreset = useAdvancedAnalyticsStore((state) => state.setTimeRangePreset);
-  const setCustomStartDate = useAdvancedAnalyticsStore((state) => state.setCustomStartDate);
-  const setCustomEndDate = useAdvancedAnalyticsStore((state) => state.setCustomEndDate);
   const setAutoRun = useAdvancedAnalyticsStore((state) => state.setAutoRun);
   const setSelectedItem = useAdvancedAnalyticsStore((state) => state.setSelectedItem);
   const addMetric = useAdvancedAnalyticsStore((state) => state.addMetric);
@@ -65,8 +71,7 @@ export function AdvancedAnalyticsPage() {
   const activeTab = useUiStateStore((state) => state.analyticsActiveTab);
   const setActiveTab = useUiStateStore((state) => state.setAnalyticsActiveTab);
 
-  const [response, setResponse] = useState<AdvancedAnalyticsRunResponse | null>(null);
-  const [responseKey, setResponseKey] = useState<string | null>(null);
+  const [responsesByCacheKey, setResponsesByCacheKey] = useState<Record<string, AdvancedAnalyticsRunResponse>>({});
   const [loading, setLoading] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
 
@@ -87,36 +92,7 @@ export function AdvancedAnalyticsPage() {
     }
   }, [charts, metrics, selectedItem, setSelectedItem, streaks]);
 
-  const resolvedRange = useMemo(
-    () => resolveTimeRange(timeRangePreset, customStartDate, customEndDate),
-    [customEndDate, customStartDate, timeRangePreset]
-  );
-
-  const request = useMemo<AdvancedAnalyticsRunRequest>(
-    () => ({
-      startDate: resolvedRange.startDate,
-      endDate: resolvedRange.endDate,
-      metrics,
-      streaks,
-      charts
-    }),
-    [charts, metrics, resolvedRange.endDate, resolvedRange.startDate, streaks]
-  );
   const dataVersion = settings?.lastScanTimestamp ?? null;
-  const requestCacheKey = useMemo(
-    () =>
-      JSON.stringify({
-        request,
-        dataVersion
-      }),
-    [dataVersion, request]
-  );
-  const cachedResponse = useMemo(
-    () => getCachedAdvancedAnalytics(requestCacheKey),
-    [getCachedAdvancedAnalytics, requestCacheKey]
-  );
-  const displayResponse =
-    responseKey === requestCacheKey ? response : cachedResponse;
 
   const validationIssues = useMemo(
     () => validateAdvancedAnalyticsDefinitions({ metrics, streaks, charts }),
@@ -136,32 +112,105 @@ export function AdvancedAnalyticsPage() {
     );
   }, [selectedItem, validationIssues]);
 
-  const runNow = async (payload: AdvancedAnalyticsRunRequest) => {
-    const payloadCacheKey = JSON.stringify({ request: payload, dataVersion });
-    setLoading(true);
-    setRunError(null);
-    try {
-      const next = await runAdvancedAnalytics(payload);
-      setResponse(next);
-      setResponseKey(payloadCacheKey);
-      setCachedAdvancedAnalytics(payloadCacheKey, next);
-    } catch (error) {
-      setRunError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setLoading(false);
-    }
-  };
+  const selectedMetric =
+    selectedItem?.kind === 'metric' ? metrics.find((metric) => metric.id === selectedItem.id) : undefined;
+  const selectedStreak =
+    selectedItem?.kind === 'streak' ? streaks.find((streak) => streak.id === selectedItem.id) : undefined;
+  const selectedChart =
+    selectedItem?.kind === 'chart' ? charts.find((chart) => chart.id === selectedItem.id) : undefined;
 
-  useEffect(() => {
-    if (!autoRun) {
+  const selectedRequestEntry = useMemo<RequestEntry | null>(() => {
+    if (!selectedItem) {
+      return null;
+    }
+
+    const range = resolveAdvancedAnalyticsTimeRange(
+      selectedMetric?.timeRange ?? selectedStreak?.timeRange ?? selectedChart?.timeRange
+    );
+    const request = buildRequest(range, metrics, streaks, charts);
+    return {
+      request,
+      cacheKey: requestCacheKey(request, dataVersion)
+    };
+  }, [charts, dataVersion, metrics, selectedChart?.timeRange, selectedItem, selectedMetric?.timeRange, selectedStreak?.timeRange, streaks]);
+
+  const overviewRequestEntries = useMemo<RequestEntry[]>(() => {
+    const byRangeKey = new Map<string, RequestEntry>();
+    const itemRanges = [
+      ...viewTabMetrics.map((metric) => metric.timeRange),
+      ...streaks.map((streak) => streak.timeRange),
+      ...charts.map((chart) => chart.timeRange)
+    ];
+
+    for (const timeRange of itemRanges) {
+      const key = rangeKeyFromConfig(timeRange);
+      if (byRangeKey.has(key)) {
+        continue;
+      }
+      const range = resolveAdvancedAnalyticsTimeRange(timeRange);
+      const request = buildRequest(range, metrics, streaks, charts);
+      byRangeKey.set(key, {
+        request,
+        cacheKey: requestCacheKey(request, dataVersion)
+      });
+    }
+
+    return Array.from(byRangeKey.values());
+  }, [charts, dataVersion, metrics, streaks, viewTabMetrics]);
+
+  const requestEntries = useMemo(
+    () => (activeTab === 'view' ? overviewRequestEntries : selectedRequestEntry ? [selectedRequestEntry] : []),
+    [activeTab, overviewRequestEntries, selectedRequestEntry]
+  );
+
+  const getResponse = (cacheKey: string): AdvancedAnalyticsRunResponse | null =>
+    responsesByCacheKey[cacheKey] ?? getCachedAdvancedAnalytics(cacheKey);
+
+  const runRequests = async (entries: RequestEntry[], force: boolean) => {
+    if (entries.length === 0) {
       return;
     }
 
-    if (cachedResponse) {
-      setResponse(cachedResponse);
-      setResponseKey(requestCacheKey);
-      setRunError(null);
+    setLoading(true);
+    setRunError(null);
+
+    const nextResponses: Record<string, AdvancedAnalyticsRunResponse> = {};
+    const errors: string[] = [];
+
+    await Promise.all(
+      entries.map(async (entry) => {
+        if (!force) {
+          const existing = getResponse(entry.cacheKey);
+          if (existing) {
+            nextResponses[entry.cacheKey] = existing;
+            return;
+          }
+        }
+
+        try {
+          const next = await runAdvancedAnalytics(entry.request);
+          nextResponses[entry.cacheKey] = next;
+          setCachedAdvancedAnalytics(entry.cacheKey, next);
+        } catch (error) {
+          errors.push(error instanceof Error ? error.message : String(error));
+        }
+      })
+    );
+
+    setResponsesByCacheKey((current) => ({ ...current, ...nextResponses }));
+    setRunError(errors.length > 0 ? errors[0] : null);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    if (!autoRun || requestEntries.length === 0) {
+      return;
+    }
+
+    const missing = requestEntries.filter((entry) => !getResponse(entry.cacheKey));
+    if (missing.length === 0) {
       setLoading(false);
+      setRunError(null);
       return;
     }
 
@@ -169,21 +218,30 @@ export function AdvancedAnalyticsPage() {
     const run = async () => {
       setLoading(true);
       setRunError(null);
-      try {
-        const next = await runAdvancedAnalytics(request);
-        if (!cancelled) {
-          setResponse(next);
-          setResponseKey(requestCacheKey);
-          setCachedAdvancedAnalytics(requestCacheKey, next);
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setRunError(error instanceof Error ? error.message : String(error));
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+
+      const nextResponses: Record<string, AdvancedAnalyticsRunResponse> = {};
+      const errors: string[] = [];
+
+      await Promise.all(
+        missing.map(async (entry) => {
+          try {
+            const next = await runAdvancedAnalytics(entry.request);
+            if (!cancelled) {
+              nextResponses[entry.cacheKey] = next;
+              setCachedAdvancedAnalytics(entry.cacheKey, next);
+            }
+          } catch (error) {
+            if (!cancelled) {
+              errors.push(error instanceof Error ? error.message : String(error));
+            }
+          }
+        })
+      );
+
+      if (!cancelled) {
+        setResponsesByCacheKey((current) => ({ ...current, ...nextResponses }));
+        setRunError(errors.length > 0 ? errors[0] : null);
+        setLoading(false);
       }
     };
 
@@ -192,14 +250,45 @@ export function AdvancedAnalyticsPage() {
     return () => {
       cancelled = true;
     };
-  }, [autoRun, cachedResponse, getCachedAdvancedAnalytics, requestCacheKey, request, setCachedAdvancedAnalytics]);
+  }, [autoRun, getCachedAdvancedAnalytics, requestEntries, setCachedAdvancedAnalytics]);
 
-  const selectedMetric =
-    selectedItem?.kind === 'metric' ? metrics.find((metric) => metric.id === selectedItem.id) : undefined;
-  const selectedStreak =
-    selectedItem?.kind === 'streak' ? streaks.find((streak) => streak.id === selectedItem.id) : undefined;
-  const selectedChart =
-    selectedItem?.kind === 'chart' ? charts.find((chart) => chart.id === selectedItem.id) : undefined;
+  const selectedResponse = selectedRequestEntry ? getResponse(selectedRequestEntry.cacheKey) : null;
+
+  const overviewMetricResultsById = useMemo<Record<string, AdvancedAnalyticsMetricResult | undefined>>(() => {
+    const results: Record<string, AdvancedAnalyticsMetricResult | undefined> = {};
+    for (const metric of viewTabMetrics) {
+      const range = resolveAdvancedAnalyticsTimeRange(metric.timeRange);
+      const request = buildRequest(range, metrics, streaks, charts);
+      const cacheKey = requestCacheKey(request, dataVersion);
+      const response = getResponse(cacheKey);
+      results[metric.id] = response?.metricResults[metric.id];
+    }
+    return results;
+  }, [charts, dataVersion, getCachedAdvancedAnalytics, metrics, responsesByCacheKey, streaks, viewTabMetrics]);
+
+  const overviewStreakResultsById = useMemo<Record<string, AdvancedAnalyticsStreakResult | undefined>>(() => {
+    const results: Record<string, AdvancedAnalyticsStreakResult | undefined> = {};
+    for (const streak of streaks) {
+      const range = resolveAdvancedAnalyticsTimeRange(streak.timeRange);
+      const request = buildRequest(range, metrics, streaks, charts);
+      const cacheKey = requestCacheKey(request, dataVersion);
+      const response = getResponse(cacheKey);
+      results[streak.id] = response?.streakResults[streak.id];
+    }
+    return results;
+  }, [charts, dataVersion, getCachedAdvancedAnalytics, metrics, responsesByCacheKey, streaks]);
+
+  const overviewChartResultsById = useMemo<Record<string, AdvancedAnalyticsChartResult | undefined>>(() => {
+    const results: Record<string, AdvancedAnalyticsChartResult | undefined> = {};
+    for (const chart of charts) {
+      const range = resolveAdvancedAnalyticsTimeRange(chart.timeRange);
+      const request = buildRequest(range, metrics, streaks, charts);
+      const cacheKey = requestCacheKey(request, dataVersion);
+      const response = getResponse(cacheKey);
+      results[chart.id] = response?.chartResults[chart.id];
+    }
+    return results;
+  }, [charts, dataVersion, getCachedAdvancedAnalytics, metrics, responsesByCacheKey, streaks]);
 
   return (
     <div className="space-y-6">
@@ -214,48 +303,7 @@ export function AdvancedAnalyticsPage() {
         </div>
 
         <section className="rounded-xl border border-border bg-panel p-4">
-          <div className="grid gap-3 lg:grid-cols-[1.2fr_auto_auto_auto_auto_1fr] lg:items-end">
-            <label className="space-y-1 text-sm">
-              <span className="text-muted">Time range</span>
-              <select
-                value={timeRangePreset}
-                onChange={(event) =>
-                  setTimeRangePreset(
-                    event.target.value as 'all' | '30d' | '90d' | '365d' | 'custom'
-                  )
-                }
-                className="w-full rounded-md border border-border bg-bg px-3 py-2"
-              >
-                <option value="all">All</option>
-                <option value="30d">30d</option>
-                <option value="90d">90d</option>
-                <option value="365d">365d</option>
-                <option value="custom">Custom</option>
-              </select>
-            </label>
-
-            <label className="space-y-1 text-sm">
-              <span className="text-muted">Start</span>
-              <input
-                type="date"
-                value={customStartDate}
-                disabled={timeRangePreset !== 'custom'}
-                onChange={(event) => setCustomStartDate(event.target.value)}
-                className="w-full rounded-md border border-border bg-bg px-3 py-2 disabled:opacity-50"
-              />
-            </label>
-
-            <label className="space-y-1 text-sm">
-              <span className="text-muted">End</span>
-              <input
-                type="date"
-                value={customEndDate}
-                disabled={timeRangePreset !== 'custom'}
-                onChange={(event) => setCustomEndDate(event.target.value)}
-                className="w-full rounded-md border border-border bg-bg px-3 py-2 disabled:opacity-50"
-              />
-            </label>
-
+          <div className="grid gap-3 lg:grid-cols-[auto_auto_1fr] lg:items-center">
             <label className="flex items-center gap-2 rounded-md border border-border bg-bg px-3 py-2 text-sm">
               <input
                 type="checkbox"
@@ -268,7 +316,7 @@ export function AdvancedAnalyticsPage() {
             <button
               type="button"
               onClick={() => {
-                void runNow(request);
+                void runRequests(requestEntries, true);
               }}
               className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-white"
             >
@@ -306,8 +354,8 @@ export function AdvancedAnalyticsPage() {
           </div>
           <p className="mt-2 text-xs text-muted">
             {activeTab === 'configure'
-              ? 'Create and edit analytics definitions. Metrics can be hidden from the View tab.'
-              : 'See all analytics results at a glance. Only metrics marked for display appear in the metrics section.'}
+              ? 'Create and edit analytics definitions. Set each card time range here; Configure still includes chart previews.'
+              : 'See all analytics results at a glance. Metric cards show only values; charts appear only from Chart Views.'}
           </p>
         </section>
       </header>
@@ -370,9 +418,18 @@ export function AdvancedAnalyticsPage() {
               metrics={metrics}
               streaks={streaks}
               charts={charts}
-              response={displayResponse}
+              response={selectedResponse}
               loading={loading}
               error={runError}
+              onMetricTimeRangeChange={(metricId, timeRange) =>
+                updateMetric(metricId, (metric) => ({ ...metric, timeRange }))
+              }
+              onStreakTimeRangeChange={(streakId, timeRange) =>
+                updateStreak(streakId, (streak) => ({ ...streak, timeRange }))
+              }
+              onChartTimeRangeChange={(chartId, timeRange) =>
+                updateChart(chartId, (chart) => ({ ...chart, timeRange }))
+              }
             />
           </div>
         </div>
@@ -392,7 +449,10 @@ export function AdvancedAnalyticsPage() {
             metrics={metrics}
             streaks={streaks}
             charts={charts}
-            response={displayResponse}
+            response={selectedResponse}
+            overviewMetricResultsById={overviewMetricResultsById}
+            overviewStreakResultsById={overviewStreakResultsById}
+            overviewChartResultsById={overviewChartResultsById}
             loading={loading}
             error={runError}
           />
