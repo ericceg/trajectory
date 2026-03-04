@@ -569,6 +569,8 @@ pub struct AdvancedAnalyticsStreakResult {
     pub current_period_key: String,
     pub current_period_value: f64,
     #[serde(default)]
+    pub required_metric_values: HashMap<String, f64>,
+    #[serde(default)]
     pub errors: Vec<String>,
     #[serde(default)]
     pub warnings: Vec<String>,

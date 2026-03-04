@@ -1443,6 +1443,7 @@ fn build_streak_results(
                     status: AdvancedAnalyticsStreakStatus::Broken,
                     current_period_key: current_period_key(streak.period),
                     current_period_value: 0.0,
+                    required_metric_values: HashMap::new(),
                     errors: vec![format!("Metric '{}' not found.", streak.metric_id)],
                     warnings,
                 },
@@ -1469,6 +1470,7 @@ fn build_streak_results(
                     status: AdvancedAnalyticsStreakStatus::Broken,
                     current_period_key: current_period_key(streak.period),
                     current_period_value: 0.0,
+                    required_metric_values: HashMap::new(),
                     errors: missing_metric_ids
                         .iter()
                         .map(|metric_id| format!("Metric '{}' not found.", metric_id))
@@ -1497,6 +1499,20 @@ fn build_streak_results(
             .get(&current_key)
             .and_then(|point| point.value)
             .unwrap_or(0.0);
+        let required_metric_values: HashMap<String, f64> = required_metrics
+            .iter()
+            .map(|(metric_id, metric)| {
+                let series = match streak.period {
+                    AdvancedAnalyticsPeriod::Day => &metric.day,
+                    AdvancedAnalyticsPeriod::Week => &metric.week,
+                };
+                let value = series
+                    .get(&current_key)
+                    .and_then(|point| point.value)
+                    .unwrap_or(0.0);
+                ((*metric_id).to_string(), value)
+            })
+            .collect();
         let previous_meets = previous_key
             .as_deref()
             .is_some_and(|key| period_matches_all_required_metrics(&required_series, key, streak));
@@ -1535,6 +1551,7 @@ fn build_streak_results(
                 status,
                 current_period_key: current_key,
                 current_period_value: current_value,
+                required_metric_values,
                 errors,
                 warnings,
             },

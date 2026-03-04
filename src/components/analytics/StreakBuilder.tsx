@@ -1,3 +1,5 @@
+import { useEffect, useState } from 'react';
+
 import type {
   AdvancedAnalyticsMetricDefinition,
   AdvancedAnalyticsStreakDefinition
@@ -12,6 +14,12 @@ interface StreakBuilderProps {
 }
 
 export function StreakBuilder({ streak, metrics, onChange, onDelete }: StreakBuilderProps) {
+  const [thresholdInput, setThresholdInput] = useState(String(streak.thresholdValue));
+
+  useEffect(() => {
+    setThresholdInput(String(streak.thresholdValue));
+  }, [streak.id]);
+
   const selectedMetricIds = [
     streak.metricId,
     ...(streak.additionalMetricIds ?? []).filter((metricId) => metricId && metricId !== streak.metricId)
@@ -39,6 +47,27 @@ export function StreakBuilder({ streak, metrics, onChange, onDelete }: StreakBui
     const nextIds = selectedMetricIds.filter((id) => id !== metricId);
     const preferredPrimary = streak.metricId === metricId ? nextIds[0] : streak.metricId;
     commitSelectedMetrics(nextIds, preferredPrimary);
+  };
+
+  const updateThresholdInput = (raw: string) => {
+    setThresholdInput(raw);
+    if (raw.trim() === '') {
+      return;
+    }
+
+    const nextValue = Number(raw);
+    if (!Number.isFinite(nextValue)) {
+      return;
+    }
+    onChange({ ...streak, thresholdValue: nextValue });
+  };
+
+  const commitThresholdInput = () => {
+    const trimmed = thresholdInput.trim();
+    const nextValue = trimmed.length === 0 ? 0 : Number(trimmed);
+    const normalizedValue = Number.isFinite(nextValue) ? nextValue : 0;
+    setThresholdInput(String(normalizedValue));
+    onChange({ ...streak, thresholdValue: normalizedValue });
   };
 
   return (
@@ -134,8 +163,9 @@ export function StreakBuilder({ streak, metrics, onChange, onDelete }: StreakBui
           <span className="text-muted">Threshold value</span>
           <input
             type="number"
-            value={streak.thresholdValue}
-            onChange={(event) => onChange({ ...streak, thresholdValue: Number(event.target.value) })}
+            value={thresholdInput}
+            onChange={(event) => updateThresholdInput(event.target.value)}
+            onBlur={commitThresholdInput}
             className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm"
           />
         </label>

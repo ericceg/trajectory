@@ -49,6 +49,7 @@ Prototype (actively evolving).
 - Advanced Analytics cards (metrics, streaks, chart views) each have their own adjustable time range (including `7d`, `30d`, `90d`, `365d`, `all`, and custom dates), so different cards can be compared over different windows in the same View
 - Advanced Analytics time ranges are configured in **Configure**; the **View** tab is read-only and shows the active range per card as an indicator
 - Advanced Analytics View streak cards are compact and at-a-glance: they show current streak, longest streak (high score), status, a clear current day/week period label, and current period value
+- For multi-metric (`AND`) streaks, View streak cards show a combined current period value/goal across all required metrics (plus how many required metrics currently meet threshold), to avoid misleading single-metric progress
 - Advanced Analytics supports title-based conditions (e.g. push/pull names), grouped conditions (`OR` between groups, `AND` within each group), and sample-derived metrics such as heart-rate zone time via `Sample time` rules, including a minimum continuous-match duration to ignore short fluctuations
 - Advanced Analytics streaks can require multiple metrics at once (`AND`): for example, a weekly streak can require both a `pull` metric and a `push` metric to each meet the same threshold in the same week
 - Metric Builder condition UIs use a flatter layout for complex logic (fewer nested containers and per-group condition counts) to keep dense AND/OR rule sets easier to scan

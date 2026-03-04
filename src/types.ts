@@ -322,6 +322,7 @@ export interface AdvancedAnalyticsStreakResult {
   status: AdvancedAnalyticsStreakStatus;
   currentPeriodKey: string;
   currentPeriodValue: number;
+  requiredMetricValues: Record<string, number>;
   errors: string[];
   warnings: string[];
 }

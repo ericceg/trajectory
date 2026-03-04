@@ -556,6 +556,7 @@ Key behaviors:
 - Time ranges are editable in Configure only; View is read-only and displays each card's active range as an indicator
 - View tab metric cards intentionally render scalar values only in a responsive multi-column grid; charts in View are shown only for explicit Chart View definitions
 - View tab streak cards use a compact stat layout and surface the longest streak high score (`result.longest`) plus a clear current day/week period label alongside current period value
+- For multi-metric `AND` streaks, streak results include `requiredMetricValues` and the View card displays combined period progress (sum of current required-metric values versus sum of required thresholds) plus a `met/required` metric count
 - `Sample time` activity timeline previews are shown in Configure previews, not in View metric cards
 - Advanced Analytics results are cached in-memory in `useAppStore` by request payload + `settings.lastScanTimestamp`; auto-run reuses cache and only runs missing request variants, while manual `Recompute` forces all current-tab requests
 - Uses Settings heart-rate zone cutoffs for HR-zone sample conditions

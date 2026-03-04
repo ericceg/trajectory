@@ -205,6 +205,55 @@ function formatStreakValue(value: number): string {
   return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
+function streakThresholdMatches(
+  operator: AdvancedAnalyticsStreakDefinition['thresholdOperator'],
+  actual: number,
+  threshold: number
+): boolean {
+  if (operator === 'greaterThan') {
+    return actual > threshold;
+  }
+  if (operator === 'greaterThanOrEqual') {
+    return actual >= threshold;
+  }
+  if (operator === 'lessThan') {
+    return actual < threshold;
+  }
+  if (operator === 'lessThanOrEqual') {
+    return actual <= threshold;
+  }
+  return Math.abs(actual - threshold) < 1e-9;
+}
+
+function periodGoalProgressPercent(
+  operator: AdvancedAnalyticsStreakDefinition['thresholdOperator'],
+  threshold: number,
+  currentValue: number
+): number {
+  if (!Number.isFinite(threshold) || !Number.isFinite(currentValue)) {
+    return 0;
+  }
+
+  const safeThreshold = Math.abs(threshold);
+  if (safeThreshold < 1e-9) {
+    return 0;
+  }
+
+  if (operator === 'greaterThan' || operator === 'greaterThanOrEqual') {
+    return Math.max(0, Math.min(100, (currentValue / threshold) * 100));
+  }
+
+  if (operator === 'lessThan' || operator === 'lessThanOrEqual') {
+    if (currentValue <= threshold) {
+      return 100;
+    }
+    return Math.max(0, Math.min(100, (threshold / currentValue) * 100));
+  }
+
+  const diff = Math.abs(currentValue - threshold);
+  return Math.max(0, Math.min(100, (1 - diff / safeThreshold) * 100));
+}
+
 function formatPeriodDateLabel(dateKey: string): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey);
   if (!match) {
@@ -585,6 +634,31 @@ function StreakPreview({
   const periodLabel = streakCurrentPeriodLabel(streak.period, result?.currentPeriodKey);
   const longestRatio = longest > 0 ? Math.min(100, (current / longest) * 100) : 0;
   const requiredMetricCount = 1 + (streak.additionalMetricIds?.length ?? 0);
+  const requiredMetricValues = Object.values(result?.requiredMetricValues ?? {});
+  const resolvedRequiredMetricCount =
+    requiredMetricValues.length > 0 ? requiredMetricValues.length : requiredMetricCount;
+  const currentPeriodValue = result?.currentPeriodValue ?? 0;
+  const combinedPeriodValue =
+    resolvedRequiredMetricCount > 1
+      ? requiredMetricValues.reduce((sum, value) => sum + value, 0)
+      : currentPeriodValue;
+  const combinedThresholdValue =
+    resolvedRequiredMetricCount > 1
+      ? streak.thresholdValue * resolvedRequiredMetricCount
+      : streak.thresholdValue;
+  const metRequiredMetricsCount =
+    requiredMetricValues.length > 0
+      ? requiredMetricValues.filter((value) =>
+          streakThresholdMatches(streak.thresholdOperator, value, streak.thresholdValue)
+        ).length
+      : streakThresholdMatches(streak.thresholdOperator, currentPeriodValue, streak.thresholdValue)
+        ? 1
+        : 0;
+  const periodProgress = periodGoalProgressPercent(
+    streak.thresholdOperator,
+    combinedThresholdValue,
+    combinedPeriodValue
+  );
 
   return (
     <div className="space-y-4">
@@ -616,10 +690,16 @@ function StreakPreview({
         ) : (
           <p className="mt-2 text-xs text-muted">Range: {timeRangeIndicator(streak.timeRange)}</p>
         )}
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="mt-4 grid gap-3 md:grid-cols-3">
           <div className={`rounded-lg border p-3 ${streakCurrentCardTone(result?.status)}`}>
             <p className="text-xs text-muted">Current streak</p>
             <p className="text-2xl font-semibold text-foreground">{current}</p>
+            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-border/70">
+              <div className="h-full rounded-full bg-accent transition-[width]" style={{ width: `${longestRatio}%` }} />
+            </div>
+            <p className="mt-1 text-xs text-muted">
+              {current}/{longest || 0} of best
+            </p>
           </div>
           <div className="rounded-lg border border-border bg-bg/30 p-3">
             <p className="text-xs text-muted">Longest streak</p>
@@ -629,19 +709,21 @@ function StreakPreview({
           <div className="rounded-lg border border-border bg-bg/30 p-3">
             <p className="text-xs text-muted">Current period</p>
             <p className="text-base font-semibold text-foreground">{periodLabel}</p>
-            <p className="text-xs text-muted">{streak.period === 'week' ? 'Weekly checkpoint' : 'Daily checkpoint'}</p>
-          </div>
-          <div className="rounded-lg border border-border bg-bg/30 p-3">
-            <p className="text-xs text-muted">Current period value</p>
+            <p className="mt-1 text-xs text-muted">{streak.period === 'week' ? 'Weekly checkpoint' : 'Daily checkpoint'}</p>
+            <p className="mt-2 text-xs text-muted">
+              {resolvedRequiredMetricCount > 1 ? 'Combined period value' : 'Current period value'}
+            </p>
             <p className="text-xl font-semibold text-foreground">
-              {result ? formatStreakValue(result.currentPeriodValue) : 'n/a'}
+              {result ? formatStreakValue(combinedPeriodValue) : 'n/a'}
             </p>
             <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-border/70">
-              <div className="h-full rounded-full bg-accent transition-[width]" style={{ width: `${longestRatio}%` }} />
+              <div className="h-full rounded-full bg-accent transition-[width]" style={{ width: `${periodProgress}%` }} />
             </div>
-            <p className="mt-1 text-xs text-muted">
-              {current}/{longest || 0} of best
-            </p>
+            {resolvedRequiredMetricCount > 1 ? (
+              <p className="mt-1 text-xs text-muted">
+                {metRequiredMetricsCount}/{resolvedRequiredMetricCount} metrics met
+              </p>
+            ) : null}
           </div>
         </div>
       </div>
