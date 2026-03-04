@@ -553,7 +553,7 @@ Key behaviors:
 - UI separates analytics editing vs preview into Configure/View tabs (View is default and renders an at-a-glance overview); the active tab is persisted in UI state, and metrics include a persisted `showInView` toggle used to filter the View metrics section
 - Configure-mode library supports explicit metric reordering (up/down controls) separately for base and formula metric sections, persisted via `useAdvancedAnalyticsStore.metrics` order
 - Each metric/chart definition includes its own persisted card time range config (`all`, `7d`, `30d`, `90d`, `365d`, `custom` + optional dates); streaks always run with all-time range in the current UI
-- Metric/chart time ranges are editable in Configure only; View is read-only and displays each card's active range as an indicator
+- Metric/chart time ranges are editable in Configure only for View-card rendering; Configure previews intentionally run with all-time history while View is read-only and displays each card's active range as an indicator
 - View tab metric cards intentionally render scalar values only in a responsive multi-column grid; charts in View are shown only for explicit Chart View definitions
 - View tab streak cards use a compact stat layout with current streak, longest streak, and current value plus progress bars
 - For multi-metric `AND` streaks, streak results include `requiredMetricValues` and the View card displays combined period progress (sum of current required-metric values versus sum of required thresholds) plus a `met/required` metric count

@@ -49,6 +49,7 @@ function rangeKeyFromConfig(timeRange: AdvancedAnalyticsTimeRangeConfig | undefi
 }
 
 const STREAK_FIXED_TIME_RANGE: AdvancedAnalyticsTimeRangeConfig = { preset: 'all' };
+const CONFIGURE_PREVIEW_TIME_RANGE: AdvancedAnalyticsTimeRangeConfig = { preset: 'all' };
 
 export function AdvancedAnalyticsPage() {
   const settings = useAppStore((state) => state.settings);
@@ -127,17 +128,13 @@ export function AdvancedAnalyticsPage() {
       return null;
     }
 
-    const range = resolveAdvancedAnalyticsTimeRange(
-      selectedMetric?.timeRange ??
-        (selectedStreak ? STREAK_FIXED_TIME_RANGE : undefined) ??
-        selectedChart?.timeRange
-    );
+    const range = resolveAdvancedAnalyticsTimeRange(CONFIGURE_PREVIEW_TIME_RANGE);
     const request = buildRequest(range, metrics, streaks, charts);
     return {
       request,
       cacheKey: requestCacheKey(request, dataVersion)
     };
-  }, [charts, dataVersion, metrics, selectedChart?.timeRange, selectedItem, selectedMetric?.timeRange, streaks]);
+  }, [charts, dataVersion, metrics, selectedItem, streaks]);
 
   const overviewRequestEntries = useMemo<RequestEntry[]>(() => {
     const byRangeKey = new Map<string, RequestEntry>();
@@ -357,7 +354,7 @@ export function AdvancedAnalyticsPage() {
           </div>
           <p className="mt-2 text-xs text-muted">
             {activeTab === 'configure'
-              ? 'Create and edit analytics definitions. Set metric/chart card time ranges here; streaks always use all-time range. Configure still includes chart previews.'
+              ? 'Create and edit analytics definitions. Set metric/chart card time ranges for View cards here; Configure previews always use all activity history.'
               : 'See all analytics results at a glance. Metric cards show only values; charts appear only from Chart Views.'}
           </p>
         </section>
