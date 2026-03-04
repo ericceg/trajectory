@@ -399,6 +399,7 @@ Persists UI preferences/navigation state for:
 - activities filters + sorting
 - sidebar last-route memory
 - heatmap time span/custom dates/category/sport/reduced map complexity
+- advanced analytics active tab (`view`/`configure`)
 
 This store intentionally contains view state only (not backend data).
 
@@ -543,9 +544,10 @@ Key behaviors:
 - Multi-series chart previews render a legend; stacked bars use per-segment corner logic so only the top visible segment per stack bucket has rounded top corners (internal joins stay square)
 - Guided builder UI only (no DSL), grouped activity/sample filters (`OR` between groups, `AND` within each group)
 - `Sample time` base metrics can set `minimumSampleMatchSeconds` to count only contiguous matching runs above the threshold (useful for suppressing short HR-zone spikes)
-- `Sample time` metric preview cards render activity timeline strips that show tracked intervals and highlight contiguous runs that were included vs filtered out by the minimum-match threshold; cards progressively expand in batches via “Show more”
+- `Sample time` metric preview cards render activity timeline strips that show tracked intervals and highlight contiguous runs that were included vs filtered out by the minimum-match threshold; cards progressively expand in batches via “Show more” and support one-click full expansion via “Show all”
+- `Sample time` metric preview activity rows are clickable and open `ActivityDetailPage` (`/activities/:id`) while passing return context (`fromPath`/`fromLabel`) so Activity Detail can route back to Advanced Analytics
 - Metric unit display is selected from predefined dropdown options with `Auto` as the default (no free-form unit text input), and backend analytics converts scalar/series values to compatible display units before previews/charts/streaks consume them (including dimensionless ratio -> `%` scaling)
-- UI separates analytics editing vs preview into Configure/View tabs (View is default and renders an at-a-glance overview); metrics include a persisted `showInView` toggle used to filter the View metrics section
+- UI separates analytics editing vs preview into Configure/View tabs (View is default and renders an at-a-glance overview); the active tab is persisted in UI state, and metrics include a persisted `showInView` toggle used to filter the View metrics section
 - Uses Settings heart-rate zone cutoffs for HR-zone sample conditions
 
 ### 5.5 Shared components and utilities

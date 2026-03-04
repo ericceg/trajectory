@@ -10,9 +10,8 @@ import { runAdvancedAnalytics } from '@/lib/tauri';
 import { validateAdvancedAnalyticsDefinitions } from '@/lib/analytics/validation';
 import { useAdvancedAnalyticsStore } from '@/store/useAdvancedAnalyticsStore';
 import { useAppStore } from '@/store/useAppStore';
+import { useUiStateStore } from '@/store/useUiStateStore';
 import type { AdvancedAnalyticsRunRequest, AdvancedAnalyticsRunResponse } from '@/types';
-
-type AdvancedAnalyticsTab = 'configure' | 'view';
 
 function resolveTimeRange(
   preset: 'all' | '30d' | '90d' | '365d' | 'custom',
@@ -61,11 +60,12 @@ export function AdvancedAnalyticsPage() {
   const addChart = useAdvancedAnalyticsStore((state) => state.addChart);
   const updateChart = useAdvancedAnalyticsStore((state) => state.updateChart);
   const removeChart = useAdvancedAnalyticsStore((state) => state.removeChart);
+  const activeTab = useUiStateStore((state) => state.analyticsActiveTab);
+  const setActiveTab = useUiStateStore((state) => state.setAnalyticsActiveTab);
 
   const [response, setResponse] = useState<AdvancedAnalyticsRunResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<AdvancedAnalyticsTab>('view');
 
   useEffect(() => {
     if (selectedItem) {

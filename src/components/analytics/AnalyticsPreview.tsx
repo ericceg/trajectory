@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   Bar,
   BarChart,
@@ -321,6 +322,8 @@ function SampleTimeActivityPreview({
 }: {
   preview: NonNullable<AdvancedAnalyticsMetricResult['sampleTimePreview']>;
 }) {
+  const navigate = useNavigate();
+  const location = useLocation();
   const [visibleCount, setVisibleCount] = useState(SAMPLE_TIME_PREVIEW_PAGE_SIZE);
   useEffect(() => {
     setVisibleCount(SAMPLE_TIME_PREVIEW_PAGE_SIZE);
@@ -360,7 +363,18 @@ function SampleTimeActivityPreview({
           </div>
 
           {visibleActivities.map((activity) => (
-            <SampleTimeActivityRow key={activity.activityId} activity={activity} />
+            <SampleTimeActivityRow
+              key={activity.activityId}
+              activity={activity}
+              onOpen={() =>
+                navigate(`/activities/${activity.activityId}`, {
+                  state: {
+                    fromPath: location.pathname,
+                    fromLabel: 'Back to Events Analytics'
+                  }
+                })
+              }
+            />
           ))}
           {preview.activities.length > SAMPLE_TIME_PREVIEW_PAGE_SIZE ? (
             <div className="flex items-center justify-between gap-3 pt-1">
@@ -378,13 +392,22 @@ function SampleTimeActivityPreview({
                   </button>
                 ) : null}
                 {hasMore ? (
-                  <button
-                    type="button"
-                    onClick={() => setVisibleCount((current) => current + SAMPLE_TIME_PREVIEW_PAGE_SIZE)}
-                    className="rounded-md border border-border px-2 py-1 text-xs text-foreground hover:bg-bg"
-                  >
-                    Show more
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setVisibleCount(preview.activities.length)}
+                      className="rounded-md border border-border px-2 py-1 text-xs text-foreground hover:bg-bg"
+                    >
+                      Show all
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setVisibleCount((current) => current + SAMPLE_TIME_PREVIEW_PAGE_SIZE)}
+                      className="rounded-md border border-border px-2 py-1 text-xs text-foreground hover:bg-bg"
+                    >
+                      Show more
+                    </button>
+                  </>
                 ) : null}
               </div>
             </div>
@@ -397,10 +420,21 @@ function SampleTimeActivityPreview({
   );
 }
 
-function SampleTimeActivityRow({ activity }: { activity: AdvancedAnalyticsSampleTimeActivityPreview }) {
+function SampleTimeActivityRow({
+  activity,
+  onOpen
+}: {
+  activity: AdvancedAnalyticsSampleTimeActivityPreview;
+  onOpen: () => void;
+}) {
   const total = activity.totalTrackedSeconds;
   return (
-    <div className="space-y-1.5 rounded-lg border border-border bg-bg/30 p-3">
+    <button
+      type="button"
+      onClick={onOpen}
+      className="w-full space-y-1.5 rounded-lg border border-border bg-bg/30 p-3 text-left transition-colors hover:border-accent/40 hover:bg-bg/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+      aria-label={`Open activity details for ${activity.activityTitle || 'untitled activity'}`}
+    >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <p className="text-sm font-medium text-foreground">{activity.activityTitle || 'Untitled activity'}</p>
         <p className="text-xs text-muted">{activity.activityStart.replace('T', ' ').replace('Z', '')}</p>
@@ -433,7 +467,7 @@ function SampleTimeActivityRow({ activity }: { activity: AdvancedAnalyticsSample
             })
           : null}
       </div>
-    </div>
+    </button>
   );
 }
 

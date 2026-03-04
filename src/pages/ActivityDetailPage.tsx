@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   Area,
   CartesianGrid,
@@ -1272,6 +1272,8 @@ function ReducedComplexityMapToggle({
 
 export function ActivityDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const location = useLocation();
+  const navigate = useNavigate();
   const [detail, setDetail] = useState<ActivityDetail | null>(null);
   const [chartSamples, setChartSamples] = useState<ActivitySample[]>([]);
   const [heartRateZoneSamples, setHeartRateZoneSamples] = useState<ActivitySample[]>([]);
@@ -1654,6 +1656,11 @@ export function ActivityDetailPage() {
     return <p className="text-sm text-muted">Activity not found.</p>;
   }
 
+  const navigationState = location.state as { fromPath?: string; fromLabel?: string } | null;
+  const backPath = navigationState?.fromPath ?? '/activities';
+  const backLabel = navigationState?.fromLabel ?? 'Back to Activities';
+  const backToAnalytics = backPath === '/analytics';
+
   const showDistance = detail.summary.distanceM > 0;
   const showElevationGain = detail.summary.elevationGainM > 0;
   const showAvgSpeedPace = detail.summary.avgSpeedMps != null && detail.summary.avgSpeedMps > 0;
@@ -1690,12 +1697,19 @@ export function ActivityDetailPage() {
             {detail.summary.category} · {detail.summary.sportType} · {formatDateTime(detail.summary.activityStart)}
           </p>
         </div>
-        <Link
-          to="/activities"
+        <button
+          type="button"
+          onClick={() => {
+            if (backToAnalytics && window.history.length > 1) {
+              navigate(-1);
+              return;
+            }
+            navigate(backPath);
+          }}
           className="rounded-md border border-border px-3 py-2 text-sm text-muted hover:text-foreground"
         >
-          Back to Activities
-        </Link>
+          {backLabel}
+        </button>
       </header>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_20rem]">
