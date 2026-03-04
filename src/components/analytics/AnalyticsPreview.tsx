@@ -43,7 +43,6 @@ import type {
   AdvancedAnalyticsChartResult,
   AdvancedAnalyticsMetricDefinition,
   AdvancedAnalyticsMetricResult,
-  AdvancedAnalyticsPeriod,
   AdvancedAnalyticsRunResponse,
   AdvancedAnalyticsSampleTimeActivityPreview,
   AdvancedAnalyticsStreakDefinition,
@@ -205,26 +204,6 @@ function formatStreakValue(value: number): string {
   return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
-function streakThresholdMatches(
-  operator: AdvancedAnalyticsStreakDefinition['thresholdOperator'],
-  actual: number,
-  threshold: number
-): boolean {
-  if (operator === 'greaterThan') {
-    return actual > threshold;
-  }
-  if (operator === 'greaterThanOrEqual') {
-    return actual >= threshold;
-  }
-  if (operator === 'lessThan') {
-    return actual < threshold;
-  }
-  if (operator === 'lessThanOrEqual') {
-    return actual <= threshold;
-  }
-  return Math.abs(actual - threshold) < 1e-9;
-}
-
 function periodGoalProgressPercent(
   operator: AdvancedAnalyticsStreakDefinition['thresholdOperator'],
   threshold: number,
@@ -252,22 +231,6 @@ function periodGoalProgressPercent(
 
   const diff = Math.abs(currentValue - threshold);
   return Math.max(0, Math.min(100, (1 - diff / safeThreshold) * 100));
-}
-
-function formatPeriodDateLabel(dateKey: string): string {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey);
-  if (!match) {
-    return dateKey;
-  }
-  return `${match[3]}.${match[2]}.${match[1]}`;
-}
-
-function streakCurrentPeriodLabel(period: AdvancedAnalyticsPeriod, periodKey?: string): string {
-  if (!periodKey) {
-    return period === 'week' ? 'Current week' : 'Current day';
-  }
-  const periodDate = formatPeriodDateLabel(periodKey);
-  return period === 'week' ? `Week of ${periodDate}` : periodDate;
 }
 
 function streakStatusTone(status?: AdvancedAnalyticsStreakResult['status']): string {
@@ -350,6 +313,7 @@ function MetricPreview({
   showSamplePreview?: boolean;
   onTimeRangeChange?: (timeRange: AdvancedAnalyticsTimeRangeConfig) => void;
 }) {
+  const isCompactOverviewCard = !showChart && !showSamplePreview && !onTimeRangeChange;
   const granularity = metricPreviewGranularity(metric);
   const points =
     granularity === 'day'
@@ -368,10 +332,16 @@ function MetricPreview({
   const zoom = useZoomableRows(rows);
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-xl border border-border bg-panel p-4">
-        <p className="text-xs uppercase tracking-[0.12em] text-muted">Metric Result</p>
-        <h3 className="mt-1 text-xl font-semibold text-foreground">{metric.name || 'Untitled metric'}</h3>
+    <div className={isCompactOverviewCard ? 'space-y-3' : 'space-y-4'}>
+      <div className={`rounded-xl border border-border bg-panel ${isCompactOverviewCard ? 'p-3' : 'p-4'}`}>
+        <div className="flex items-baseline justify-between gap-3">
+          <h3 className={`font-semibold text-foreground ${isCompactOverviewCard ? 'text-lg' : 'text-xl'}`}>
+            {metric.name || 'Untitled metric'}
+          </h3>
+          {!onTimeRangeChange ? (
+            <p className="whitespace-nowrap text-xs text-muted">Range: {timeRangeIndicator(metric.timeRange)}</p>
+          ) : null}
+        </div>
         {onTimeRangeChange ? (
           <div className="mt-3">
             <TimeRangeControl
@@ -380,10 +350,8 @@ function MetricPreview({
               compact
             />
           </div>
-        ) : (
-          <p className="mt-2 text-xs text-muted">Range: {timeRangeIndicator(metric.timeRange)}</p>
-        )}
-        <p className="mt-3 text-3xl font-semibold text-foreground">
+        ) : null}
+        <p className={`font-semibold text-foreground ${isCompactOverviewCard ? 'mt-2 text-2xl' : 'mt-3 text-3xl'}`}>
           {formatAnalyticsValue(result?.scalarValue, unit)}
         </p>
         {showChart ? <p className="mt-1 text-xs text-muted">Preview granularity: {granularity}</p> : null}
@@ -484,7 +452,6 @@ function SampleTimeActivityPreview({
   return (
     <section className="space-y-3 rounded-xl border border-border bg-panel p-4">
       <div className="space-y-1">
-        <p className="text-xs uppercase tracking-[0.12em] text-muted">Sample Time Activity Preview</p>
         <p className="text-sm text-muted">
           Considered activities: {preview.consideredActivityCount}. Showing {preview.sampledActivityCount}
           {preview.minimumContinuousMatchSeconds > 0
@@ -631,7 +598,6 @@ function StreakPreview({
   const current = result?.count ?? 0;
   const longest = result?.longest ?? current;
   const status = result?.status ?? 'n/a';
-  const periodLabel = streakCurrentPeriodLabel(streak.period, result?.currentPeriodKey);
   const longestRatio = longest > 0 ? Math.min(100, (current / longest) * 100) : 0;
   const requiredMetricCount = 1 + (streak.additionalMetricIds?.length ?? 0);
   const requiredMetricValues = Object.values(result?.requiredMetricValues ?? {});
@@ -646,14 +612,6 @@ function StreakPreview({
     resolvedRequiredMetricCount > 1
       ? streak.thresholdValue * resolvedRequiredMetricCount
       : streak.thresholdValue;
-  const metRequiredMetricsCount =
-    requiredMetricValues.length > 0
-      ? requiredMetricValues.filter((value) =>
-          streakThresholdMatches(streak.thresholdOperator, value, streak.thresholdValue)
-        ).length
-      : streakThresholdMatches(streak.thresholdOperator, currentPeriodValue, streak.thresholdValue)
-        ? 1
-        : 0;
   const periodProgress = periodGoalProgressPercent(
     streak.thresholdOperator,
     combinedThresholdValue,
@@ -661,69 +619,52 @@ function StreakPreview({
   );
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-xl border border-border bg-panel p-4">
+    <div className="space-y-3">
+      <div className="rounded-xl border border-border bg-panel p-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="text-xs uppercase tracking-[0.12em] text-muted">Streak Result</p>
-            <h3 className="mt-1 text-xl font-semibold text-foreground">{streak.name || 'Untitled streak'}</h3>
-            {requiredMetricCount > 1 ? (
-              <p className="mt-1 text-xs text-muted">{requiredMetricCount} required metrics (AND)</p>
-            ) : null}
+            <h3 className="text-lg font-semibold text-foreground">{streak.name || 'Untitled streak'}</h3>
           </div>
-          <span
-            className={`inline-flex items-center rounded-full border px-2 py-1 text-xs font-semibold capitalize ${streakStatusTone(
-              result?.status
-            )}`}
-          >
-            {status}
-          </span>
+          <div className="flex items-center gap-2">
+            <p className="text-xs text-muted">Range: {timeRangeIndicator(streak.timeRange)}</p>
+            <span
+              className={`inline-flex items-center rounded-full border px-2 py-1 text-xs font-semibold capitalize ${streakStatusTone(
+                result?.status
+              )}`}
+            >
+              {status}
+            </span>
+          </div>
         </div>
         {onTimeRangeChange ? (
-          <div className="mt-3">
+          <div className="mt-2">
             <TimeRangeControl
               value={streak.timeRange}
               onChange={onTimeRangeChange}
               compact
             />
           </div>
-        ) : (
-          <p className="mt-2 text-xs text-muted">Range: {timeRangeIndicator(streak.timeRange)}</p>
-        )}
-        <div className="mt-4 grid gap-3 md:grid-cols-3">
-          <div className={`rounded-lg border p-3 ${streakCurrentCardTone(result?.status)}`}>
-            <p className="text-xs text-muted">Current streak</p>
-            <p className="text-2xl font-semibold text-foreground">{current}</p>
-            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-border/70">
+        ) : null}
+        <div className="mt-3 grid gap-2.5 md:grid-cols-3">
+          <div className={`rounded-lg border p-2.5 ${streakCurrentCardTone(result?.status)}`}>
+            <p className="whitespace-nowrap text-sm font-medium text-foreground">Current streak: {current}</p>
+            <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-border/70">
               <div className="h-full rounded-full bg-accent transition-[width]" style={{ width: `${longestRatio}%` }} />
             </div>
-            <p className="mt-1 text-xs text-muted">
+            <p className="mt-0.5 text-xs text-muted">
               {current}/{longest || 0} of best
             </p>
           </div>
-          <div className="rounded-lg border border-border bg-bg/30 p-3">
-            <p className="text-xs text-muted">Longest streak</p>
-            <p className="text-2xl font-semibold text-foreground">{longest}</p>
-            <p className="text-xs text-muted">High score</p>
+          <div className="rounded-lg border border-border bg-bg/30 p-2.5">
+            <p className="whitespace-nowrap text-sm font-medium text-foreground">Longest streak: {longest}</p>
           </div>
-          <div className="rounded-lg border border-border bg-bg/30 p-3">
-            <p className="text-xs text-muted">Current period</p>
-            <p className="text-base font-semibold text-foreground">{periodLabel}</p>
-            <p className="mt-1 text-xs text-muted">{streak.period === 'week' ? 'Weekly checkpoint' : 'Daily checkpoint'}</p>
-            <p className="mt-2 text-xs text-muted">
-              {resolvedRequiredMetricCount > 1 ? 'Combined period value' : 'Current period value'}
+          <div className="rounded-lg border border-border bg-bg/30 p-2.5">
+            <p className="whitespace-nowrap text-sm font-medium text-foreground">
+              Current value: {result ? formatStreakValue(combinedPeriodValue) : 'n/a'}
             </p>
-            <p className="text-xl font-semibold text-foreground">
-              {result ? formatStreakValue(combinedPeriodValue) : 'n/a'}
-            </p>
-            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-border/70">
+            <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-border/70">
               <div className="h-full rounded-full bg-accent transition-[width]" style={{ width: `${periodProgress}%` }} />
             </div>
-            {resolvedRequiredMetricCount > 1 ? (
-              <p className="mt-1 text-xs text-muted">
-                {metRequiredMetricsCount}/{resolvedRequiredMetricCount} metrics met
-              </p>
-            ) : null}
           </div>
         </div>
       </div>
@@ -796,7 +737,6 @@ function ChartPreview({
   return (
     <section className="space-y-3 rounded-xl border border-border bg-panel p-4">
       <div className="space-y-2">
-        <p className="text-xs uppercase tracking-[0.12em] text-muted">Chart View</p>
         <h3 className="text-xl font-semibold text-foreground">{chart.name || 'Untitled chart'}</h3>
         {onTimeRangeChange ? (
           <div className="mt-3">
@@ -1035,14 +975,14 @@ export function AnalyticsPreview({
         ) : null}
 
         {overviewMetrics.length > 0 ? (
-          <section className="space-y-4">
+          <section className="space-y-3">
             <div>
               <h3 className="text-lg font-semibold text-foreground">Metrics</h3>
               <p className="text-sm text-muted">
                 Metrics enabled for the View tab. Charts appear only in Chart Views.
               </p>
             </div>
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
               {overviewMetrics.map((metric) => (
                 <MetricPreview
                   key={metric.id}
@@ -1062,13 +1002,15 @@ export function AnalyticsPreview({
               <h3 className="text-lg font-semibold text-foreground">Streaks</h3>
               <p className="text-sm text-muted">Current streak statuses at a glance.</p>
             </div>
-            {streaks.map((streak) => (
-              <StreakPreview
-                key={streak.id}
-                streak={streak}
-                result={resolvedOverviewStreakResults[streak.id]}
-              />
-            ))}
+            <div className="grid gap-3 xl:grid-cols-2">
+              {streaks.map((streak) => (
+                <StreakPreview
+                  key={streak.id}
+                  streak={streak}
+                  result={resolvedOverviewStreakResults[streak.id]}
+                />
+              ))}
+            </div>
           </section>
         ) : null}
 

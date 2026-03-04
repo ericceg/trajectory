@@ -303,8 +303,28 @@ export function AdvancedAnalyticsPage() {
           </p>
         </div>
 
-        <section className="rounded-xl border border-border bg-panel p-4">
-          <div className="grid gap-3 lg:grid-cols-[auto_auto_1fr] lg:items-center">
+        <section className="rounded-xl border border-border bg-panel p-3">
+          <div className="grid gap-3 lg:grid-cols-[auto_auto_auto_1fr] lg:items-center">
+            <div className="inline-flex rounded-lg border border-border bg-bg/40 p-1">
+              {(['view', 'configure'] as const).map((tab) => {
+                const active = activeTab === tab;
+                return (
+                  <button
+                    key={tab}
+                    type="button"
+                    onClick={() => setActiveTab(tab)}
+                    className={`rounded-md px-3 py-1.5 text-sm font-medium capitalize transition-colors ${
+                      active
+                        ? 'bg-accent text-white'
+                        : 'text-muted hover:bg-bg hover:text-foreground'
+                    }`}
+                  >
+                    {tab}
+                  </button>
+                );
+              })}
+            </div>
+
             <label className="flex items-center gap-2 rounded-md border border-border bg-bg px-3 py-2 text-sm">
               <input
                 type="checkbox"
@@ -330,28 +350,6 @@ export function AdvancedAnalyticsPage() {
                 {(settings?.heartRateZoneUpperBoundsBpm ?? [120, 140, 160, 180]).join(' / ')} bpm
               </span>
             </div>
-          </div>
-        </section>
-
-        <section className="rounded-xl border border-border bg-panel p-2">
-          <div className="inline-flex rounded-lg border border-border bg-bg/40 p-1">
-            {(['view', 'configure'] as const).map((tab) => {
-              const active = activeTab === tab;
-              return (
-                <button
-                  key={tab}
-                  type="button"
-                  onClick={() => setActiveTab(tab)}
-                  className={`rounded-md px-3 py-1.5 text-sm font-medium capitalize transition-colors ${
-                    active
-                      ? 'bg-accent text-white'
-                      : 'text-muted hover:bg-bg hover:text-foreground'
-                  }`}
-                >
-                  {tab}
-                </button>
-              );
-            })}
           </div>
           <p className="mt-2 text-xs text-muted">
             {activeTab === 'configure'
