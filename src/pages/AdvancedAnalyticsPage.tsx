@@ -48,6 +48,8 @@ function rangeKeyFromConfig(timeRange: AdvancedAnalyticsTimeRangeConfig | undefi
   return JSON.stringify(resolveAdvancedAnalyticsTimeRange(timeRange));
 }
 
+const STREAK_FIXED_TIME_RANGE: AdvancedAnalyticsTimeRangeConfig = { preset: 'all' };
+
 export function AdvancedAnalyticsPage() {
   const settings = useAppStore((state) => state.settings);
   const getCachedAdvancedAnalytics = useAppStore((state) => state.getCachedAdvancedAnalytics);
@@ -126,20 +128,22 @@ export function AdvancedAnalyticsPage() {
     }
 
     const range = resolveAdvancedAnalyticsTimeRange(
-      selectedMetric?.timeRange ?? selectedStreak?.timeRange ?? selectedChart?.timeRange
+      selectedMetric?.timeRange ??
+        (selectedStreak ? STREAK_FIXED_TIME_RANGE : undefined) ??
+        selectedChart?.timeRange
     );
     const request = buildRequest(range, metrics, streaks, charts);
     return {
       request,
       cacheKey: requestCacheKey(request, dataVersion)
     };
-  }, [charts, dataVersion, metrics, selectedChart?.timeRange, selectedItem, selectedMetric?.timeRange, selectedStreak?.timeRange, streaks]);
+  }, [charts, dataVersion, metrics, selectedChart?.timeRange, selectedItem, selectedMetric?.timeRange, streaks]);
 
   const overviewRequestEntries = useMemo<RequestEntry[]>(() => {
     const byRangeKey = new Map<string, RequestEntry>();
     const itemRanges = [
       ...viewTabMetrics.map((metric) => metric.timeRange),
-      ...streaks.map((streak) => streak.timeRange),
+      ...streaks.map(() => STREAK_FIXED_TIME_RANGE),
       ...charts.map((chart) => chart.timeRange)
     ];
 
@@ -270,7 +274,7 @@ export function AdvancedAnalyticsPage() {
   const overviewStreakResultsById = useMemo<Record<string, AdvancedAnalyticsStreakResult | undefined>>(() => {
     const results: Record<string, AdvancedAnalyticsStreakResult | undefined> = {};
     for (const streak of streaks) {
-      const range = resolveAdvancedAnalyticsTimeRange(streak.timeRange);
+      const range = resolveAdvancedAnalyticsTimeRange(STREAK_FIXED_TIME_RANGE);
       const request = buildRequest(range, metrics, streaks, charts);
       const cacheKey = requestCacheKey(request, dataVersion);
       const response = getResponse(cacheKey);
@@ -353,7 +357,7 @@ export function AdvancedAnalyticsPage() {
           </div>
           <p className="mt-2 text-xs text-muted">
             {activeTab === 'configure'
-              ? 'Create and edit analytics definitions. Set each card time range here; Configure still includes chart previews.'
+              ? 'Create and edit analytics definitions. Set metric/chart card time ranges here; streaks always use all-time range. Configure still includes chart previews.'
               : 'See all analytics results at a glance. Metric cards show only values; charts appear only from Chart Views.'}
           </p>
         </section>
@@ -423,9 +427,6 @@ export function AdvancedAnalyticsPage() {
               error={runError}
               onMetricTimeRangeChange={(metricId, timeRange) =>
                 updateMetric(metricId, (metric) => ({ ...metric, timeRange }))
-              }
-              onStreakTimeRangeChange={(streakId, timeRange) =>
-                updateStreak(streakId, (streak) => ({ ...streak, timeRange }))
               }
               onChartTimeRangeChange={(chartId, timeRange) =>
                 updateChart(chartId, (chart) => ({ ...chart, timeRange }))

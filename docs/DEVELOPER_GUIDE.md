@@ -414,7 +414,7 @@ Persists:
 - chart view definitions
 - selected analytics item
 - legacy global advanced analytics time range fields (no longer used by the current page UI)
-- per-definition card time ranges (`metric.timeRange`, `streak.timeRange`, `chart.timeRange`)
+- per-definition card time ranges (`metric.timeRange`, `chart.timeRange`; streaks use fixed all-time range in UI/request grouping)
 - auto-run toggle
 
 Computed analytics results are **not** persisted.
@@ -552,10 +552,10 @@ Key behaviors:
 - Metric unit display is selected from predefined dropdown options with `Auto` as the default (no free-form unit text input), and backend analytics converts scalar/series values to compatible display units before previews/charts/streaks consume them (including dimensionless ratio -> `%` scaling)
 - UI separates analytics editing vs preview into Configure/View tabs (View is default and renders an at-a-glance overview); the active tab is persisted in UI state, and metrics include a persisted `showInView` toggle used to filter the View metrics section
 - Configure-mode library supports explicit metric reordering (up/down controls) separately for base and formula metric sections, persisted via `useAdvancedAnalyticsStore.metrics` order
-- Each metric/streak/chart definition includes its own persisted card time range config (`all`, `7d`, `30d`, `90d`, `365d`, `custom` + optional dates), and the page computes one backend analytics request per unique range in the current tab
-- Time ranges are editable in Configure only; View is read-only and displays each card's active range as an indicator
+- Each metric/chart definition includes its own persisted card time range config (`all`, `7d`, `30d`, `90d`, `365d`, `custom` + optional dates); streaks always run with all-time range in the current UI
+- Metric/chart time ranges are editable in Configure only; View is read-only and displays each card's active range as an indicator
 - View tab metric cards intentionally render scalar values only in a responsive multi-column grid; charts in View are shown only for explicit Chart View definitions
-- View tab streak cards use a compact stat layout and surface the longest streak high score (`result.longest`) plus a clear current day/week period label alongside current period value
+- View tab streak cards use a compact stat layout with current streak, longest streak, and current value plus progress bars
 - For multi-metric `AND` streaks, streak results include `requiredMetricValues` and the View card displays combined period progress (sum of current required-metric values versus sum of required thresholds) plus a `met/required` metric count
 - `Sample time` activity timeline previews are shown in Configure previews, not in View metric cards
 - Advanced Analytics results are cached in-memory in `useAppStore` by request payload + `settings.lastScanTimestamp`; auto-run reuses cache and only runs missing request variants, while manual `Recompute` forces all current-tab requests

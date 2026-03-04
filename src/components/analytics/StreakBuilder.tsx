@@ -4,7 +4,6 @@ import type {
   AdvancedAnalyticsMetricDefinition,
   AdvancedAnalyticsStreakDefinition
 } from '@/types';
-import { TimeRangeControl } from '@/components/analytics/TimeRangeControl';
 
 interface StreakBuilderProps {
   streak: AdvancedAnalyticsStreakDefinition;
@@ -171,13 +170,6 @@ export function StreakBuilder({ streak, metrics, onChange, onDelete }: StreakBui
         </label>
       </div>
 
-      <div className="space-y-2 rounded-lg border border-border bg-bg/30 p-3">
-        <p className="text-sm font-medium text-foreground">Card time range (View tab)</p>
-        <TimeRangeControl
-          value={streak.timeRange}
-          onChange={(timeRange) => onChange({ ...streak, timeRange })}
-        />
-      </div>
     </section>
   );
 }

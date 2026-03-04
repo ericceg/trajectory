@@ -67,7 +67,6 @@ interface AnalyticsPreviewProps {
   overviewStreakResultsById?: Record<string, AdvancedAnalyticsStreakResult | undefined>;
   overviewChartResultsById?: Record<string, AdvancedAnalyticsChartResult | undefined>;
   onMetricTimeRangeChange?: (metricId: string, timeRange: AdvancedAnalyticsTimeRangeConfig) => void;
-  onStreakTimeRangeChange?: (streakId: string, timeRange: AdvancedAnalyticsTimeRangeConfig) => void;
   onChartTimeRangeChange?: (chartId: string, timeRange: AdvancedAnalyticsTimeRangeConfig) => void;
   loading: boolean;
   error: string | null;
@@ -588,12 +587,10 @@ function SampleTimeActivityRow({
 
 function StreakPreview({
   streak,
-  result,
-  onTimeRangeChange
+  result
 }: {
   streak: AdvancedAnalyticsStreakDefinition;
   result?: AdvancedAnalyticsStreakResult;
-  onTimeRangeChange?: (timeRange: AdvancedAnalyticsTimeRangeConfig) => void;
 }) {
   const current = result?.count ?? 0;
   const longest = result?.longest ?? current;
@@ -625,26 +622,14 @@ function StreakPreview({
           <div>
             <h3 className="text-lg font-semibold text-foreground">{streak.name || 'Untitled streak'}</h3>
           </div>
-          <div className="flex items-center gap-2">
-            <p className="text-xs text-muted">Range: {timeRangeIndicator(streak.timeRange)}</p>
-            <span
-              className={`inline-flex items-center rounded-full border px-2 py-1 text-xs font-semibold capitalize ${streakStatusTone(
-                result?.status
-              )}`}
-            >
-              {status}
-            </span>
-          </div>
+          <span
+            className={`inline-flex items-center rounded-full border px-2 py-1 text-xs font-semibold capitalize ${streakStatusTone(
+              result?.status
+            )}`}
+          >
+            {status}
+          </span>
         </div>
-        {onTimeRangeChange ? (
-          <div className="mt-2">
-            <TimeRangeControl
-              value={streak.timeRange}
-              onChange={onTimeRangeChange}
-              compact
-            />
-          </div>
-        ) : null}
         <div className="mt-3 grid gap-2.5 md:grid-cols-3">
           <div className={`rounded-lg border p-2.5 ${streakCurrentCardTone(result?.status)}`}>
             <p className="whitespace-nowrap text-sm font-medium text-foreground">Current streak: {current}</p>
@@ -930,7 +915,6 @@ export function AnalyticsPreview({
   overviewStreakResultsById,
   overviewChartResultsById,
   onMetricTimeRangeChange,
-  onStreakTimeRangeChange,
   onChartTimeRangeChange,
   loading,
   error
@@ -976,12 +960,7 @@ export function AnalyticsPreview({
 
         {overviewMetrics.length > 0 ? (
           <section className="space-y-3">
-            <div>
-              <h3 className="text-lg font-semibold text-foreground">Metrics</h3>
-              <p className="text-sm text-muted">
-                Metrics enabled for the View tab. Charts appear only in Chart Views.
-              </p>
-            </div>
+            <h3 className="text-lg font-semibold text-foreground">Metrics</h3>
             <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
               {overviewMetrics.map((metric) => (
                 <MetricPreview
@@ -998,10 +977,7 @@ export function AnalyticsPreview({
 
         {streaks.length > 0 ? (
           <section className="space-y-4">
-            <div>
-              <h3 className="text-lg font-semibold text-foreground">Streaks</h3>
-              <p className="text-sm text-muted">Current streak statuses at a glance.</p>
-            </div>
+            <h3 className="text-lg font-semibold text-foreground">Streaks</h3>
             <div className="grid gap-3 xl:grid-cols-2">
               {streaks.map((streak) => (
                 <StreakPreview
@@ -1016,10 +992,7 @@ export function AnalyticsPreview({
 
         {charts.length > 0 ? (
           <section className="space-y-3">
-            <div>
-              <h3 className="text-lg font-semibold text-foreground">Charts</h3>
-              <p className="text-sm text-muted">Saved chart views.</p>
-            </div>
+            <h3 className="text-lg font-semibold text-foreground">Charts</h3>
             {charts.map((chart) => (
               <ChartPreview
                 key={chart.id}
@@ -1080,11 +1053,6 @@ export function AnalyticsPreview({
         <StreakPreview
           streak={selectedStreak}
           result={streakResults[selectedStreak.id]}
-          onTimeRangeChange={
-            onStreakTimeRangeChange
-              ? (timeRange) => onStreakTimeRangeChange(selectedStreak.id, timeRange)
-              : undefined
-          }
         />
       ) : null}
       {selectedChart ? (
