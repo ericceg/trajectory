@@ -18,6 +18,8 @@ use crate::{
         AdvancedAnalyticsMetricResult, AdvancedAnalyticsPeriod, AdvancedAnalyticsRunRequest,
         AdvancedAnalyticsRunResponse, AdvancedAnalyticsSampleCondition,
         AdvancedAnalyticsSampleConditionField, AdvancedAnalyticsSampleConditionOperator,
+        AdvancedAnalyticsSampleTimeActivityPreview, AdvancedAnalyticsSampleTimePreview,
+        AdvancedAnalyticsSampleTimeSegment, AdvancedAnalyticsSampleTimeSegmentStatus,
         AdvancedAnalyticsSeriesByGranularity, AdvancedAnalyticsStreakDefinition,
         AdvancedAnalyticsStreakResult, AdvancedAnalyticsStreakStatus,
         AdvancedAnalyticsThresholdOperator,
@@ -48,8 +50,17 @@ struct InternalMetricResult {
     day: BucketSeries,
     week: BucketSeries,
     month: BucketSeries,
+    sample_time_preview: Option<AdvancedAnalyticsSampleTimePreview>,
     errors: Vec<String>,
     warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+struct SampleTimeComputation {
+    included_seconds: f64,
+    filtered_out_seconds: f64,
+    total_tracked_seconds: f64,
+    segments: Vec<AdvancedAnalyticsSampleTimeSegment>,
 }
 
 pub fn run_advanced_analytics(
@@ -264,6 +275,7 @@ fn error_metric(metric_id: &str, name: &str, message: &str) -> InternalMetricRes
         day: BTreeMap::new(),
         week: BTreeMap::new(),
         month: BTreeMap::new(),
+        sample_time_preview: None,
         errors: vec![message.to_string()],
         warnings: Vec::new(),
     }
@@ -285,6 +297,7 @@ fn compute_formula_metric(
         day: BTreeMap::new(),
         week: BTreeMap::new(),
         month: BTreeMap::new(),
+        sample_time_preview: None,
         errors: Vec::new(),
         warnings: Vec::new(),
     };
@@ -422,6 +435,7 @@ fn compute_base_metric(
         day: BTreeMap::new(),
         week: BTreeMap::new(),
         month: BTreeMap::new(),
+        sample_time_preview: None,
         errors: Vec::new(),
         warnings: Vec::new(),
     };
@@ -509,12 +523,13 @@ fn compute_base_metric(
         }
         AdvancedAnalyticsBaseMeasure::SampleTime => {
             let mut scalar = 0.0;
+            let mut preview_activities = Vec::new();
             if sample_condition_groups.is_empty() {
                 result
                     .warnings
                     .push("Sample time metric has no sample conditions; counting all tracked sample intervals.".to_string());
             }
-            for activity in matched {
+            for activity in &matched {
                 let Some(date) = parse_activity_day(&activity.activity_start) else {
                     continue;
                 };
@@ -527,33 +542,48 @@ fn compute_base_metric(
                 let samples = sample_cache
                     .get(&activity.id)
                     .expect("sample cache populated");
-                let seconds = compute_matching_sample_time_seconds(
+                let sample_time = compute_matching_sample_time(
                     samples,
                     &sample_condition_groups,
                     hr_zone_upper_bounds,
                     minimum_sample_match_seconds,
                 );
-                scalar += seconds;
+                scalar += sample_time.included_seconds;
                 add_bucket_value(
                     &mut result.day,
                     date,
                     AdvancedAnalyticsGranularity::Day,
-                    seconds,
+                    sample_time.included_seconds,
                 );
                 add_bucket_value(
                     &mut result.week,
                     date,
                     AdvancedAnalyticsGranularity::Week,
-                    seconds,
+                    sample_time.included_seconds,
                 );
                 add_bucket_value(
                     &mut result.month,
                     date,
                     AdvancedAnalyticsGranularity::Month,
-                    seconds,
+                    sample_time.included_seconds,
                 );
+                preview_activities.push(AdvancedAnalyticsSampleTimeActivityPreview {
+                    activity_id: activity.id,
+                    activity_start: activity.activity_start.clone(),
+                    activity_title: activity.title.clone(),
+                    total_tracked_seconds: sample_time.total_tracked_seconds,
+                    included_seconds: sample_time.included_seconds,
+                    filtered_out_seconds: sample_time.filtered_out_seconds,
+                    segments: sample_time.segments,
+                });
             }
             result.scalar_value = Some(scalar);
+            result.sample_time_preview = Some(AdvancedAnalyticsSampleTimePreview {
+                minimum_continuous_match_seconds: minimum_sample_match_seconds,
+                considered_activity_count: matched.len(),
+                sampled_activity_count: preview_activities.len(),
+                activities: preview_activities,
+            });
         }
     }
 
@@ -1174,19 +1204,76 @@ fn bool_condition_matches(
     }
 }
 
-fn compute_matching_sample_time_seconds(
+fn compute_matching_sample_time(
     samples: &[ActivitySample],
     condition_groups: &[Vec<AdvancedAnalyticsSampleCondition>],
     hr_zone_upper_bounds: &[u16],
     minimum_contiguous_match_seconds: f64,
-) -> f64 {
+) -> SampleTimeComputation {
     if samples.len() < 2 {
-        return 0.0;
+        return SampleTimeComputation {
+            included_seconds: 0.0,
+            filtered_out_seconds: 0.0,
+            total_tracked_seconds: 0.0,
+            segments: Vec::new(),
+        };
     }
 
-    let mut total = 0.0;
+    let mut included_seconds = 0.0;
+    let mut filtered_out_seconds = 0.0;
+    let mut total_tracked_seconds = 0.0;
     let mut current_run_seconds = 0.0;
+    let mut current_run_start_elapsed: Option<f64> = None;
+    let mut current_run_end_elapsed: Option<f64> = None;
+    let mut segments = Vec::new();
     let mut previous: Option<&ActivitySample> = None;
+
+    let flush_current_run =
+        |current_run_start_elapsed: &mut Option<f64>,
+         current_run_end_elapsed: &mut Option<f64>,
+         current_run_seconds: &mut f64,
+         included_seconds: &mut f64,
+         filtered_out_seconds: &mut f64,
+         segments: &mut Vec<AdvancedAnalyticsSampleTimeSegment>| {
+            if *current_run_seconds <= 0.0 {
+                *current_run_start_elapsed = None;
+                *current_run_end_elapsed = None;
+                *current_run_seconds = 0.0;
+                return;
+            }
+
+            let start = current_run_start_elapsed.unwrap_or(0.0);
+            let end = current_run_end_elapsed.unwrap_or(start + *current_run_seconds);
+            let duration = (end - start).max(0.0);
+            if duration <= 0.0 {
+                *current_run_start_elapsed = None;
+                *current_run_end_elapsed = None;
+                *current_run_seconds = 0.0;
+                return;
+            }
+
+            if *current_run_seconds >= minimum_contiguous_match_seconds {
+                *included_seconds += *current_run_seconds;
+                segments.push(AdvancedAnalyticsSampleTimeSegment {
+                    start_elapsed_seconds: start,
+                    end_elapsed_seconds: end,
+                    duration_seconds: duration,
+                    status: AdvancedAnalyticsSampleTimeSegmentStatus::Included,
+                });
+            } else {
+                *filtered_out_seconds += *current_run_seconds;
+                segments.push(AdvancedAnalyticsSampleTimeSegment {
+                    start_elapsed_seconds: start,
+                    end_elapsed_seconds: end,
+                    duration_seconds: duration,
+                    status: AdvancedAnalyticsSampleTimeSegmentStatus::FilteredOut,
+                });
+            }
+
+            *current_run_start_elapsed = None;
+            *current_run_end_elapsed = None;
+            *current_run_seconds = 0.0;
+        };
 
     for current in samples {
         if let Some(prev) = previous {
@@ -1198,6 +1285,7 @@ fn compute_matching_sample_time_seconds(
             if has_valid_interval {
                 let delta = end_elapsed - start_elapsed;
                 if delta.is_finite() && delta > 0.0 {
+                    total_tracked_seconds += delta;
                     let matches = if condition_groups.is_empty() {
                         true
                     } else {
@@ -1208,34 +1296,60 @@ fn compute_matching_sample_time_seconds(
                         })
                     };
                     if matches {
+                        if current_run_start_elapsed.is_none() {
+                            current_run_start_elapsed = Some(start_elapsed);
+                        }
+                        current_run_end_elapsed = Some(end_elapsed);
                         current_run_seconds += delta;
                     } else {
-                        if current_run_seconds >= minimum_contiguous_match_seconds {
-                            total += current_run_seconds;
-                        }
-                        current_run_seconds = 0.0;
+                        flush_current_run(
+                            &mut current_run_start_elapsed,
+                            &mut current_run_end_elapsed,
+                            &mut current_run_seconds,
+                            &mut included_seconds,
+                            &mut filtered_out_seconds,
+                            &mut segments,
+                        );
                     }
                 } else {
-                    if current_run_seconds >= minimum_contiguous_match_seconds {
-                        total += current_run_seconds;
-                    }
-                    current_run_seconds = 0.0;
+                    flush_current_run(
+                        &mut current_run_start_elapsed,
+                        &mut current_run_end_elapsed,
+                        &mut current_run_seconds,
+                        &mut included_seconds,
+                        &mut filtered_out_seconds,
+                        &mut segments,
+                    );
                 }
             } else {
-                if current_run_seconds >= minimum_contiguous_match_seconds {
-                    total += current_run_seconds;
-                }
-                current_run_seconds = 0.0;
+                flush_current_run(
+                    &mut current_run_start_elapsed,
+                    &mut current_run_end_elapsed,
+                    &mut current_run_seconds,
+                    &mut included_seconds,
+                    &mut filtered_out_seconds,
+                    &mut segments,
+                );
             }
         }
         previous = Some(current);
     }
 
-    if current_run_seconds >= minimum_contiguous_match_seconds {
-        total += current_run_seconds;
-    }
+    flush_current_run(
+        &mut current_run_start_elapsed,
+        &mut current_run_end_elapsed,
+        &mut current_run_seconds,
+        &mut included_seconds,
+        &mut filtered_out_seconds,
+        &mut segments,
+    );
 
-    total
+    SampleTimeComputation {
+        included_seconds,
+        filtered_out_seconds,
+        total_tracked_seconds,
+        segments,
+    }
 }
 
 fn sample_matches_condition(
@@ -1542,6 +1656,7 @@ fn finalize_metric(internal: InternalMetricResult) -> AdvancedAnalyticsMetricRes
             week: series_to_points(internal.week),
             month: series_to_points(internal.month),
         },
+        sample_time_preview: internal.sample_time_preview,
         errors: internal.errors,
         warnings: internal.warnings,
     }
@@ -1652,13 +1767,10 @@ mod tests {
         }];
 
         let condition_groups = vec![conditions];
-        let seconds = compute_matching_sample_time_seconds(
-            &samples,
-            &condition_groups,
-            &[120, 140, 160, 180],
-            0.0,
-        );
-        assert_eq!(seconds, 20.0);
+        let seconds =
+            compute_matching_sample_time(&samples, &condition_groups, &[120, 140, 160, 180], 0.0);
+        assert_eq!(seconds.included_seconds, 20.0);
+        assert_eq!(seconds.filtered_out_seconds, 0.0);
     }
 
     #[test]
@@ -1782,14 +1894,11 @@ mod tests {
             zone: Some(2),
         }]];
 
-        let seconds = compute_matching_sample_time_seconds(
-            &samples,
-            &condition_groups,
-            &[120, 140, 160, 180],
-            21.0,
-        );
+        let seconds =
+            compute_matching_sample_time(&samples, &condition_groups, &[120, 140, 160, 180], 21.0);
 
-        assert_eq!(seconds, 40.0);
+        assert_eq!(seconds.included_seconds, 40.0);
+        assert_eq!(seconds.filtered_out_seconds, 20.0);
     }
 
     #[test]
@@ -1911,12 +2020,12 @@ mod tests {
             .collect::<Vec<_>>();
 
         let and_seconds =
-            compute_matching_sample_time_seconds(&samples, &and_groups, &[120, 140, 160, 180], 0.0);
+            compute_matching_sample_time(&samples, &and_groups, &[120, 140, 160, 180], 0.0);
         let or_seconds =
-            compute_matching_sample_time_seconds(&samples, &or_groups, &[120, 140, 160, 180], 0.0);
+            compute_matching_sample_time(&samples, &or_groups, &[120, 140, 160, 180], 0.0);
 
-        assert_eq!(and_seconds, 0.0);
-        assert_eq!(or_seconds, 20.0);
+        assert_eq!(and_seconds.included_seconds, 0.0);
+        assert_eq!(or_seconds.included_seconds, 20.0);
     }
 
     #[test]
@@ -2004,6 +2113,7 @@ mod tests {
             day: BTreeMap::new(),
             week: BTreeMap::new(),
             month: BTreeMap::new(),
+            sample_time_preview: None,
             errors: Vec::new(),
             warnings: Vec::new(),
         };
@@ -2069,6 +2179,7 @@ mod tests {
             day: BTreeMap::new(),
             week: BTreeMap::new(),
             month: BTreeMap::new(),
+            sample_time_preview: None,
             errors: Vec::new(),
             warnings: Vec::new(),
         };

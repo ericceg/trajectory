@@ -270,8 +270,35 @@ export interface AdvancedAnalyticsMetricResult {
   scalarValue: number | null;
   unit: string | null;
   seriesByGranularity: AdvancedAnalyticsSeriesByGranularity;
+  sampleTimePreview?: AdvancedAnalyticsSampleTimePreview | null;
   errors: string[];
   warnings: string[];
+}
+
+export type AdvancedAnalyticsSampleTimeSegmentStatus = 'included' | 'filteredOut';
+
+export interface AdvancedAnalyticsSampleTimeSegment {
+  startElapsedSeconds: number;
+  endElapsedSeconds: number;
+  durationSeconds: number;
+  status: AdvancedAnalyticsSampleTimeSegmentStatus;
+}
+
+export interface AdvancedAnalyticsSampleTimeActivityPreview {
+  activityId: number;
+  activityStart: string;
+  activityTitle: string;
+  totalTrackedSeconds: number;
+  includedSeconds: number;
+  filteredOutSeconds: number;
+  segments: AdvancedAnalyticsSampleTimeSegment[];
+}
+
+export interface AdvancedAnalyticsSampleTimePreview {
+  minimumContinuousMatchSeconds: number;
+  consideredActivityCount: number;
+  sampledActivityCount: number;
+  activities: AdvancedAnalyticsSampleTimeActivityPreview[];
 }
 
 export type AdvancedAnalyticsStreakStatus = 'active' | 'pending' | 'broken';

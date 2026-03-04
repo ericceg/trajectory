@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Bar,
   BarChart,
@@ -41,11 +41,13 @@ import type {
   AdvancedAnalyticsMetricDefinition,
   AdvancedAnalyticsMetricResult,
   AdvancedAnalyticsRunResponse,
+  AdvancedAnalyticsSampleTimeActivityPreview,
   AdvancedAnalyticsStreakDefinition,
   AdvancedAnalyticsStreakResult
 } from '@/types';
 
 const CHART_COLORS = ['#2563eb', '#dc2626', '#10b981', '#f59e0b', '#7c3aed'];
+const SAMPLE_TIME_PREVIEW_PAGE_SIZE = 6;
 type ChartRow = { key: string; label: string } & Record<string, string | number | null>;
 const compareBucketKeys = (left: string, right: string) => left.localeCompare(right);
 
@@ -307,6 +309,130 @@ function MetricPreview({
 
       <NoticeList title="Metric Errors" items={result?.errors ?? []} tone="error" />
       <NoticeList title="Metric Warnings" items={result?.warnings ?? []} />
+      {metric.kind === 'base' && metric.base?.measure === 'sampleTime' && result?.sampleTimePreview ? (
+        <SampleTimeActivityPreview preview={result.sampleTimePreview} />
+      ) : null}
+    </div>
+  );
+}
+
+function SampleTimeActivityPreview({
+  preview
+}: {
+  preview: NonNullable<AdvancedAnalyticsMetricResult['sampleTimePreview']>;
+}) {
+  const [visibleCount, setVisibleCount] = useState(SAMPLE_TIME_PREVIEW_PAGE_SIZE);
+  useEffect(() => {
+    setVisibleCount(SAMPLE_TIME_PREVIEW_PAGE_SIZE);
+  }, [preview]);
+
+  const hasActivities = preview.activities.length > 0;
+  const visibleActivities = preview.activities.slice(0, visibleCount);
+  const hasMore = visibleCount < preview.activities.length;
+
+  return (
+    <section className="space-y-3 rounded-xl border border-border bg-panel p-4">
+      <div className="space-y-1">
+        <p className="text-xs uppercase tracking-[0.12em] text-muted">Sample Time Activity Preview</p>
+        <p className="text-sm text-muted">
+          Considered activities: {preview.consideredActivityCount}. Showing {preview.sampledActivityCount}
+          {preview.minimumContinuousMatchSeconds > 0
+            ? ` with minimum contiguous match ${formatDuration(preview.minimumContinuousMatchSeconds)}.`
+            : ' (no minimum contiguous match threshold).'}
+        </p>
+      </div>
+
+      {hasActivities ? (
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-3 text-xs text-muted">
+            <div className="flex items-center gap-1.5">
+              <span className="inline-block h-2.5 w-2.5 rounded-sm bg-emerald-500" />
+              Included
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="inline-block h-2.5 w-2.5 rounded-sm bg-amber-500" />
+              Filtered out (below minimum)
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="inline-block h-2.5 w-2.5 rounded-sm bg-border" />
+              Tracked activity timeline
+            </div>
+          </div>
+
+          {visibleActivities.map((activity) => (
+            <SampleTimeActivityRow key={activity.activityId} activity={activity} />
+          ))}
+          {preview.activities.length > SAMPLE_TIME_PREVIEW_PAGE_SIZE ? (
+            <div className="flex items-center justify-between gap-3 pt-1">
+              <p className="text-xs text-muted">
+                Showing {Math.min(visibleCount, preview.activities.length)} of {preview.activities.length} activities.
+              </p>
+              <div className="flex items-center gap-2">
+                {visibleCount > SAMPLE_TIME_PREVIEW_PAGE_SIZE ? (
+                  <button
+                    type="button"
+                    onClick={() => setVisibleCount(SAMPLE_TIME_PREVIEW_PAGE_SIZE)}
+                    className="rounded-md border border-border px-2 py-1 text-xs text-muted hover:bg-bg hover:text-foreground"
+                  >
+                    Show less
+                  </button>
+                ) : null}
+                {hasMore ? (
+                  <button
+                    type="button"
+                    onClick={() => setVisibleCount((current) => current + SAMPLE_TIME_PREVIEW_PAGE_SIZE)}
+                    className="rounded-md border border-border px-2 py-1 text-xs text-foreground hover:bg-bg"
+                  >
+                    Show more
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <p className="text-sm text-muted">No activities matched for sample-time preview.</p>
+      )}
+    </section>
+  );
+}
+
+function SampleTimeActivityRow({ activity }: { activity: AdvancedAnalyticsSampleTimeActivityPreview }) {
+  const total = activity.totalTrackedSeconds;
+  return (
+    <div className="space-y-1.5 rounded-lg border border-border bg-bg/30 p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <p className="text-sm font-medium text-foreground">{activity.activityTitle || 'Untitled activity'}</p>
+        <p className="text-xs text-muted">{activity.activityStart.replace('T', ' ').replace('Z', '')}</p>
+      </div>
+      <p className="text-xs text-muted">
+        Included {formatDuration(activity.includedSeconds)} · Filtered {formatDuration(activity.filteredOutSeconds)} ·
+        Tracked {formatDuration(activity.totalTrackedSeconds)}
+      </p>
+
+      <div className="relative h-3 overflow-hidden rounded bg-border/80">
+        {total > 0
+          ? activity.segments.map((segment, index) => {
+              const leftPercent = Math.max(0, Math.min(100, (segment.startElapsedSeconds / total) * 100));
+              const widthPercent = Math.max(
+                0.8,
+                Math.min(100 - leftPercent, (segment.durationSeconds / total) * 100)
+              );
+              return (
+                <div
+                  key={`${activity.activityId}-${index}`}
+                  className={`absolute top-0 h-full ${
+                    segment.status === 'included' ? 'bg-emerald-500' : 'bg-amber-500'
+                  }`}
+                  style={{ left: `${leftPercent}%`, width: `${widthPercent}%` }}
+                  title={`${segment.status === 'included' ? 'Included' : 'Filtered out'}: ${formatDuration(
+                    segment.durationSeconds
+                  )}`}
+                />
+              );
+            })
+          : null}
+      </div>
     </div>
   );
 }

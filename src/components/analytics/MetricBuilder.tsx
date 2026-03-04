@@ -624,8 +624,16 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                   type="number"
                   min={0}
                   step={1}
-                  value={base.minimumSampleMatchSeconds ?? 0}
+                  value={
+                    (base.minimumSampleMatchSeconds ?? 0) > 0
+                      ? base.minimumSampleMatchSeconds
+                      : ''
+                  }
                   onChange={(event) => {
+                    if (event.target.value === '') {
+                      updateBase({ minimumSampleMatchSeconds: 0 });
+                      return;
+                    }
                     const parsed = Number(event.target.value);
                     updateBase({
                       minimumSampleMatchSeconds:

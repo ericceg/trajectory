@@ -482,9 +482,50 @@ pub struct AdvancedAnalyticsMetricResult {
     pub unit: Option<String>,
     pub series_by_granularity: AdvancedAnalyticsSeriesByGranularity,
     #[serde(default)]
+    pub sample_time_preview: Option<AdvancedAnalyticsSampleTimePreview>,
+    #[serde(default)]
     pub errors: Vec<String>,
     #[serde(default)]
     pub warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdvancedAnalyticsSampleTimePreview {
+    pub minimum_continuous_match_seconds: f64,
+    pub considered_activity_count: usize,
+    pub sampled_activity_count: usize,
+    #[serde(default)]
+    pub activities: Vec<AdvancedAnalyticsSampleTimeActivityPreview>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdvancedAnalyticsSampleTimeActivityPreview {
+    pub activity_id: i64,
+    pub activity_start: String,
+    pub activity_title: String,
+    pub total_tracked_seconds: f64,
+    pub included_seconds: f64,
+    pub filtered_out_seconds: f64,
+    #[serde(default)]
+    pub segments: Vec<AdvancedAnalyticsSampleTimeSegment>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AdvancedAnalyticsSampleTimeSegment {
+    pub start_elapsed_seconds: f64,
+    pub end_elapsed_seconds: f64,
+    pub duration_seconds: f64,
+    pub status: AdvancedAnalyticsSampleTimeSegmentStatus,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum AdvancedAnalyticsSampleTimeSegmentStatus {
+    Included,
+    FilteredOut,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
