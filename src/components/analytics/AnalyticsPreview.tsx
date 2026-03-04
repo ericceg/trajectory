@@ -627,10 +627,10 @@ function ChartPreview({
   }, [chart.chartType, chart.metricIds, zoom.visibleRows]);
 
   return (
-    <div className="space-y-4">
-      <div className="rounded-xl border border-border bg-panel p-4">
-        <p className="text-xs uppercase tracking-[0.12em] text-muted">Chart Preview</p>
-        <h3 className="mt-1 text-xl font-semibold text-foreground">{chart.name || 'Untitled chart'}</h3>
+    <section className="space-y-3 rounded-xl border border-border bg-panel p-4">
+      <div className="space-y-2">
+        <p className="text-xs uppercase tracking-[0.12em] text-muted">Chart View</p>
+        <h3 className="text-xl font-semibold text-foreground">{chart.name || 'Untitled chart'}</h3>
         {onTimeRangeChange ? (
           <div className="mt-3">
             <TimeRangeControl
@@ -642,14 +642,22 @@ function ChartPreview({
         ) : (
           <p className="mt-2 text-xs text-muted">Range: {timeRangeIndicator(chart.timeRange)}</p>
         )}
-        <p className="text-sm text-muted">
-          {chart.chartType} · {chart.granularity} · {chart.metricIds.length} metric(s)
-        </p>
+        <div className="flex flex-wrap items-center gap-2 text-xs text-muted">
+          <span className="rounded-full border border-border bg-bg/40 px-2 py-0.5">
+            {chart.chartType}
+          </span>
+          <span className="rounded-full border border-border bg-bg/40 px-2 py-0.5">
+            {chart.granularity}
+          </span>
+          <span className="rounded-full border border-border bg-bg/40 px-2 py-0.5">
+            {chart.metricIds.length} metric{chart.metricIds.length === 1 ? '' : 's'}
+          </span>
+        </div>
       </div>
 
       {visibleRows.length > 0 ? (
         <div className="space-y-2">
-          <div className="h-80 rounded-lg border border-border/80 bg-bg/30 p-3">
+          <div className="h-64 rounded-lg border border-border/80 bg-bg/30 p-2.5">
             <ResponsiveContainer width="100%" height="100%">
               {chart.chartType === 'line' ? (
                 <LineChart
@@ -799,7 +807,7 @@ function ChartPreview({
 
       <NoticeList title="Chart Errors" items={result?.errors ?? []} tone="error" />
       <NoticeList title="Chart Warnings" items={result?.warnings ?? []} />
-    </div>
+    </section>
   );
 }
 
@@ -839,7 +847,7 @@ export function AnalyticsPreview({
     const hasAnyItems = overviewMetrics.length > 0 || streaks.length > 0 || charts.length > 0;
 
     return (
-      <div className="space-y-6">
+      <div className="space-y-5">
         {loading ? <p className="text-sm text-muted">Recomputing analytics...</p> : null}
         {error ? (
           <div className="rounded-lg border border-accent/40 bg-accent/10 p-3 text-sm text-accent">
@@ -867,7 +875,7 @@ export function AnalyticsPreview({
                 Metrics enabled for the View tab. Charts appear only in Chart Views.
               </p>
             </div>
-            <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
               {overviewMetrics.map((metric) => (
                 <MetricPreview
                   key={metric.id}
@@ -898,7 +906,7 @@ export function AnalyticsPreview({
         ) : null}
 
         {charts.length > 0 ? (
-          <section className="space-y-4">
+          <section className="space-y-3">
             <div>
               <h3 className="text-lg font-semibold text-foreground">Charts</h3>
               <p className="text-sm text-muted">Saved chart views.</p>
