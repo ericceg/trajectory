@@ -151,9 +151,13 @@ export const useAdvancedAnalyticsStore = create<AdvancedAnalyticsState>()(
       removeMetric: (id) =>
         set((state) => ({
           metrics: state.metrics.filter((metric) => metric.id !== id),
-          streaks: state.streaks.map((streak) =>
-            streak.metricId === id ? { ...streak, metricId: '' } : streak
-          ),
+          streaks: state.streaks.map((streak) => ({
+            ...streak,
+            metricId: streak.metricId === id ? '' : streak.metricId,
+            additionalMetricIds: (streak.additionalMetricIds ?? []).filter(
+              (metricId) => metricId !== id
+            )
+          })),
           charts: state.charts.map((chart) => ({
             ...chart,
             metricIds: chart.metricIds.filter((metricId) => metricId !== id)
@@ -207,6 +211,7 @@ export const useAdvancedAnalyticsStore = create<AdvancedAnalyticsState>()(
             name: `Streak ${state.streaks.length + 1}`,
             timeRange: defaultAdvancedAnalyticsTimeRange(),
             metricId: state.metrics[0]?.id ?? '',
+            additionalMetricIds: [],
             period: 'week',
             thresholdOperator: 'greaterThanOrEqual',
             thresholdValue: 60 * 60

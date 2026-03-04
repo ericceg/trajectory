@@ -1431,7 +1431,8 @@ fn build_streak_results(
         let mut errors = Vec::new();
         let warnings = Vec::new();
 
-        let Some(metric) = metric_cache.get(&streak.metric_id) else {
+        let required_metric_ids = streak_metric_ids(streak);
+        let Some(primary_metric) = metric_cache.get(&streak.metric_id) else {
             results.insert(
                 streak.id.clone(),
                 AdvancedAnalyticsStreakResult {
@@ -1448,51 +1449,79 @@ fn build_streak_results(
             );
             continue;
         };
+        let mut missing_metric_ids = Vec::new();
+        let mut required_metrics = Vec::new();
+        for metric_id in required_metric_ids {
+            if let Some(metric) = metric_cache.get(metric_id) {
+                required_metrics.push((metric_id, metric));
+            } else {
+                missing_metric_ids.push(metric_id.to_string());
+            }
+        }
+        if !missing_metric_ids.is_empty() {
+            results.insert(
+                streak.id.clone(),
+                AdvancedAnalyticsStreakResult {
+                    streak_id: streak.id.clone(),
+                    name: streak.name.clone(),
+                    count: 0,
+                    longest: 0,
+                    status: AdvancedAnalyticsStreakStatus::Broken,
+                    current_period_key: current_period_key(streak.period),
+                    current_period_value: 0.0,
+                    errors: missing_metric_ids
+                        .iter()
+                        .map(|metric_id| format!("Metric '{}' not found.", metric_id))
+                        .collect(),
+                    warnings,
+                },
+            );
+            continue;
+        }
 
-        let series = match streak.period {
-            AdvancedAnalyticsPeriod::Day => &metric.day,
-            AdvancedAnalyticsPeriod::Week => &metric.week,
+        let primary_series = match streak.period {
+            AdvancedAnalyticsPeriod::Day => &primary_metric.day,
+            AdvancedAnalyticsPeriod::Week => &primary_metric.week,
         };
+        let required_series: Vec<&BucketSeries> = required_metrics
+            .iter()
+            .map(|(_, metric)| match streak.period {
+                AdvancedAnalyticsPeriod::Day => &metric.day,
+                AdvancedAnalyticsPeriod::Week => &metric.week,
+            })
+            .collect();
         let current_key = current_period_key(streak.period);
         let previous_key = previous_period_key(&current_key, streak.period);
 
-        let current_value = series
+        let current_value = primary_series
             .get(&current_key)
             .and_then(|point| point.value)
             .unwrap_or(0.0);
         let previous_meets = previous_key
             .as_deref()
-            .and_then(|key| series.get(key))
-            .and_then(|point| point.value)
-            .is_some_and(|value| {
-                threshold_matches(streak.threshold_operator, value, streak.threshold_value)
-            });
-        let current_meets = threshold_matches(
-            streak.threshold_operator,
-            current_value,
-            streak.threshold_value,
-        );
+            .is_some_and(|key| period_matches_all_required_metrics(&required_series, key, streak));
+        let current_meets =
+            period_matches_all_required_metrics(&required_series, &current_key, streak);
 
         let (count, status) = if current_meets {
             (
-                consecutive_count_from(series, &current_key, streak),
+                consecutive_count_from(&required_series, &current_key, streak),
                 AdvancedAnalyticsStreakStatus::Active,
             )
         } else if previous_meets {
             let count = previous_key
                 .as_deref()
-                .map(|key| consecutive_count_from(series, key, streak))
+                .map(|key| consecutive_count_from(&required_series, key, streak))
                 .unwrap_or(0);
             (count, AdvancedAnalyticsStreakStatus::Pending)
         } else {
             (0, AdvancedAnalyticsStreakStatus::Broken)
         };
-        let longest = longest_consecutive_count(series, streak);
+        let longest = longest_consecutive_count(primary_series, &required_series, streak);
 
-        if !metric.errors.is_empty() {
+        if required_metrics.iter().any(|(_, metric)| !metric.errors.is_empty()) {
             errors.push(format!(
-                "Metric '{}' has errors and may produce incomplete streak values.",
-                metric.name
+                "One or more required metrics have errors and may produce incomplete streak values."
             ));
         }
 
@@ -1514,20 +1543,51 @@ fn build_streak_results(
     results
 }
 
-fn consecutive_count_from(
+fn streak_metric_ids(streak: &AdvancedAnalyticsStreakDefinition) -> Vec<&str> {
+    let mut metric_ids = vec![streak.metric_id.as_str()];
+    for metric_id in &streak.additional_metric_ids {
+        let trimmed = metric_id.trim();
+        if trimmed.is_empty() || trimmed == streak.metric_id {
+            continue;
+        }
+        if metric_ids.iter().any(|existing| existing == &trimmed) {
+            continue;
+        }
+        metric_ids.push(trimmed);
+    }
+    metric_ids
+}
+
+fn period_matches_metric(
     series: &BucketSeries,
+    key: &str,
+    streak: &AdvancedAnalyticsStreakDefinition,
+) -> bool {
+    series
+        .get(key)
+        .and_then(|point| point.value)
+        .is_some_and(|value| threshold_matches(streak.threshold_operator, value, streak.threshold_value))
+}
+
+fn period_matches_all_required_metrics(
+    required_series: &[&BucketSeries],
+    key: &str,
+    streak: &AdvancedAnalyticsStreakDefinition,
+) -> bool {
+    required_series
+        .iter()
+        .all(|series| period_matches_metric(series, key, streak))
+}
+
+fn consecutive_count_from(
+    required_series: &[&BucketSeries],
     start_key: &str,
     streak: &AdvancedAnalyticsStreakDefinition,
 ) -> usize {
     let mut count = 0;
     let mut cursor = Some(start_key.to_string());
     while let Some(key) = cursor {
-        let meets = series
-            .get(&key)
-            .and_then(|point| point.value)
-            .is_some_and(|value| {
-                threshold_matches(streak.threshold_operator, value, streak.threshold_value)
-            });
+        let meets = period_matches_all_required_metrics(required_series, &key, streak);
         if !meets {
             break;
         }
@@ -1538,16 +1598,15 @@ fn consecutive_count_from(
 }
 
 fn longest_consecutive_count(
-    series: &BucketSeries,
+    reference_series: &BucketSeries,
+    required_series: &[&BucketSeries],
     streak: &AdvancedAnalyticsStreakDefinition,
 ) -> usize {
     let mut longest = 0usize;
     let mut current = 0usize;
 
-    for point in series.values() {
-        let meets = point
-            .value
-            .is_some_and(|value| threshold_matches(streak.threshold_operator, value, streak.threshold_value));
+    for key in reference_series.keys() {
+        let meets = period_matches_all_required_metrics(required_series, key, streak);
         if meets {
             current += 1;
             longest = longest.max(current);

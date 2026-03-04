@@ -240,6 +240,7 @@ export interface AdvancedAnalyticsStreakDefinition {
   name: string;
   timeRange?: AdvancedAnalyticsTimeRangeConfig;
   metricId: string;
+  additionalMetricIds?: string[];
   period: AdvancedAnalyticsPeriod;
   thresholdOperator: AdvancedAnalyticsThresholdOperator;
   thresholdValue: number;

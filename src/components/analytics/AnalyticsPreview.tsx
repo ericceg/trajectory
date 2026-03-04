@@ -584,6 +584,7 @@ function StreakPreview({
   const status = result?.status ?? 'n/a';
   const periodLabel = streakCurrentPeriodLabel(streak.period, result?.currentPeriodKey);
   const longestRatio = longest > 0 ? Math.min(100, (current / longest) * 100) : 0;
+  const requiredMetricCount = 1 + (streak.additionalMetricIds?.length ?? 0);
 
   return (
     <div className="space-y-4">
@@ -592,6 +593,9 @@ function StreakPreview({
           <div>
             <p className="text-xs uppercase tracking-[0.12em] text-muted">Streak Result</p>
             <h3 className="mt-1 text-xl font-semibold text-foreground">{streak.name || 'Untitled streak'}</h3>
+            {requiredMetricCount > 1 ? (
+              <p className="mt-1 text-xs text-muted">{requiredMetricCount} required metrics (AND)</p>
+            ) : null}
           </div>
           <span
             className={`inline-flex items-center rounded-full border px-2 py-1 text-xs font-semibold capitalize ${streakStatusTone(

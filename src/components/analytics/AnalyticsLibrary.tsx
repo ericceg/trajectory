@@ -193,15 +193,20 @@ export function AnalyticsLibrary({
         {streaks.length === 0 ? (
           <p className="text-xs text-muted">No streaks yet.</p>
         ) : (
-          streaks.map((streak) => (
+          streaks.map((streak) => {
+            const requiredMetricCount = 1 + (streak.additionalMetricIds?.length ?? 0);
+            return (
             <LibraryItem
               key={streak.id}
               label={streak.name}
-              sublabel={`${streak.period} ${streak.thresholdOperator} ${streak.thresholdValue}`}
+              sublabel={`${streak.period} ${streak.thresholdOperator} ${streak.thresholdValue}${
+                requiredMetricCount > 1 ? ` · ${requiredMetricCount} metrics (AND)` : ''
+              }`}
               active={selectedItem?.kind === 'streak' && selectedItem.id === streak.id}
               onClick={() => onSelect({ kind: 'streak', id: streak.id })}
             />
-          ))
+            );
+          })
         )}
       </LibrarySection>
 

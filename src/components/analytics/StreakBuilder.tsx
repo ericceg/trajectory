@@ -12,13 +12,42 @@ interface StreakBuilderProps {
 }
 
 export function StreakBuilder({ streak, metrics, onChange, onDelete }: StreakBuilderProps) {
+  const selectedMetricIds = [
+    streak.metricId,
+    ...(streak.additionalMetricIds ?? []).filter((metricId) => metricId && metricId !== streak.metricId)
+  ].filter((metricId, index, all) => metricId && all.indexOf(metricId) === index);
+  const selectedMetricIdSet = new Set(selectedMetricIds);
+
+  const commitSelectedMetrics = (ids: string[], preferredPrimaryId?: string) => {
+    const ordered = metrics
+      .map((metric) => metric.id)
+      .filter((metricId) => ids.includes(metricId));
+    const nextPrimaryId =
+      (preferredPrimaryId && ordered.includes(preferredPrimaryId) && preferredPrimaryId) ||
+      ordered[0] ||
+      '';
+    const nextAdditionalIds = ordered.filter((metricId) => metricId !== nextPrimaryId);
+    onChange({ ...streak, metricId: nextPrimaryId, additionalMetricIds: nextAdditionalIds });
+  };
+
+  const toggleRequiredMetric = (metricId: string, checked: boolean) => {
+    if (checked) {
+      const nextIds = selectedMetricIdSet.has(metricId) ? selectedMetricIds : [...selectedMetricIds, metricId];
+      commitSelectedMetrics(nextIds, streak.metricId || metricId);
+      return;
+    }
+    const nextIds = selectedMetricIds.filter((id) => id !== metricId);
+    const preferredPrimary = streak.metricId === metricId ? nextIds[0] : streak.metricId;
+    commitSelectedMetrics(nextIds, preferredPrimary);
+  };
+
   return (
     <section className="space-y-4 rounded-xl border border-border bg-panel p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="text-lg font-semibold text-foreground">Streak Builder</h3>
           <p className="text-sm text-muted">
-            Consecutive daily or weekly periods where a metric meets a threshold.
+            Consecutive daily or weekly periods where one or more required metrics meet a threshold.
           </p>
         </div>
         <button
@@ -39,21 +68,33 @@ export function StreakBuilder({ streak, metrics, onChange, onDelete }: StreakBui
             className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm"
           />
         </label>
-        <label className="space-y-1 text-sm">
-          <span className="text-muted">Metric</span>
-          <select
-            value={streak.metricId}
-            onChange={(event) => onChange({ ...streak, metricId: event.target.value })}
-            className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm"
-          >
-            <option value="">Select metric</option>
-            {metrics.map((metric) => (
-              <option key={metric.id} value={metric.id}>
-                {metric.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="space-y-2 rounded-md border border-border bg-bg/30 p-3 text-sm md:col-span-2">
+          <p className="text-muted">Required metrics (AND)</p>
+          {metrics.length === 0 ? (
+            <p className="text-xs text-muted">Add metrics first to configure this streak.</p>
+          ) : (
+            <div className="space-y-2">
+              {metrics.map((metric) => {
+                const isRequired = selectedMetricIdSet.has(metric.id);
+                return (
+                  <div key={metric.id} className="flex items-center gap-2 rounded-md border border-border/60 px-2 py-1.5">
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={isRequired}
+                        onChange={(event) => toggleRequiredMetric(metric.id, event.target.checked)}
+                      />
+                      <span className="text-foreground">{metric.name || 'Untitled metric'}</span>
+                    </label>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <p className="text-xs text-muted">
+            Select one or more required metrics. Every selected metric must pass the same threshold each period.
+          </p>
+        </div>
         <label className="space-y-1 text-sm">
           <span className="text-muted">Period</span>
           <select

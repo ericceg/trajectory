@@ -414,6 +414,8 @@ pub struct AdvancedAnalyticsStreakDefinition {
     pub id: String,
     pub name: String,
     pub metric_id: String,
+    #[serde(default)]
+    pub additional_metric_ids: Vec<String>,
     pub period: AdvancedAnalyticsPeriod,
     pub threshold_operator: AdvancedAnalyticsThresholdOperator,
     pub threshold_value: f64,

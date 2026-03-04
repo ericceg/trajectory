@@ -541,7 +541,7 @@ Key behaviors:
 - Supports:
   - base metrics (summary aggregates + sample-time metrics)
   - formula metrics (`+`, `-`, `/`, `%`)
-  - daily/weekly threshold streaks
+  - daily/weekly threshold streaks, including optional multi-metric `AND` requirements (`streak.metricId` + `streak.additionalMetricIds`) where each required metric must pass the same operator/threshold in each period
   - time-bucketed chart views (`bar`, `line`, `stackedBar`)
 - Multi-series chart previews render a legend; stacked bars use per-segment corner logic so only the top visible segment per stack bucket has rounded top corners (internal joins stay square)
 - Guided builder UI only (no DSL), grouped activity/sample filters (`OR` between groups, `AND` within each group)

@@ -64,6 +64,47 @@ export function validateAdvancedAnalyticsDefinitions(args: {
     }
     if (!streak.metricId) {
       issues.push({ scope: 'streak', id: streak.id, message: 'Streak metric is required.' });
+    } else if (!metricIds.has(streak.metricId)) {
+      issues.push({
+        scope: 'streak',
+        id: streak.id,
+        message: 'Streak metric must reference an existing metric.'
+      });
+    }
+
+    const additionalMetricIds = streak.additionalMetricIds ?? [];
+    const seenAdditional = new Set<string>();
+    for (const metricId of additionalMetricIds) {
+      if (!metricId) {
+        issues.push({
+          scope: 'streak',
+          id: streak.id,
+          message: 'Additional required metrics cannot be empty.'
+        });
+        continue;
+      }
+      if (metricId === streak.metricId) {
+        issues.push({
+          scope: 'streak',
+          id: streak.id,
+          message: 'Additional required metrics cannot include the primary streak metric.'
+        });
+      }
+      if (seenAdditional.has(metricId)) {
+        issues.push({
+          scope: 'streak',
+          id: streak.id,
+          message: 'Additional required metrics must be unique.'
+        });
+      }
+      seenAdditional.add(metricId);
+      if (!metricIds.has(metricId)) {
+        issues.push({
+          scope: 'streak',
+          id: streak.id,
+          message: 'Additional required metrics must reference existing metrics.'
+        });
+      }
     }
   }
 
