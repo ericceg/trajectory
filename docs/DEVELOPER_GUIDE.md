@@ -543,6 +543,7 @@ Key behaviors:
   - time-bucketed chart views (`bar`, `line`, `stackedBar`)
 - Multi-series chart previews render a legend; stacked bars use per-segment corner logic so only the top visible segment per stack bucket has rounded top corners (internal joins stay square)
 - Guided builder UI only (no DSL), grouped activity/sample filters (`OR` between groups, `AND` within each group)
+- Metric-builder group editors intentionally use a flatter structure for larger rule sets (fewer nested containers and inline condition counts) to reduce scanning fatigue when many conditions are configured
 - `Sample time` base metrics can set `minimumSampleMatchSeconds` to count only contiguous matching runs above the threshold (useful for suppressing short HR-zone spikes)
 - `Sample time` metric preview cards render activity timeline strips that show tracked intervals and highlight contiguous runs that were included vs filtered out by the minimum-match threshold; cards progressively expand in batches via “Show more” and support one-click full expansion via “Show all”
 - `Sample time` metric preview activity rows are clickable and open `ActivityDetailPage` (`/activities/:id`) while passing return context (`fromPath`/`fromLabel`) so Activity Detail can route back to Advanced Analytics

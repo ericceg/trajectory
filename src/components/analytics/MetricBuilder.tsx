@@ -409,9 +409,9 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
             </select>
           </label>
 
-          <div className="space-y-2 rounded-lg border border-border bg-bg/30 p-3">
+          <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <div>
+              <div className="space-y-1">
                 <p className="text-sm font-medium text-foreground">Where groups (OR)</p>
                 <p className="text-xs text-muted">
                   If any group matches, the activity is included. Conditions inside each group use
@@ -426,7 +426,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                     createBlankActivityConditionGroup()
                   ])
                 }
-                className="rounded-md border border-border px-2 py-1 text-xs"
+                className="rounded-md border border-border px-2.5 py-1.5 text-xs font-medium hover:bg-bg/60"
               >
                 + Group
               </button>
@@ -435,189 +435,200 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
               <p className="text-xs text-muted">No activity groups (matches all activities).</p>
             ) : (
               activityConditionGroups.map((group, groupIndex) => (
-                <div key={group.id} className="space-y-2 rounded-md border border-border p-2">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs font-medium text-foreground">Group {groupIndex + 1} (AND)</p>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          updateActivityGroups(
-                            activityConditionGroups.map((currentGroup) =>
-                              currentGroup.id === group.id
-                                ? {
-                                    ...currentGroup,
-                                    conditions: [
-                                      ...currentGroup.conditions,
-                                      createBlankActivityCondition()
-                                    ]
-                                  }
-                                : currentGroup
-                            )
-                          )
-                        }
-                        className="rounded-md border border-border px-2 py-1 text-xs"
-                      >
-                        + Condition
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          updateActivityGroups(
-                            activityConditionGroups.filter(
-                              (currentGroup) => currentGroup.id !== group.id
-                            )
-                          )
-                        }
-                        className="rounded-md border border-border px-2 py-1 text-xs text-muted"
-                      >
-                        Remove Group
-                      </button>
-                    </div>
-                  </div>
-                  {group.conditions.length === 0 ? (
-                    <p className="text-xs text-muted">
-                      Empty group (ignored until at least one condition is added).
-                    </p>
-                  ) : (
-                    group.conditions.map((condition) => {
-                      const kind = activityFieldKind(condition.field);
-                      const operators = activityOperatorsForField(condition.field);
-                      return (
-                        <div
-                          key={condition.id}
-                          className="grid gap-2 rounded-md border border-border p-2 md:grid-cols-12"
-                        >
-                          <select
-                            value={condition.field}
-                            onChange={(event) => {
-                              const nextField =
-                                event.target.value as AdvancedAnalyticsActivityConditionField;
-                              const nextOperator = activityOperatorsForField(nextField)[0];
-                              updateActivityCondition(group.id, condition.id, (current) => ({
-                                ...current,
-                                field: nextField,
-                                operator: nextOperator,
-                                value:
-                                  activityFieldKind(nextField) === 'text'
-                                    ? current.value ?? ''
-                                    : activityFieldKind(nextField) === 'bool'
-                                      ? 'true'
-                                      : '',
-                                numberValue:
-                                  activityFieldKind(nextField) === 'number'
-                                    ? Number.isFinite(current.numberValue)
-                                      ? current.numberValue
-                                      : 0
-                                    : undefined,
-                                boolValue:
-                                  activityFieldKind(nextField) === 'bool'
-                                    ? current.boolValue ?? true
-                                    : undefined
-                              }));
-                            }}
-                            className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-3"
-                          >
-                            {ACTIVITY_FIELD_OPTIONS.map((option) => (
-                              <option key={option.value} value={option.value}>
-                                {option.label}
-                              </option>
-                            ))}
-                          </select>
-                          <select
-                            value={condition.operator}
-                            onChange={(event) =>
-                              updateActivityCondition(group.id, condition.id, (current) => ({
-                                ...current,
-                                operator:
-                                  event.target
-                                    .value as AdvancedAnalyticsActivityConditionOperator
-                              }))
-                            }
-                            className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-3"
-                          >
-                            {operators.map((operator) => (
-                              <option key={operator} value={operator}>
-                                {displayOperator(operator)}
-                              </option>
-                            ))}
-                          </select>
-                          {kind === 'text' ? (
-                            <input
-                              value={condition.value ?? ''}
-                              onChange={(event) =>
-                                updateActivityCondition(group.id, condition.id, (current) => ({
-                                  ...current,
-                                  value: event.target.value
-                                }))
-                              }
-                              placeholder={
-                                condition.operator === 'containsAny' ||
-                                condition.operator === 'containsAll'
-                                  ? 'comma-separated'
-                                  : 'value'
-                              }
-                              className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-5"
-                            />
-                          ) : kind === 'bool' ? (
-                            <select
-                              value={String(condition.boolValue ?? true)}
-                              onChange={(event) =>
-                                updateActivityCondition(group.id, condition.id, (current) => ({
-                                  ...current,
-                                  boolValue: event.target.value === 'true',
-                                  value: event.target.value
-                                }))
-                              }
-                              className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-5"
-                            >
-                              <option value="true">True</option>
-                              <option value="false">False</option>
-                            </select>
-                          ) : (
-                            <input
-                              type="number"
-                              value={condition.numberValue ?? 0}
-                              onChange={(event) =>
-                                updateActivityCondition(group.id, condition.id, (current) => ({
-                                  ...current,
-                                  numberValue: Number(event.target.value)
-                                }))
-                              }
-                              className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-5"
-                            />
-                          )}
-                          <button
-                            type="button"
-                            onClick={() =>
-                              updateActivityGroups(
-                                activityConditionGroups.map((currentGroup) =>
-                                  currentGroup.id === group.id
-                                    ? {
-                                        ...currentGroup,
-                                        conditions: currentGroup.conditions.filter(
-                                          (item) => item.id !== condition.id
-                                        )
-                                      }
-                                    : currentGroup
-                                )
+                <div
+                  key={group.id}
+                  className={`space-y-2 ${groupIndex > 0 ? 'border-t border-border/70 pt-3' : ''}`}
+                >
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-medium text-foreground">
+                        Group {groupIndex + 1} (AND){' '}
+                        <span className="text-muted">
+                          {group.conditions.length} condition
+                          {group.conditions.length === 1 ? '' : 's'}
+                        </span>
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            updateActivityGroups(
+                              activityConditionGroups.map((currentGroup) =>
+                                currentGroup.id === group.id
+                                  ? {
+                                      ...currentGroup,
+                                      conditions: [
+                                        ...currentGroup.conditions,
+                                        createBlankActivityCondition()
+                                      ]
+                                    }
+                                  : currentGroup
                               )
-                            }
-                            className="rounded-md border border-border px-2 py-2 text-xs text-muted md:col-span-1"
+                            )
+                          }
+                          className="rounded-md border border-border px-2 py-1 text-xs hover:bg-bg/60"
+                        >
+                          + Condition
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            updateActivityGroups(
+                              activityConditionGroups.filter(
+                                (currentGroup) => currentGroup.id !== group.id
+                              )
+                            )
+                          }
+                          className="rounded-md border border-border px-2 py-1 text-xs text-muted hover:text-foreground"
+                        >
+                          Remove Group
+                        </button>
+                      </div>
+                    </div>
+                    {group.conditions.length === 0 ? (
+                      <p className="text-xs text-muted">
+                        Empty group (ignored until at least one condition is added).
+                      </p>
+                    ) : (
+                      group.conditions.map((condition) => {
+                        const kind = activityFieldKind(condition.field);
+                        const operators = activityOperatorsForField(condition.field);
+                        return (
+                          <div
+                            key={condition.id}
+                            className="grid gap-2 md:grid-cols-12"
                           >
-                            Remove
-                          </button>
-                        </div>
-                      );
-                    })
-                  )}
+                            <select
+                              value={condition.field}
+                              onChange={(event) => {
+                                const nextField =
+                                  event.target.value as AdvancedAnalyticsActivityConditionField;
+                                const nextOperator = activityOperatorsForField(nextField)[0];
+                                updateActivityCondition(group.id, condition.id, (current) => ({
+                                  ...current,
+                                  field: nextField,
+                                  operator: nextOperator,
+                                  value:
+                                    activityFieldKind(nextField) === 'text'
+                                      ? current.value ?? ''
+                                      : activityFieldKind(nextField) === 'bool'
+                                        ? 'true'
+                                        : '',
+                                  numberValue:
+                                    activityFieldKind(nextField) === 'number'
+                                      ? Number.isFinite(current.numberValue)
+                                        ? current.numberValue
+                                        : 0
+                                      : undefined,
+                                  boolValue:
+                                    activityFieldKind(nextField) === 'bool'
+                                      ? current.boolValue ?? true
+                                      : undefined
+                                }));
+                              }}
+                              className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-3"
+                            >
+                              {ACTIVITY_FIELD_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                            <select
+                              value={condition.operator}
+                              onChange={(event) =>
+                                updateActivityCondition(group.id, condition.id, (current) => ({
+                                  ...current,
+                                  operator:
+                                    event.target
+                                      .value as AdvancedAnalyticsActivityConditionOperator
+                                }))
+                              }
+                              className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-3"
+                            >
+                              {operators.map((operator) => (
+                                <option key={operator} value={operator}>
+                                  {displayOperator(operator)}
+                                </option>
+                              ))}
+                            </select>
+                            {kind === 'text' ? (
+                              <input
+                                value={condition.value ?? ''}
+                                onChange={(event) =>
+                                  updateActivityCondition(group.id, condition.id, (current) => ({
+                                    ...current,
+                                    value: event.target.value
+                                  }))
+                                }
+                                placeholder={
+                                  condition.operator === 'containsAny' ||
+                                  condition.operator === 'containsAll'
+                                    ? 'comma-separated'
+                                    : 'value'
+                                }
+                                className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-5"
+                              />
+                            ) : kind === 'bool' ? (
+                              <select
+                                value={String(condition.boolValue ?? true)}
+                                onChange={(event) =>
+                                  updateActivityCondition(group.id, condition.id, (current) => ({
+                                    ...current,
+                                    boolValue: event.target.value === 'true',
+                                    value: event.target.value
+                                  }))
+                                }
+                                className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-5"
+                              >
+                                <option value="true">True</option>
+                                <option value="false">False</option>
+                              </select>
+                            ) : (
+                              <input
+                                type="number"
+                                value={condition.numberValue ?? 0}
+                                onChange={(event) =>
+                                  updateActivityCondition(group.id, condition.id, (current) => ({
+                                    ...current,
+                                    numberValue: Number(event.target.value)
+                                  }))
+                                }
+                                className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-5"
+                              />
+                            )}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updateActivityGroups(
+                                  activityConditionGroups.map((currentGroup) =>
+                                    currentGroup.id === group.id
+                                      ? {
+                                          ...currentGroup,
+                                          conditions: currentGroup.conditions.filter(
+                                            (item) => item.id !== condition.id
+                                          )
+                                        }
+                                      : currentGroup
+                                  )
+                                )
+                              }
+                              className="rounded-md border border-border px-2 py-2 text-xs text-muted hover:text-foreground md:col-span-1"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
                 </div>
               ))
             )}
           </div>
 
           {base.measure === 'sampleTime' ? (
-            <div className="space-y-2 rounded-lg border border-border bg-bg/30 p-3">
+            <div className="space-y-3">
               <label className="space-y-1 text-sm">
                 <span className="text-muted">Minimum continuous match time (seconds)</span>
                 <input
@@ -648,7 +659,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                 </p>
               </label>
               <div className="flex items-center justify-between">
-                <div>
+                <div className="space-y-1">
                   <p className="text-sm font-medium text-foreground">Sample groups (OR)</p>
                   <p className="text-xs text-muted">
                     Time is accumulated for intervals where any group matches. Conditions inside each
@@ -663,7 +674,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                       createBlankSampleConditionGroup()
                     ])
                   }
-                  className="rounded-md border border-border px-2 py-1 text-xs"
+                  className="rounded-md border border-border px-2.5 py-1.5 text-xs font-medium hover:bg-bg/60"
                 >
                   + Group
                 </button>
@@ -674,160 +685,169 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                 </p>
               ) : (
                 sampleConditionGroups.map((group, groupIndex) => (
-                  <div key={group.id} className="space-y-2 rounded-md border border-border p-2">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs font-medium text-foreground">
-                        Group {groupIndex + 1} (AND)
-                      </p>
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            updateSampleGroups(
-                              sampleConditionGroups.map((currentGroup) =>
-                                currentGroup.id === group.id
-                                  ? {
-                                      ...currentGroup,
-                                      conditions: [
-                                        ...currentGroup.conditions,
-                                        createBlankSampleCondition()
-                                      ]
-                                    }
-                                  : currentGroup
+                  <div
+                    key={group.id}
+                    className={`space-y-2 ${groupIndex > 0 ? 'border-t border-border/70 pt-3' : ''}`}
+                  >
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-medium text-foreground">
+                          Group {groupIndex + 1} (AND){' '}
+                          <span className="text-muted">
+                            {group.conditions.length} condition
+                            {group.conditions.length === 1 ? '' : 's'}
+                          </span>
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              updateSampleGroups(
+                                sampleConditionGroups.map((currentGroup) =>
+                                  currentGroup.id === group.id
+                                    ? {
+                                        ...currentGroup,
+                                        conditions: [
+                                          ...currentGroup.conditions,
+                                          createBlankSampleCondition()
+                                        ]
+                                      }
+                                    : currentGroup
+                                )
                               )
-                            )
-                          }
-                          className="rounded-md border border-border px-2 py-1 text-xs"
-                        >
-                          + Condition
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            updateSampleGroups(
-                              sampleConditionGroups.filter(
-                                (currentGroup) => currentGroup.id !== group.id
-                              )
-                            )
-                          }
-                          className="rounded-md border border-border px-2 py-1 text-xs text-muted"
-                        >
-                          Remove Group
-                        </button>
-                      </div>
-                    </div>
-                    {group.conditions.length === 0 ? (
-                      <p className="text-xs text-muted">
-                        Empty group (ignored until at least one condition is added).
-                      </p>
-                    ) : (
-                      group.conditions.map((condition) => {
-                        const isZone = condition.field === 'heartRateZone';
-                        const operators = isZone ? (['is'] as const) : SAMPLE_NUM_OPERATORS;
-                        return (
-                          <div
-                            key={condition.id}
-                            className="grid gap-2 rounded-md border border-border p-2 md:grid-cols-12"
+                            }
+                            className="rounded-md border border-border px-2 py-1 text-xs hover:bg-bg/60"
                           >
-                            <select
-                              value={condition.field}
-                              onChange={(event) => {
-                                const field =
-                                  event.target.value as AdvancedAnalyticsSampleConditionField;
-                                updateSampleCondition(group.id, condition.id, (current) => ({
-                                  ...current,
-                                  field,
-                                  operator:
-                                    field === 'heartRateZone'
-                                      ? 'is'
-                                      : 'greaterThanOrEqual',
-                                  zone: field === 'heartRateZone' ? current.zone ?? 2 : undefined,
-                                  numberValue:
-                                    field === 'heartRateZone'
-                                      ? undefined
-                                      : current.numberValue ?? 0
-                                }));
-                              }}
-                              className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-4"
+                            + Condition
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              updateSampleGroups(
+                                sampleConditionGroups.filter(
+                                  (currentGroup) => currentGroup.id !== group.id
+                                )
+                              )
+                            }
+                            className="rounded-md border border-border px-2 py-1 text-xs text-muted hover:text-foreground"
+                          >
+                            Remove Group
+                          </button>
+                        </div>
+                      </div>
+                      {group.conditions.length === 0 ? (
+                        <p className="text-xs text-muted">
+                          Empty group (ignored until at least one condition is added).
+                        </p>
+                      ) : (
+                        group.conditions.map((condition) => {
+                          const isZone = condition.field === 'heartRateZone';
+                          const operators = isZone ? (['is'] as const) : SAMPLE_NUM_OPERATORS;
+                          return (
+                            <div
+                              key={condition.id}
+                              className="grid gap-2 md:grid-cols-12"
                             >
-                              {SAMPLE_FIELD_OPTIONS.map((option) => (
-                                <option key={option.value} value={option.value}>
-                                  {option.label}
-                                </option>
-                              ))}
-                            </select>
-                            <select
-                              value={condition.operator}
-                              onChange={(event) =>
-                                updateSampleCondition(group.id, condition.id, (current) => ({
-                                  ...current,
-                                  operator:
-                                    event.target
-                                      .value as AdvancedAnalyticsSampleConditionOperator
-                                }))
-                              }
-                              className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-3"
-                            >
-                              {operators.map((operator) => (
-                                <option key={operator} value={operator}>
-                                  {displayOperator(operator)}
-                                </option>
-                              ))}
-                            </select>
-                            {isZone ? (
                               <select
-                                value={String(condition.zone ?? 2)}
-                                onChange={(event) =>
+                                value={condition.field}
+                                onChange={(event) => {
+                                  const field =
+                                    event.target.value as AdvancedAnalyticsSampleConditionField;
                                   updateSampleCondition(group.id, condition.id, (current) => ({
                                     ...current,
-                                    zone: Number(event.target.value)
-                                  }))
-                                }
+                                    field,
+                                    operator:
+                                      field === 'heartRateZone'
+                                        ? 'is'
+                                        : 'greaterThanOrEqual',
+                                    zone: field === 'heartRateZone' ? current.zone ?? 2 : undefined,
+                                    numberValue:
+                                      field === 'heartRateZone'
+                                        ? undefined
+                                        : current.numberValue ?? 0
+                                  }));
+                                }}
                                 className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-4"
                               >
-                                {[1, 2, 3, 4, 5].map((zone) => (
-                                  <option key={zone} value={zone}>
-                                    Z{zone}
+                                {SAMPLE_FIELD_OPTIONS.map((option) => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label}
                                   </option>
                                 ))}
                               </select>
-                            ) : (
-                              <input
-                                type="number"
-                                value={condition.numberValue ?? 0}
+                              <select
+                                value={condition.operator}
                                 onChange={(event) =>
                                   updateSampleCondition(group.id, condition.id, (current) => ({
                                     ...current,
-                                    numberValue: Number(event.target.value)
+                                    operator:
+                                      event.target
+                                        .value as AdvancedAnalyticsSampleConditionOperator
                                   }))
                                 }
-                                className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-4"
-                              />
-                            )}
-                            <button
-                              type="button"
-                              onClick={() =>
-                                updateSampleGroups(
-                                  sampleConditionGroups.map((currentGroup) =>
-                                    currentGroup.id === group.id
-                                      ? {
-                                          ...currentGroup,
-                                          conditions: currentGroup.conditions.filter(
-                                            (item) => item.id !== condition.id
-                                          )
-                                        }
-                                      : currentGroup
+                                className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-3"
+                              >
+                                {operators.map((operator) => (
+                                  <option key={operator} value={operator}>
+                                    {displayOperator(operator)}
+                                  </option>
+                                ))}
+                              </select>
+                              {isZone ? (
+                                <select
+                                  value={String(condition.zone ?? 2)}
+                                  onChange={(event) =>
+                                    updateSampleCondition(group.id, condition.id, (current) => ({
+                                      ...current,
+                                      zone: Number(event.target.value)
+                                    }))
+                                  }
+                                  className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-4"
+                                >
+                                  {[1, 2, 3, 4, 5].map((zone) => (
+                                    <option key={zone} value={zone}>
+                                      Z{zone}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <input
+                                  type="number"
+                                  value={condition.numberValue ?? 0}
+                                  onChange={(event) =>
+                                    updateSampleCondition(group.id, condition.id, (current) => ({
+                                      ...current,
+                                      numberValue: Number(event.target.value)
+                                    }))
+                                  }
+                                  className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-4"
+                                />
+                              )}
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  updateSampleGroups(
+                                    sampleConditionGroups.map((currentGroup) =>
+                                      currentGroup.id === group.id
+                                        ? {
+                                            ...currentGroup,
+                                            conditions: currentGroup.conditions.filter(
+                                              (item) => item.id !== condition.id
+                                            )
+                                          }
+                                        : currentGroup
+                                    )
                                   )
-                                )
-                              }
-                              className="rounded-md border border-border px-2 py-2 text-xs text-muted md:col-span-1"
-                            >
-                              Remove
-                            </button>
-                          </div>
-                        );
-                      })
-                    )}
+                                }
+                                className="rounded-md border border-border px-2 py-2 text-xs text-muted hover:text-foreground md:col-span-1"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
                   </div>
                 ))
               )}
