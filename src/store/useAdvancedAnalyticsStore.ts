@@ -38,6 +38,7 @@ interface AdvancedAnalyticsState {
   addMetric: (kind?: 'base' | 'formula') => void;
   updateMetric: (id: string, updater: (metric: AdvancedAnalyticsMetricDefinition) => AdvancedAnalyticsMetricDefinition) => void;
   removeMetric: (id: string) => void;
+  moveMetric: (id: string, direction: 'up' | 'down') => void;
   addStreak: () => void;
   updateStreak: (id: string, updater: (streak: AdvancedAnalyticsStreakDefinition) => AdvancedAnalyticsStreakDefinition) => void;
   removeStreak: (id: string) => void;
@@ -162,6 +163,43 @@ export const useAdvancedAnalyticsStore = create<AdvancedAnalyticsState>()(
               ? null
               : state.selectedItem
         })),
+      moveMetric: (id, direction) =>
+        set((state) => {
+          const currentIndex = state.metrics.findIndex((metric) => metric.id === id);
+          if (currentIndex < 0) {
+            return { metrics: state.metrics };
+          }
+
+          const currentMetric = state.metrics[currentIndex];
+          let swapIndex = -1;
+
+          if (direction === 'up') {
+            for (let index = currentIndex - 1; index >= 0; index -= 1) {
+              if (state.metrics[index].kind === currentMetric.kind) {
+                swapIndex = index;
+                break;
+              }
+            }
+          } else {
+            for (let index = currentIndex + 1; index < state.metrics.length; index += 1) {
+              if (state.metrics[index].kind === currentMetric.kind) {
+                swapIndex = index;
+                break;
+              }
+            }
+          }
+
+          if (swapIndex < 0) {
+            return { metrics: state.metrics };
+          }
+
+          const nextMetrics = [...state.metrics];
+          [nextMetrics[currentIndex], nextMetrics[swapIndex]] = [
+            nextMetrics[swapIndex],
+            nextMetrics[currentIndex]
+          ];
+          return { metrics: nextMetrics };
+        }),
       addStreak: () =>
         set((state) => {
           const streak: AdvancedAnalyticsStreakDefinition = {

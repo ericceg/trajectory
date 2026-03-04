@@ -62,6 +62,7 @@ export function AdvancedAnalyticsPage() {
   const addMetric = useAdvancedAnalyticsStore((state) => state.addMetric);
   const updateMetric = useAdvancedAnalyticsStore((state) => state.updateMetric);
   const removeMetric = useAdvancedAnalyticsStore((state) => state.removeMetric);
+  const moveMetric = useAdvancedAnalyticsStore((state) => state.moveMetric);
   const addStreak = useAdvancedAnalyticsStore((state) => state.addStreak);
   const updateStreak = useAdvancedAnalyticsStore((state) => state.updateStreak);
   const removeStreak = useAdvancedAnalyticsStore((state) => state.removeStreak);
@@ -370,6 +371,7 @@ export function AdvancedAnalyticsPage() {
             onSelect={setSelectedItem}
             onAddMetric={() => addMetric('base')}
             onAddFormulaMetric={() => addMetric('formula')}
+            onMoveMetric={moveMetric}
             onAddStreak={addStreak}
             onAddChart={addChart}
           />

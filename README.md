@@ -45,6 +45,7 @@ Prototype (actively evolving).
 - Global path-based heatmap page that overlays all matching GPS tracks
 - Heatmap filters for time span (presets + custom), category, and sport type
 - Advanced Analytics tab (prototype) with locally saved custom metrics, formula metrics, threshold streaks, and time-bucketed charts (bar/line/stacked bar), plus separate Configure/View tabs (View opens by default with an at-a-glance overview)
+- Advanced Analytics Configure library supports per-section metric reordering (up/down controls for base metrics and formula metrics), and the saved order is used throughout previews and View cards
 - Advanced Analytics cards (metrics, streaks, chart views) each have their own adjustable time range (including `7d`, `30d`, `90d`, `365d`, `all`, and custom dates), so different cards can be compared over different windows in the same View
 - Advanced Analytics time ranges are configured in **Configure**; the **View** tab is read-only and shows the active range per card as an indicator
 - Advanced Analytics supports title-based conditions (e.g. push/pull names), grouped conditions (`OR` between groups, `AND` within each group), and sample-derived metrics such as heart-rate zone time via `Sample time` rules, including a minimum continuous-match duration to ignore short fluctuations

@@ -14,6 +14,7 @@ interface AnalyticsLibraryProps {
   showActions?: boolean;
   onAddMetric: () => void;
   onAddFormulaMetric: () => void;
+  onMoveMetric: (metricId: string, direction: 'up' | 'down') => void;
   onAddStreak: () => void;
   onAddChart: () => void;
 }
@@ -52,26 +53,61 @@ function LibraryItem({
   label,
   sublabel,
   active,
-  onClick
+  onClick,
+  showMoveControls = false,
+  canMoveUp = false,
+  canMoveDown = false,
+  onMoveUp,
+  onMoveDown
 }: {
   label: string;
   sublabel?: string;
   active: boolean;
   onClick: () => void;
+  showMoveControls?: boolean;
+  canMoveUp?: boolean;
+  canMoveDown?: boolean;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`w-full rounded-lg border px-3 py-2 text-left transition-colors ${
-        active
-          ? 'border-accent bg-accent/10 text-foreground'
-          : 'border-border bg-bg/30 text-foreground hover:border-accent/50'
-      }`}
-    >
-      <div className="truncate text-sm font-medium">{label || 'Untitled'}</div>
-      {sublabel ? <div className="truncate text-xs text-muted">{sublabel}</div> : null}
-    </button>
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={onClick}
+        className={`w-full rounded-lg border px-3 py-2 text-left transition-colors ${
+          active
+            ? 'border-accent bg-accent/10 text-foreground'
+            : 'border-border bg-bg/30 text-foreground hover:border-accent/50'
+        }`}
+      >
+        <div className="truncate text-sm font-medium">{label || 'Untitled'}</div>
+        {sublabel ? <div className="truncate text-xs text-muted">{sublabel}</div> : null}
+      </button>
+
+      {showMoveControls ? (
+        <div className="flex flex-col gap-1">
+          <button
+            type="button"
+            disabled={!canMoveUp}
+            onClick={onMoveUp}
+            className="rounded-md border border-border bg-bg px-2 py-1 text-xs text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+            aria-label="Move item up"
+          >
+            ↑
+          </button>
+          <button
+            type="button"
+            disabled={!canMoveDown}
+            onClick={onMoveDown}
+            className="rounded-md border border-border bg-bg px-2 py-1 text-xs text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+            aria-label="Move item down"
+          >
+            ↓
+          </button>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
@@ -84,6 +120,7 @@ export function AnalyticsLibrary({
   showActions = true,
   onAddMetric,
   onAddFormulaMetric,
+  onMoveMetric,
   onAddStreak,
   onAddChart
 }: AnalyticsLibraryProps) {
@@ -107,6 +144,14 @@ export function AnalyticsLibrary({
               sublabel={metric.base?.measure}
               active={selectedItem?.kind === 'metric' && selectedItem.id === metric.id}
               onClick={() => onSelect({ kind: 'metric', id: metric.id })}
+              showMoveControls={showActions}
+              canMoveUp={baseMetrics.findIndex((candidate) => candidate.id === metric.id) > 0}
+              canMoveDown={
+                baseMetrics.findIndex((candidate) => candidate.id === metric.id) <
+                baseMetrics.length - 1
+              }
+              onMoveUp={() => onMoveMetric(metric.id, 'up')}
+              onMoveDown={() => onMoveMetric(metric.id, 'down')}
             />
           ))
         )}
@@ -127,6 +172,14 @@ export function AnalyticsLibrary({
               sublabel={metric.formula?.operator}
               active={selectedItem?.kind === 'metric' && selectedItem.id === metric.id}
               onClick={() => onSelect({ kind: 'metric', id: metric.id })}
+              showMoveControls={showActions}
+              canMoveUp={formulaMetrics.findIndex((candidate) => candidate.id === metric.id) > 0}
+              canMoveDown={
+                formulaMetrics.findIndex((candidate) => candidate.id === metric.id) <
+                formulaMetrics.length - 1
+              }
+              onMoveUp={() => onMoveMetric(metric.id, 'up')}
+              onMoveDown={() => onMoveMetric(metric.id, 'down')}
             />
           ))
         )}
