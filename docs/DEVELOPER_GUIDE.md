@@ -548,6 +548,7 @@ Key behaviors:
 - `Sample time` metric preview activity rows are clickable and open `ActivityDetailPage` (`/activities/:id`) while passing return context (`fromPath`/`fromLabel`) so Activity Detail can route back to Advanced Analytics
 - Metric unit display is selected from predefined dropdown options with `Auto` as the default (no free-form unit text input), and backend analytics converts scalar/series values to compatible display units before previews/charts/streaks consume them (including dimensionless ratio -> `%` scaling)
 - UI separates analytics editing vs preview into Configure/View tabs (View is default and renders an at-a-glance overview); the active tab is persisted in UI state, and metrics include a persisted `showInView` toggle used to filter the View metrics section
+- Advanced Analytics results are cached in-memory in `useAppStore` by a cache key derived from request payload + `settings.lastScanTimestamp`; auto-run reuses cache and skips backend calls when the key is unchanged (manual `Recompute` still forces a run)
 - Uses Settings heart-rate zone cutoffs for HR-zone sample conditions
 
 ### 5.5 Shared components and utilities

@@ -38,6 +38,8 @@ function resolveTimeRange(
 
 export function AdvancedAnalyticsPage() {
   const settings = useAppStore((state) => state.settings);
+  const getCachedAdvancedAnalytics = useAppStore((state) => state.getCachedAdvancedAnalytics);
+  const setCachedAdvancedAnalytics = useAppStore((state) => state.setCachedAdvancedAnalytics);
   const metrics = useAdvancedAnalyticsStore((state) => state.metrics);
   const streaks = useAdvancedAnalyticsStore((state) => state.streaks);
   const charts = useAdvancedAnalyticsStore((state) => state.charts);
@@ -64,6 +66,7 @@ export function AdvancedAnalyticsPage() {
   const setActiveTab = useUiStateStore((state) => state.setAnalyticsActiveTab);
 
   const [response, setResponse] = useState<AdvancedAnalyticsRunResponse | null>(null);
+  const [responseKey, setResponseKey] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
 
@@ -99,7 +102,21 @@ export function AdvancedAnalyticsPage() {
     }),
     [charts, metrics, resolvedRange.endDate, resolvedRange.startDate, streaks]
   );
-  const requestKey = useMemo(() => JSON.stringify(request), [request]);
+  const dataVersion = settings?.lastScanTimestamp ?? null;
+  const requestCacheKey = useMemo(
+    () =>
+      JSON.stringify({
+        request,
+        dataVersion
+      }),
+    [dataVersion, request]
+  );
+  const cachedResponse = useMemo(
+    () => getCachedAdvancedAnalytics(requestCacheKey),
+    [getCachedAdvancedAnalytics, requestCacheKey]
+  );
+  const displayResponse =
+    responseKey === requestCacheKey ? response : cachedResponse;
 
   const validationIssues = useMemo(
     () => validateAdvancedAnalyticsDefinitions({ metrics, streaks, charts }),
@@ -120,11 +137,14 @@ export function AdvancedAnalyticsPage() {
   }, [selectedItem, validationIssues]);
 
   const runNow = async (payload: AdvancedAnalyticsRunRequest) => {
+    const payloadCacheKey = JSON.stringify({ request: payload, dataVersion });
     setLoading(true);
     setRunError(null);
     try {
       const next = await runAdvancedAnalytics(payload);
       setResponse(next);
+      setResponseKey(payloadCacheKey);
+      setCachedAdvancedAnalytics(payloadCacheKey, next);
     } catch (error) {
       setRunError(error instanceof Error ? error.message : String(error));
     } finally {
@@ -137,6 +157,14 @@ export function AdvancedAnalyticsPage() {
       return;
     }
 
+    if (cachedResponse) {
+      setResponse(cachedResponse);
+      setResponseKey(requestCacheKey);
+      setRunError(null);
+      setLoading(false);
+      return;
+    }
+
     let cancelled = false;
     const run = async () => {
       setLoading(true);
@@ -145,6 +173,8 @@ export function AdvancedAnalyticsPage() {
         const next = await runAdvancedAnalytics(request);
         if (!cancelled) {
           setResponse(next);
+          setResponseKey(requestCacheKey);
+          setCachedAdvancedAnalytics(requestCacheKey, next);
         }
       } catch (error) {
         if (!cancelled) {
@@ -162,7 +192,7 @@ export function AdvancedAnalyticsPage() {
     return () => {
       cancelled = true;
     };
-  }, [autoRun, requestKey]);
+  }, [autoRun, cachedResponse, getCachedAdvancedAnalytics, requestCacheKey, request, setCachedAdvancedAnalytics]);
 
   const selectedMetric =
     selectedItem?.kind === 'metric' ? metrics.find((metric) => metric.id === selectedItem.id) : undefined;
@@ -340,7 +370,7 @@ export function AdvancedAnalyticsPage() {
               metrics={metrics}
               streaks={streaks}
               charts={charts}
-              response={response}
+              response={displayResponse}
               loading={loading}
               error={runError}
             />
@@ -362,7 +392,7 @@ export function AdvancedAnalyticsPage() {
             metrics={metrics}
             streaks={streaks}
             charts={charts}
-            response={response}
+            response={displayResponse}
             loading={loading}
             error={runError}
           />
