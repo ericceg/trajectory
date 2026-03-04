@@ -317,6 +317,7 @@ export interface AdvancedAnalyticsStreakResult {
   streakId: string;
   name: string;
   count: number;
+  longest: number;
   status: AdvancedAnalyticsStreakStatus;
   currentPeriodKey: string;
   currentPeriodValue: number;

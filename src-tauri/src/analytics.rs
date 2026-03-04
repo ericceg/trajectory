@@ -1438,6 +1438,7 @@ fn build_streak_results(
                     streak_id: streak.id.clone(),
                     name: streak.name.clone(),
                     count: 0,
+                    longest: 0,
                     status: AdvancedAnalyticsStreakStatus::Broken,
                     current_period_key: current_period_key(streak.period),
                     current_period_value: 0.0,
@@ -1486,6 +1487,7 @@ fn build_streak_results(
         } else {
             (0, AdvancedAnalyticsStreakStatus::Broken)
         };
+        let longest = longest_consecutive_count(series, streak);
 
         if !metric.errors.is_empty() {
             errors.push(format!(
@@ -1500,6 +1502,7 @@ fn build_streak_results(
                 streak_id: streak.id.clone(),
                 name: streak.name.clone(),
                 count,
+                longest,
                 status,
                 current_period_key: current_key,
                 current_period_value: current_value,
@@ -1532,6 +1535,28 @@ fn consecutive_count_from(
         cursor = previous_period_key(&key, streak.period);
     }
     count
+}
+
+fn longest_consecutive_count(
+    series: &BucketSeries,
+    streak: &AdvancedAnalyticsStreakDefinition,
+) -> usize {
+    let mut longest = 0usize;
+    let mut current = 0usize;
+
+    for point in series.values() {
+        let meets = point
+            .value
+            .is_some_and(|value| threshold_matches(streak.threshold_operator, value, streak.threshold_value));
+        if meets {
+            current += 1;
+            longest = longest.max(current);
+        } else {
+            current = 0;
+        }
+    }
+
+    longest
 }
 
 fn threshold_matches(

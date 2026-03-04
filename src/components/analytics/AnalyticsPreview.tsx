@@ -43,6 +43,7 @@ import type {
   AdvancedAnalyticsChartResult,
   AdvancedAnalyticsMetricDefinition,
   AdvancedAnalyticsMetricResult,
+  AdvancedAnalyticsPeriod,
   AdvancedAnalyticsRunResponse,
   AdvancedAnalyticsSampleTimeActivityPreview,
   AdvancedAnalyticsStreakDefinition,
@@ -192,6 +193,58 @@ function formatTooltipMetricValue(value: number, unit?: string): string {
   }
 
   return formatTooltipNumber(value);
+}
+
+function formatStreakValue(value: number): string {
+  if (!Number.isFinite(value)) {
+    return 'n/a';
+  }
+  if (Math.abs(value) >= 1000 || Math.abs(value % 1) < 1e-9) {
+    return value.toLocaleString(undefined, { maximumFractionDigits: 0 });
+  }
+  return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
+}
+
+function formatPeriodDateLabel(dateKey: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateKey);
+  if (!match) {
+    return dateKey;
+  }
+  return `${match[3]}.${match[2]}.${match[1]}`;
+}
+
+function streakCurrentPeriodLabel(period: AdvancedAnalyticsPeriod, periodKey?: string): string {
+  if (!periodKey) {
+    return period === 'week' ? 'Current week' : 'Current day';
+  }
+  const periodDate = formatPeriodDateLabel(periodKey);
+  return period === 'week' ? `Week of ${periodDate}` : periodDate;
+}
+
+function streakStatusTone(status?: AdvancedAnalyticsStreakResult['status']): string {
+  if (status === 'active') {
+    return 'text-emerald-600 bg-emerald-500/10 border-emerald-500/40';
+  }
+  if (status === 'pending') {
+    return 'text-amber-600 bg-amber-500/10 border-amber-500/40';
+  }
+  if (status === 'broken') {
+    return 'text-rose-600 bg-rose-500/10 border-rose-500/40';
+  }
+  return 'text-muted bg-bg/60 border-border';
+}
+
+function streakCurrentCardTone(status?: AdvancedAnalyticsStreakResult['status']): string {
+  if (status === 'active') {
+    return 'border-emerald-500/30 bg-emerald-500/10';
+  }
+  if (status === 'pending') {
+    return 'border-amber-500/30 bg-amber-500/10';
+  }
+  if (status === 'broken') {
+    return 'border-rose-500/30 bg-rose-500/10';
+  }
+  return 'border-border bg-bg/30';
 }
 
 function AnalyticsChartTooltip({
@@ -526,11 +579,28 @@ function StreakPreview({
   result?: AdvancedAnalyticsStreakResult;
   onTimeRangeChange?: (timeRange: AdvancedAnalyticsTimeRangeConfig) => void;
 }) {
+  const current = result?.count ?? 0;
+  const longest = result?.longest ?? current;
+  const status = result?.status ?? 'n/a';
+  const periodLabel = streakCurrentPeriodLabel(streak.period, result?.currentPeriodKey);
+  const longestRatio = longest > 0 ? Math.min(100, (current / longest) * 100) : 0;
+
   return (
     <div className="space-y-4">
       <div className="rounded-xl border border-border bg-panel p-4">
-        <p className="text-xs uppercase tracking-[0.12em] text-muted">Streak Result</p>
-        <h3 className="mt-1 text-xl font-semibold text-foreground">{streak.name || 'Untitled streak'}</h3>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <p className="text-xs uppercase tracking-[0.12em] text-muted">Streak Result</p>
+            <h3 className="mt-1 text-xl font-semibold text-foreground">{streak.name || 'Untitled streak'}</h3>
+          </div>
+          <span
+            className={`inline-flex items-center rounded-full border px-2 py-1 text-xs font-semibold capitalize ${streakStatusTone(
+              result?.status
+            )}`}
+          >
+            {status}
+          </span>
+        </div>
         {onTimeRangeChange ? (
           <div className="mt-3">
             <TimeRangeControl
@@ -542,21 +612,32 @@ function StreakPreview({
         ) : (
           <p className="mt-2 text-xs text-muted">Range: {timeRangeIndicator(streak.timeRange)}</p>
         )}
-        <div className="mt-4 grid gap-3 md:grid-cols-3">
-          <div className="rounded-lg border border-border bg-bg/30 p-3">
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className={`rounded-lg border p-3 ${streakCurrentCardTone(result?.status)}`}>
             <p className="text-xs text-muted">Current streak</p>
-            <p className="text-2xl font-semibold text-foreground">{result?.count ?? 0}</p>
+            <p className="text-2xl font-semibold text-foreground">{current}</p>
           </div>
           <div className="rounded-lg border border-border bg-bg/30 p-3">
-            <p className="text-xs text-muted">Status</p>
-            <p className="text-lg font-semibold capitalize text-foreground">{result?.status ?? 'n/a'}</p>
+            <p className="text-xs text-muted">Longest streak</p>
+            <p className="text-2xl font-semibold text-foreground">{longest}</p>
+            <p className="text-xs text-muted">High score</p>
+          </div>
+          <div className="rounded-lg border border-border bg-bg/30 p-3">
+            <p className="text-xs text-muted">Current period</p>
+            <p className="text-base font-semibold text-foreground">{periodLabel}</p>
+            <p className="text-xs text-muted">{streak.period === 'week' ? 'Weekly checkpoint' : 'Daily checkpoint'}</p>
           </div>
           <div className="rounded-lg border border-border bg-bg/30 p-3">
             <p className="text-xs text-muted">Current period value</p>
-            <p className="text-lg font-semibold text-foreground">
-              {result ? result.currentPeriodValue.toFixed(2) : 'n/a'}
+            <p className="text-xl font-semibold text-foreground">
+              {result ? formatStreakValue(result.currentPeriodValue) : 'n/a'}
             </p>
-            <p className="text-xs text-muted">{result?.currentPeriodKey ?? 'n/a'}</p>
+            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-border/70">
+              <div className="h-full rounded-full bg-accent transition-[width]" style={{ width: `${longestRatio}%` }} />
+            </div>
+            <p className="mt-1 text-xs text-muted">
+              {current}/{longest || 0} of best
+            </p>
           </div>
         </div>
       </div>

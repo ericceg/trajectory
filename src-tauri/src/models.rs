@@ -561,6 +561,8 @@ pub struct AdvancedAnalyticsStreakResult {
     pub streak_id: String,
     pub name: String,
     pub count: usize,
+    #[serde(default)]
+    pub longest: usize,
     pub status: AdvancedAnalyticsStreakStatus,
     pub current_period_key: String,
     pub current_period_value: f64,
