@@ -45,7 +45,7 @@ Prototype (actively evolving).
 - Global path-based heatmap page that overlays all matching GPS tracks
 - Heatmap filters for time span (presets + custom), category, and sport type
 - Advanced Analytics tab (prototype) with locally saved custom metrics, formula metrics, threshold streaks, and time-bucketed charts (bar/line/stacked bar), plus separate Configure/View tabs (View opens by default with an at-a-glance overview)
-- Advanced Analytics supports title-based conditions (e.g. push/pull names), grouped conditions (`OR` between groups, `AND` within each group), and sample-derived metrics such as heart-rate zone time via `Sample time` rules
+- Advanced Analytics supports title-based conditions (e.g. push/pull names), grouped conditions (`OR` between groups, `AND` within each group), and sample-derived metrics such as heart-rate zone time via `Sample time` rules, including a minimum continuous-match duration to ignore short fluctuations
 - Advanced Analytics metric builders use a predefined unit-display dropdown (for example `%`, `s`, `count`, `km`, `bpm`) instead of free-form text input, and metric values/series are converted to the selected compatible display unit (not just relabeled)
 - Advanced Analytics metric/chart plots support Activity Detail-style interactions and visual treatment: drag-to-zoom on x-axis buckets, click-to-reset, zoom-window rendering so y-axes re-fit to the visible range, matching tooltip/axis/grid styling, no chart animations, multi-series legends, and stacked bars that round only the true stack top (internal segment joins stay square)
 - Chart text/number labels inside plot surfaces are non-selectable to avoid accidental text highlighting during drag-to-zoom
@@ -96,7 +96,7 @@ npm run tauri dev
    - **Activities** for filtering/sorting workouts (category + distance filters auto-apply)
    - **Heatmap** for a global path heatmap (overlapping GPS tracks; filter by time span/category/sport)
    - Enable **Reduced complexity (grayscale)** in Heatmap to declutter the map and emphasize route overlap
-   - **Advanced Analytics** to build custom metrics/streaks/charts (prototype): guided builder, grouped conditions (`OR` between groups, `AND` within each group), simple title text matching (no regex), time-series charts by day/week/month, and separate Configure/View tabs (View shows all saved analytics at a glance; metrics can be toggled on/off for the View tab)
+   - **Advanced Analytics** to build custom metrics/streaks/charts (prototype): guided builder, grouped conditions (`OR` between groups, `AND` within each group), simple title text matching (no regex), optional minimum continuous-match time for `Sample time` metrics, time-series charts by day/week/month, and separate Configure/View tabs (View shows all saved analytics at a glance; metrics can be toggled on/off for the View tab)
    - In **Advanced Analytics** metric/chart previews, click-drag across the plot to zoom the visible time buckets; single-click resets to full range
    - **Activity Detail** for metrics plus a route map (GPS activities) and a chart area that switches between distance-based plots (with GPS) and time-based plots (without GPS); split view hides unavailable metric panels and surfaces cadence/power panels when present
    - Hover **Activity Detail** charts to see the matching point on the route map highlighted with an animated moving dot (when GPS samples exist)
@@ -220,6 +220,7 @@ Implemented commands:
 `run_advanced_analytics(request)` supports:
 - `startDate`, `endDate` (optional time-range bounds)
 - `metrics` (base + formula metric definitions)
+- base `sampleTime` metrics can set `minimumSampleMatchSeconds` to ignore short matching bursts
 - `streaks` (daily/weekly threshold streak definitions)
 - `charts` (bar/line/stacked-bar time-series chart definitions)
 

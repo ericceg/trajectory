@@ -427,6 +427,8 @@ fn compute_base_metric(
     };
     let activity_condition_groups = normalized_activity_condition_groups(base);
     let sample_condition_groups = normalized_sample_condition_groups(base);
+    let minimum_sample_match_seconds =
+        normalized_minimum_sample_match_seconds(base.minimum_sample_match_seconds);
 
     let matched: Vec<&ActivitySummary> = activities
         .iter()
@@ -529,6 +531,7 @@ fn compute_base_metric(
                     samples,
                     &sample_condition_groups,
                     hr_zone_upper_bounds,
+                    minimum_sample_match_seconds,
                 );
                 scalar += seconds;
                 add_bucket_value(
@@ -561,10 +564,25 @@ fn compute_base_metric(
             .warnings
             .push("Sample conditions are ignored unless measure is Sample time.".to_string());
     }
+    if base.measure != AdvancedAnalyticsBaseMeasure::SampleTime
+        && minimum_sample_match_seconds > 0.0
+    {
+        result.warnings.push(
+            "Minimum continuous sample match time is ignored unless measure is Sample time."
+                .to_string(),
+        );
+    }
 
     apply_display_unit_conversion(&mut result, display_unit);
 
     Ok(result)
+}
+
+fn normalized_minimum_sample_match_seconds(value: Option<f64>) -> f64 {
+    value
+        .filter(|candidate| candidate.is_finite())
+        .map(|candidate| candidate.max(0.0))
+        .unwrap_or(0.0)
 }
 
 fn normalized_unit_option(unit: Option<&str>) -> Option<String> {
@@ -1154,19 +1172,24 @@ fn compute_matching_sample_time_seconds(
     samples: &[ActivitySample],
     condition_groups: &[Vec<AdvancedAnalyticsSampleCondition>],
     hr_zone_upper_bounds: &[u16],
+    minimum_contiguous_match_seconds: f64,
 ) -> f64 {
     if samples.len() < 2 {
         return 0.0;
     }
 
     let mut total = 0.0;
+    let mut current_run_seconds = 0.0;
     let mut previous: Option<&ActivitySample> = None;
 
     for current in samples {
         if let Some(prev) = previous {
             let start_elapsed = prev.elapsed_seconds;
             let end_elapsed = current.elapsed_seconds;
-            if end_elapsed.is_finite() && start_elapsed.is_finite() && end_elapsed > start_elapsed {
+            let has_valid_interval =
+                end_elapsed.is_finite() && start_elapsed.is_finite() && end_elapsed > start_elapsed;
+
+            if has_valid_interval {
                 let delta = end_elapsed - start_elapsed;
                 if delta.is_finite() && delta > 0.0 {
                     let matches = if condition_groups.is_empty() {
@@ -1179,12 +1202,31 @@ fn compute_matching_sample_time_seconds(
                         })
                     };
                     if matches {
-                        total += delta;
+                        current_run_seconds += delta;
+                    } else {
+                        if current_run_seconds >= minimum_contiguous_match_seconds {
+                            total += current_run_seconds;
+                        }
+                        current_run_seconds = 0.0;
                     }
+                } else {
+                    if current_run_seconds >= minimum_contiguous_match_seconds {
+                        total += current_run_seconds;
+                    }
+                    current_run_seconds = 0.0;
                 }
+            } else {
+                if current_run_seconds >= minimum_contiguous_match_seconds {
+                    total += current_run_seconds;
+                }
+                current_run_seconds = 0.0;
             }
         }
         previous = Some(current);
+    }
+
+    if current_run_seconds >= minimum_contiguous_match_seconds {
+        total += current_run_seconds;
     }
 
     total
@@ -1608,8 +1650,140 @@ mod tests {
             &samples,
             &condition_groups,
             &[120, 140, 160, 180],
+            0.0,
         );
         assert_eq!(seconds, 20.0);
+    }
+
+    #[test]
+    fn sample_time_minimum_contiguous_duration_ignores_short_spikes() {
+        let samples = vec![
+            ActivitySample {
+                elapsed_seconds: 0.0,
+                distance_m: None,
+                speed_mps: None,
+                heart_rate: Some(130.0),
+                cadence: None,
+                power_watts: None,
+                altitude_m: None,
+                lat: None,
+                lon: None,
+                timestamp: None,
+            },
+            ActivitySample {
+                elapsed_seconds: 10.0,
+                distance_m: None,
+                speed_mps: None,
+                heart_rate: Some(132.0),
+                cadence: None,
+                power_watts: None,
+                altitude_m: None,
+                lat: None,
+                lon: None,
+                timestamp: None,
+            },
+            ActivitySample {
+                elapsed_seconds: 20.0,
+                distance_m: None,
+                speed_mps: None,
+                heart_rate: Some(150.0),
+                cadence: None,
+                power_watts: None,
+                altitude_m: None,
+                lat: None,
+                lon: None,
+                timestamp: None,
+            },
+            ActivitySample {
+                elapsed_seconds: 30.0,
+                distance_m: None,
+                speed_mps: None,
+                heart_rate: Some(151.0),
+                cadence: None,
+                power_watts: None,
+                altitude_m: None,
+                lat: None,
+                lon: None,
+                timestamp: None,
+            },
+            ActivitySample {
+                elapsed_seconds: 40.0,
+                distance_m: None,
+                speed_mps: None,
+                heart_rate: Some(133.0),
+                cadence: None,
+                power_watts: None,
+                altitude_m: None,
+                lat: None,
+                lon: None,
+                timestamp: None,
+            },
+            ActivitySample {
+                elapsed_seconds: 50.0,
+                distance_m: None,
+                speed_mps: None,
+                heart_rate: Some(134.0),
+                cadence: None,
+                power_watts: None,
+                altitude_m: None,
+                lat: None,
+                lon: None,
+                timestamp: None,
+            },
+            ActivitySample {
+                elapsed_seconds: 60.0,
+                distance_m: None,
+                speed_mps: None,
+                heart_rate: Some(135.0),
+                cadence: None,
+                power_watts: None,
+                altitude_m: None,
+                lat: None,
+                lon: None,
+                timestamp: None,
+            },
+            ActivitySample {
+                elapsed_seconds: 70.0,
+                distance_m: None,
+                speed_mps: None,
+                heart_rate: Some(136.0),
+                cadence: None,
+                power_watts: None,
+                altitude_m: None,
+                lat: None,
+                lon: None,
+                timestamp: None,
+            },
+            ActivitySample {
+                elapsed_seconds: 80.0,
+                distance_m: None,
+                speed_mps: None,
+                heart_rate: Some(152.0),
+                cadence: None,
+                power_watts: None,
+                altitude_m: None,
+                lat: None,
+                lon: None,
+                timestamp: None,
+            },
+        ];
+
+        let condition_groups = vec![vec![AdvancedAnalyticsSampleCondition {
+            id: "z2".into(),
+            field: AdvancedAnalyticsSampleConditionField::HeartRateZone,
+            operator: AdvancedAnalyticsSampleConditionOperator::Is,
+            number_value: None,
+            zone: Some(2),
+        }]];
+
+        let seconds = compute_matching_sample_time_seconds(
+            &samples,
+            &condition_groups,
+            &[120, 140, 160, 180],
+            21.0,
+        );
+
+        assert_eq!(seconds, 40.0);
     }
 
     #[test]
@@ -1731,9 +1905,9 @@ mod tests {
             .collect::<Vec<_>>();
 
         let and_seconds =
-            compute_matching_sample_time_seconds(&samples, &and_groups, &[120, 140, 160, 180]);
+            compute_matching_sample_time_seconds(&samples, &and_groups, &[120, 140, 160, 180], 0.0);
         let or_seconds =
-            compute_matching_sample_time_seconds(&samples, &or_groups, &[120, 140, 160, 180]);
+            compute_matching_sample_time_seconds(&samples, &or_groups, &[120, 140, 160, 180], 0.0);
 
         assert_eq!(and_seconds, 0.0);
         assert_eq!(or_seconds, 20.0);
@@ -1768,6 +1942,7 @@ mod tests {
             sample_conditions: Vec::new(),
             sample_condition_groups: Vec::new(),
             sample_condition_join: AdvancedAnalyticsConditionJoin::And,
+            minimum_sample_match_seconds: None,
             default_chart_granularity: None,
             display_unit: None,
         };

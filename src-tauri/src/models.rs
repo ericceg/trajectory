@@ -259,6 +259,8 @@ pub struct AdvancedAnalyticsBaseMetricDefinition {
     #[serde(default = "default_advanced_analytics_condition_join")]
     pub sample_condition_join: AdvancedAnalyticsConditionJoin,
     #[serde(default)]
+    pub minimum_sample_match_seconds: Option<f64>,
+    #[serde(default)]
     pub default_chart_granularity: Option<AdvancedAnalyticsGranularity>,
     #[serde(default)]
     pub display_unit: Option<String>,

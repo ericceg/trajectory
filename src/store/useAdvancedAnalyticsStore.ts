@@ -56,6 +56,7 @@ const defaultBaseMetric = (): AdvancedAnalyticsBaseMetricDefinition => ({
   sampleConditionGroups: [],
   activityConditionJoin: 'and',
   sampleConditionJoin: 'and',
+  minimumSampleMatchSeconds: 0,
   defaultChartGranularity: 'week',
   displayUnit: ''
 });

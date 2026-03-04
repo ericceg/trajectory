@@ -32,6 +32,16 @@ export function validateAdvancedAnalyticsDefinitions(args: {
     if (metric.kind === 'base' && !metric.base) {
       issues.push({ scope: 'metric', id: metric.id, message: 'Base metric config is missing.' });
     }
+    if (metric.kind === 'base' && metric.base?.measure === 'sampleTime') {
+      const minimum = metric.base.minimumSampleMatchSeconds;
+      if (minimum != null && (!Number.isFinite(minimum) || minimum < 0)) {
+        issues.push({
+          scope: 'metric',
+          id: metric.id,
+          message: 'Minimum continuous sample match time must be a non-negative number.'
+        });
+      }
+    }
 
     if (metric.kind === 'formula') {
       if (!metric.formula) {

@@ -206,6 +206,7 @@ export interface AdvancedAnalyticsBaseMetricDefinition {
   sampleConditionGroups?: AdvancedAnalyticsSampleConditionGroup[];
   activityConditionJoin?: AdvancedAnalyticsConditionJoin;
   sampleConditionJoin?: AdvancedAnalyticsConditionJoin;
+  minimumSampleMatchSeconds?: number;
   defaultChartGranularity?: AdvancedAnalyticsGranularity;
   displayUnit?: string;
 }

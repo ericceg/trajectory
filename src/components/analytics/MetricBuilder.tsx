@@ -201,6 +201,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
     sampleConditionGroups: [],
     activityConditionJoin: 'and',
     sampleConditionJoin: 'and',
+    minimumSampleMatchSeconds: 0,
     defaultChartGranularity: 'week',
     displayUnit: '',
     ...metric.base
@@ -612,6 +613,27 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
 
           {base.measure === 'sampleTime' ? (
             <div className="space-y-2 rounded-lg border border-border bg-bg/30 p-3">
+              <label className="space-y-1 text-sm">
+                <span className="text-muted">Minimum continuous match time (seconds)</span>
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={base.minimumSampleMatchSeconds ?? 0}
+                  onChange={(event) => {
+                    const parsed = Number(event.target.value);
+                    updateBase({
+                      minimumSampleMatchSeconds:
+                        Number.isFinite(parsed) && parsed > 0 ? parsed : 0
+                    });
+                  }}
+                  className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm"
+                />
+                <p className="text-xs text-muted">
+                  Ignore short spikes. Only contiguous matching intervals that last at least this
+                  long are counted.
+                </p>
+              </label>
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-foreground">Sample groups (OR)</p>
