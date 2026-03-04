@@ -588,7 +588,7 @@ fn normalized_minimum_sample_match_seconds(value: Option<f64>) -> f64 {
 fn normalized_unit_option(unit: Option<&str>) -> Option<String> {
     unit.and_then(|raw| {
         let trimmed = raw.trim();
-        if trimmed.is_empty() {
+        if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("auto") {
             None
         } else {
             Some(trimmed.to_string())
@@ -679,12 +679,18 @@ fn apply_display_unit_conversion(metric: &mut InternalMetricResult, display_unit
         return;
     };
     metric.unit = Some(target_unit.clone());
+    let target_key = normalized_unit_key(&target_unit);
 
     let Some(source_unit) = metric.value_unit.clone() else {
+        // Dimensionless ratios (for example from divide formulas) should scale to percent when
+        // '%' is selected as the display unit.
+        if target_key == "%" {
+            apply_metric_multiplier(metric, 100.0);
+            metric.value_unit = Some(target_unit);
+        }
         return;
     };
     let source_key = normalized_unit_key(&source_unit);
-    let target_key = normalized_unit_key(&target_unit);
 
     let Some(multiplier) = unit_multiplier(&source_key, &target_key) else {
         if source_key != target_key {

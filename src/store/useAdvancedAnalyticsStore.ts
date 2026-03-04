@@ -58,7 +58,7 @@ const defaultBaseMetric = (): AdvancedAnalyticsBaseMetricDefinition => ({
   sampleConditionJoin: 'and',
   minimumSampleMatchSeconds: 0,
   defaultChartGranularity: 'week',
-  displayUnit: ''
+  displayUnit: 'auto'
 });
 
 const newId = (prefix: string) =>
@@ -125,7 +125,7 @@ export const useAdvancedAnalyticsStore = create<AdvancedAnalyticsState>()(
                     leftMetricId: state.metrics.find((m) => m.kind === 'base')?.id ?? '',
                     operator: 'divide',
                     rightMetricId: state.metrics.find((m) => m.kind === 'base')?.id ?? '',
-                    displayUnit: '%'
+                    displayUnit: 'auto'
                   }
                 }
               : {

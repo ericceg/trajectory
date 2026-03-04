@@ -30,7 +30,7 @@ const BASE_MEASURE_OPTIONS: Array<{ value: AdvancedAnalyticsBaseMeasure; label: 
 ];
 
 const UNIT_DISPLAY_OPTIONS: Array<{ value: string; label: string }> = [
-  { value: '', label: 'None' },
+  { value: 'auto', label: 'Auto (best unit)' },
   { value: 'count', label: 'Count' },
   { value: '%', label: 'Percent (%)' },
   { value: 's', label: 'Seconds (s)' },
@@ -124,11 +124,16 @@ function displayOperator(label: string) {
 }
 
 function unitDisplayOptionsForValue(value?: string | null): Array<{ value: string; label: string }> {
-  const currentValue = value ?? '';
+  const currentValue = normalizeUnitDisplaySelection(value);
   if (!currentValue || UNIT_DISPLAY_OPTIONS.some((option) => option.value === currentValue)) {
     return UNIT_DISPLAY_OPTIONS;
   }
   return [{ value: currentValue, label: `Custom (${currentValue})` }, ...UNIT_DISPLAY_OPTIONS];
+}
+
+function normalizeUnitDisplaySelection(value?: string | null): string {
+  const trimmed = value?.trim() ?? '';
+  return trimmed.length > 0 ? trimmed : 'auto';
 }
 
 function normalizeActivityConditionGroups(
@@ -203,14 +208,14 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
     sampleConditionJoin: 'and',
     minimumSampleMatchSeconds: 0,
     defaultChartGranularity: 'week',
-    displayUnit: '',
+    displayUnit: 'auto',
     ...metric.base
   };
   const formula = metric.formula ?? {
     leftMetricId: allMetrics.find((candidate) => candidate.id !== metric.id)?.id ?? '',
     operator: 'divide',
     rightMetricId: allMetrics.find((candidate) => candidate.id !== metric.id)?.id ?? '',
-    displayUnit: '%'
+    displayUnit: 'auto'
   };
   const baseDisplayUnitOptions = unitDisplayOptionsForValue(base.displayUnit);
   const formulaDisplayUnitOptions = unitDisplayOptionsForValue(formula.displayUnit);
@@ -388,7 +393,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
           <label className="space-y-1 text-sm">
             <span className="text-muted">Unit display (optional override)</span>
             <select
-              value={base.displayUnit ?? ''}
+              value={normalizeUnitDisplaySelection(base.displayUnit)}
               onChange={(event) =>
                 updateBase({
                   displayUnit: event.target.value
@@ -897,7 +902,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
           <label className="space-y-1 text-sm">
             <span className="text-muted">Unit display</span>
             <select
-              value={formula.displayUnit ?? ''}
+              value={normalizeUnitDisplaySelection(formula.displayUnit)}
               onChange={(event) =>
                 onChange({
                   ...metric,
