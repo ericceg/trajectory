@@ -45,6 +45,13 @@ interface AdvancedAnalyticsState {
   addChart: () => void;
   updateChart: (id: string, updater: (chart: AdvancedAnalyticsChartDefinition) => AdvancedAnalyticsChartDefinition) => void;
   removeChart: (id: string) => void;
+  replaceDefinitions: (next: {
+    metrics: AdvancedAnalyticsMetricDefinition[];
+    streaks: AdvancedAnalyticsStreakDefinition[];
+    charts: AdvancedAnalyticsChartDefinition[];
+    autoRun?: boolean;
+    selectedItem?: AdvancedAnalyticsSelection;
+  }) => void;
 }
 
 const today = new Date();
@@ -95,6 +102,33 @@ export const createBlankActivityCondition = blankActivityCondition;
 export const createBlankSampleCondition = blankSampleCondition;
 export const createBlankActivityConditionGroup = blankActivityConditionGroup;
 export const createBlankSampleConditionGroup = blankSampleConditionGroup;
+
+function resolveSelection(
+  selection: AdvancedAnalyticsSelection,
+  metrics: AdvancedAnalyticsMetricDefinition[],
+  streaks: AdvancedAnalyticsStreakDefinition[],
+  charts: AdvancedAnalyticsChartDefinition[]
+): AdvancedAnalyticsSelection {
+  if (selection?.kind === 'metric' && metrics.some((metric) => metric.id === selection.id)) {
+    return selection;
+  }
+  if (selection?.kind === 'streak' && streaks.some((streak) => streak.id === selection.id)) {
+    return selection;
+  }
+  if (selection?.kind === 'chart' && charts.some((chart) => chart.id === selection.id)) {
+    return selection;
+  }
+  if (metrics[0]) {
+    return { kind: 'metric', id: metrics[0].id };
+  }
+  if (streaks[0]) {
+    return { kind: 'streak', id: streaks[0].id };
+  }
+  if (charts[0]) {
+    return { kind: 'chart', id: charts[0].id };
+  }
+  return null;
+}
 
 export const useAdvancedAnalyticsStore = create<AdvancedAnalyticsState>()(
   persist(
@@ -261,6 +295,19 @@ export const useAdvancedAnalyticsStore = create<AdvancedAnalyticsState>()(
             state.selectedItem?.kind === 'chart' && state.selectedItem.id === id
               ? null
               : state.selectedItem
+        })),
+      replaceDefinitions: (next) =>
+        set((state) => ({
+          metrics: next.metrics,
+          streaks: next.streaks,
+          charts: next.charts,
+          autoRun: next.autoRun ?? state.autoRun,
+          selectedItem: resolveSelection(
+            next.selectedItem ?? null,
+            next.metrics,
+            next.streaks,
+            next.charts
+          )
         }))
     }),
     {

@@ -416,6 +416,7 @@ Persists:
 - legacy global advanced analytics time range fields (no longer used by the current page UI)
 - per-definition card time ranges (`metric.timeRange`, `chart.timeRange`; streaks use fixed all-time range in UI/request grouping)
 - auto-run toggle
+- includes `replaceDefinitions(...)` for atomic import/replace of metrics/streaks/charts (with selection reconciliation)
 
 Computed analytics results are **not** persisted.
 
@@ -560,6 +561,7 @@ Key behaviors:
 - `Sample time` activity timeline previews are shown in Configure previews, not in View metric cards
 - Advanced Analytics results are cached in-memory in `useAppStore` by request payload + `settings.lastScanTimestamp`; auto-run reuses cache and only runs missing request variants, while manual `Recompute` forces all current-tab requests
 - Uses Settings heart-rate zone cutoffs for HR-zone sample conditions
+- Header actions include `Export JSON` / `Import JSON` for sharing analytics definitions (file payload includes format marker, schema version, definitions, and auto-run preference)
 
 ### 5.5 Shared components and utilities
 
@@ -588,6 +590,8 @@ Libraries/helpers:
   - formatting helpers for advanced analytics values/units and previews
 - `src/lib/analytics/timeRange.ts`
   - shared advanced-analytics time-range presets/defaults/normalization + request-range resolution
+- `src/lib/analytics/transfer.ts`
+  - advanced analytics import/export payload builder + strict parser/validator used by JSON transfer UI
 - `src/lib/theme.ts`
   - accent theme IDs/palettes and CSS variable application
 - `src/lib/mapStyles.ts`

@@ -1,6 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 
 import { AnalyticsLibrary } from '@/components/analytics/AnalyticsLibrary';
+import {
+  buildAdvancedAnalyticsTransferFile,
+  parseAdvancedAnalyticsTransferFile
+} from '@/lib/analytics/transfer';
 import { AnalyticsPreview } from '@/components/analytics/AnalyticsPreview';
 import { ChartBuilder } from '@/components/analytics/ChartBuilder';
 import { MetricBuilder } from '@/components/analytics/MetricBuilder';
@@ -72,12 +76,15 @@ export function AdvancedAnalyticsPage() {
   const addChart = useAdvancedAnalyticsStore((state) => state.addChart);
   const updateChart = useAdvancedAnalyticsStore((state) => state.updateChart);
   const removeChart = useAdvancedAnalyticsStore((state) => state.removeChart);
+  const replaceDefinitions = useAdvancedAnalyticsStore((state) => state.replaceDefinitions);
   const activeTab = useUiStateStore((state) => state.analyticsActiveTab);
   const setActiveTab = useUiStateStore((state) => state.setAnalyticsActiveTab);
 
   const [responsesByCacheKey, setResponsesByCacheKey] = useState<Record<string, AdvancedAnalyticsRunResponse>>({});
   const [loading, setLoading] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
+  const [transferMessage, setTransferMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (selectedItem) {
@@ -292,6 +299,59 @@ export function AdvancedAnalyticsPage() {
     return results;
   }, [charts, dataVersion, getCachedAdvancedAnalytics, metrics, responsesByCacheKey, streaks]);
 
+  const handleExportDefinitions = () => {
+    const payload = buildAdvancedAnalyticsTransferFile({
+      metrics,
+      streaks,
+      charts,
+      autoRun
+    });
+    const fileText = JSON.stringify(payload, null, 2);
+    const blob = new Blob([fileText], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    link.href = url;
+    link.download = `trajectory-analytics-${timestamp}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+    setTransferMessage({
+      type: 'success',
+      text: `Exported ${metrics.length} metrics, ${streaks.length} streaks, and ${charts.length} charts.`
+    });
+  };
+
+  const handleImportDefinitions = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    try {
+      const text = await file.text();
+      const parsed = parseAdvancedAnalyticsTransferFile(text);
+      if (!parsed.ok) {
+        setTransferMessage({ type: 'error', text: parsed.error });
+        return;
+      }
+
+      replaceDefinitions(parsed.data);
+      setResponsesByCacheKey({});
+      setRunError(null);
+      setTransferMessage({
+        type: 'success',
+        text: `Imported ${parsed.data.metrics.length} metrics, ${parsed.data.streaks.length} streaks, and ${parsed.data.charts.length} charts from ${file.name}.`
+      });
+    } catch (error) {
+      setTransferMessage({
+        type: 'error',
+        text: error instanceof Error ? error.message : String(error)
+      });
+    } finally {
+      event.target.value = '';
+    }
+  };
+
   return (
     <div className="space-y-6">
       <header className="space-y-3">
@@ -305,7 +365,7 @@ export function AdvancedAnalyticsPage() {
         </div>
 
         <section className="rounded-xl border border-border bg-panel p-3">
-          <div className="grid gap-3 lg:grid-cols-[auto_auto_auto_1fr] lg:items-center">
+          <div className="grid gap-3 lg:grid-cols-[auto_auto_auto_auto_auto_1fr] lg:items-center">
             <div className="inline-flex rounded-lg border border-border bg-bg/40 p-1">
               {(['view', 'configure'] as const).map((tab) => {
                 const active = activeTab === tab;
@@ -345,6 +405,31 @@ export function AdvancedAnalyticsPage() {
               Recompute
             </button>
 
+            <button
+              type="button"
+              onClick={handleExportDefinitions}
+              className="rounded-md border border-border px-4 py-2 text-sm font-medium text-muted hover:bg-bg hover:text-foreground"
+            >
+              Export JSON
+            </button>
+
+            <button
+              type="button"
+              onClick={() => importInputRef.current?.click()}
+              className="rounded-md border border-border px-4 py-2 text-sm font-medium text-muted hover:bg-bg hover:text-foreground"
+            >
+              Import JSON
+            </button>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".json,application/json"
+              className="hidden"
+              onChange={(event) => {
+                void handleImportDefinitions(event);
+              }}
+            />
+
             <div className="text-xs text-muted lg:text-right">
               Using HR zones from Settings:
               <span className="ml-1 font-medium text-foreground">
@@ -357,6 +442,18 @@ export function AdvancedAnalyticsPage() {
               ? 'Create and edit analytics definitions. Set metric/chart card time ranges for View cards here; Configure previews always use all activity history.'
               : 'See all analytics results at a glance. Metric cards show only values; charts appear only from Chart Views.'}
           </p>
+          <p className="mt-1 text-xs text-muted">
+            Use Export/Import to share custom analytics definitions with friends.
+          </p>
+          {transferMessage ? (
+            <p
+              className={`mt-2 text-xs ${
+                transferMessage.type === 'error' ? 'text-accent' : 'text-muted'
+              }`}
+            >
+              {transferMessage.text}
+            </p>
+          ) : null}
         </section>
       </header>
 
