@@ -299,6 +299,32 @@ async fn run_advanced_analytics(
     .map_err(|err| err.to_string())?
 }
 
+#[tauri::command]
+async fn export_analytics_json(
+    folder_path: String,
+    file_name: String,
+    file_text: String,
+) -> Result<String, String> {
+    if file_name.trim().is_empty() {
+        return Err("export file name cannot be empty".to_string());
+    }
+
+    let folder = fs::canonicalize(&folder_path)
+        .map_err(|err| format!("invalid export folder path {folder_path}: {err}"))?;
+    if !folder.is_dir() {
+        return Err(format!(
+            "export folder is not a directory: {}",
+            folder.display()
+        ));
+    }
+
+    let file_path = folder.join(file_name);
+    fs::write(&file_path, file_text)
+        .map_err(|err| format!("failed writing export file {}: {err}", file_path.display()))?;
+
+    Ok(file_path.to_string_lossy().to_string())
+}
+
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -320,7 +346,8 @@ fn main() {
             get_activity,
             get_activity_samples,
             get_heatmap_data,
-            run_advanced_analytics
+            run_advanced_analytics,
+            export_analytics_json
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

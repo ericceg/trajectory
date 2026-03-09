@@ -566,6 +566,7 @@ Key behaviors:
   - metric dependencies are auto-included (chart metrics, streak metrics, and recursive formula metric dependencies)
   - dependency-only metric rows are visually marked in the selector with reasons
   - import merges selected definitions into existing state by matching IDs (selected IDs replace, new IDs append) without replacing the entire library
+  - export prompts for a destination folder and writes a timestamped JSON file there
   - export payload remains schema-versioned and now uses a more human-readable structure with top-level `summary` and nested `data`
 
 ### 5.5 Shared components and utilities

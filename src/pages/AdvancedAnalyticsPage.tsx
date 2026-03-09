@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { open } from '@tauri-apps/plugin-dialog';
 
 import { AnalyticsLibrary } from '@/components/analytics/AnalyticsLibrary';
 import { TransferSelectionPanel } from '@/components/analytics/TransferSelectionPanel';
@@ -15,7 +16,7 @@ import { MetricBuilder } from '@/components/analytics/MetricBuilder';
 import { StreakBuilder } from '@/components/analytics/StreakBuilder';
 import { resolveAdvancedAnalyticsTimeRange } from '@/lib/analytics/timeRange';
 import { validateAdvancedAnalyticsDefinitions } from '@/lib/analytics/validation';
-import { runAdvancedAnalytics } from '@/lib/tauri';
+import { exportAnalyticsJson, runAdvancedAnalytics } from '@/lib/tauri';
 import { useAdvancedAnalyticsStore } from '@/store/useAdvancedAnalyticsStore';
 import { useAppStore } from '@/store/useAppStore';
 import { useUiStateStore } from '@/store/useUiStateStore';
@@ -363,27 +364,40 @@ export function AdvancedAnalyticsPage() {
     }
   };
 
-  const handleTransferSelectionConfirm = (selection: AdvancedAnalyticsTransferSelectionResult) => {
+  const handleTransferSelectionConfirm = async (
+    selection: AdvancedAnalyticsTransferSelectionResult
+  ) => {
     if (!transferSelectionSession) {
       return;
     }
 
     if (transferSelectionSession.mode === 'export') {
-      const payload = buildAdvancedAnalyticsTransferFile(selection.data);
-      const fileText = JSON.stringify(payload, null, 2);
-      const blob = new Blob([fileText], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      link.href = url;
-      link.download = `trajectory-analytics-${timestamp}.json`;
-      link.click();
-      URL.revokeObjectURL(url);
-      setTransferMessage({
-        type: 'success',
-        text: `Exported ${selection.data.metrics.length} metrics, ${selection.data.streaks.length} streaks, and ${selection.data.charts.length} charts.`
+      const folderPath = await open({
+        directory: true,
+        multiple: false,
+        title: 'Select Export Folder'
       });
-      setTransferSelectionSession(null);
+      if (!folderPath || Array.isArray(folderPath)) {
+        return;
+      }
+
+      try {
+        const payload = buildAdvancedAnalyticsTransferFile(selection.data);
+        const fileText = JSON.stringify(payload, null, 2);
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const fileName = `trajectory-analytics-${timestamp}.json`;
+        const outputPath = await exportAnalyticsJson(folderPath, fileName, fileText);
+        setTransferMessage({
+          type: 'success',
+          text: `Exported ${selection.data.metrics.length} metrics, ${selection.data.streaks.length} streaks, and ${selection.data.charts.length} charts to ${outputPath}.`
+        });
+        setTransferSelectionSession(null);
+      } catch (error) {
+        setTransferMessage({
+          type: 'error',
+          text: error instanceof Error ? error.message : String(error)
+        });
+      }
       return;
     }
 
