@@ -1,8 +1,12 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 
 import { AnalyticsLibrary } from '@/components/analytics/AnalyticsLibrary';
+import { TransferSelectionPanel } from '@/components/analytics/TransferSelectionPanel';
 import {
   buildAdvancedAnalyticsTransferFile,
+  mergeAdvancedAnalyticsTransferData,
+  type AdvancedAnalyticsTransferData,
+  type AdvancedAnalyticsTransferSelectionResult,
   parseAdvancedAnalyticsTransferFile
 } from '@/lib/analytics/transfer';
 import { AnalyticsPreview } from '@/components/analytics/AnalyticsPreview';
@@ -27,6 +31,13 @@ import type {
 interface RequestEntry {
   cacheKey: string;
   request: AdvancedAnalyticsRunRequest;
+}
+
+interface TransferSelectionSession {
+  id: string;
+  mode: 'import' | 'export';
+  sourceLabel: string;
+  data: AdvancedAnalyticsTransferData;
 }
 
 function requestCacheKey(request: AdvancedAnalyticsRunRequest, dataVersion: string | null) {
@@ -84,6 +95,9 @@ export function AdvancedAnalyticsPage() {
   const [loading, setLoading] = useState(false);
   const [runError, setRunError] = useState<string | null>(null);
   const [transferMessage, setTransferMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [transferSelectionSession, setTransferSelectionSession] = useState<TransferSelectionSession | null>(
+    null
+  );
   const importInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -300,24 +314,19 @@ export function AdvancedAnalyticsPage() {
   }, [charts, dataVersion, getCachedAdvancedAnalytics, metrics, responsesByCacheKey, streaks]);
 
   const handleExportDefinitions = () => {
-    const payload = buildAdvancedAnalyticsTransferFile({
-      metrics,
-      streaks,
-      charts,
-      autoRun
-    });
-    const fileText = JSON.stringify(payload, null, 2);
-    const blob = new Blob([fileText], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    link.href = url;
-    link.download = `trajectory-analytics-${timestamp}.json`;
-    link.click();
-    URL.revokeObjectURL(url);
-    setTransferMessage({
-      type: 'success',
-      text: `Exported ${metrics.length} metrics, ${streaks.length} streaks, and ${charts.length} charts.`
+    setTransferSelectionSession({
+      id:
+        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : String(Date.now()),
+      mode: 'export',
+      sourceLabel: 'Current analytics library',
+      data: {
+        metrics,
+        streaks,
+        charts,
+        autoRun
+      }
     });
   };
 
@@ -335,13 +344,16 @@ export function AdvancedAnalyticsPage() {
         return;
       }
 
-      replaceDefinitions(parsed.data);
-      setResponsesByCacheKey({});
-      setRunError(null);
-      setTransferMessage({
-        type: 'success',
-        text: `Imported ${parsed.data.metrics.length} metrics, ${parsed.data.streaks.length} streaks, and ${parsed.data.charts.length} charts from ${file.name}.`
+      setTransferSelectionSession({
+        id:
+          typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+            ? crypto.randomUUID()
+            : String(Date.now()),
+        mode: 'import',
+        sourceLabel: file.name,
+        data: parsed.data
       });
+      setTransferMessage(null);
     } catch (error) {
       setTransferMessage({
         type: 'error',
@@ -350,6 +362,49 @@ export function AdvancedAnalyticsPage() {
     } finally {
       event.target.value = '';
     }
+  };
+
+  const handleTransferSelectionConfirm = (selection: AdvancedAnalyticsTransferSelectionResult) => {
+    if (!transferSelectionSession) {
+      return;
+    }
+
+    if (transferSelectionSession.mode === 'export') {
+      const payload = buildAdvancedAnalyticsTransferFile(selection.data);
+      const fileText = JSON.stringify(payload, null, 2);
+      const blob = new Blob([fileText], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      link.href = url;
+      link.download = `trajectory-analytics-${timestamp}.json`;
+      link.click();
+      URL.revokeObjectURL(url);
+      setTransferMessage({
+        type: 'success',
+        text: `Exported ${selection.data.metrics.length} metrics, ${selection.data.streaks.length} streaks, and ${selection.data.charts.length} charts.`
+      });
+      setTransferSelectionSession(null);
+      return;
+    }
+
+    const merged = mergeAdvancedAnalyticsTransferData({
+      base: { metrics, streaks, charts, autoRun },
+      incoming: selection.data
+    });
+    replaceDefinitions({
+      metrics: merged.metrics,
+      streaks: merged.streaks,
+      charts: merged.charts,
+      autoRun: merged.autoRun
+    });
+    setResponsesByCacheKey({});
+    setRunError(null);
+    setTransferSelectionSession(null);
+    setTransferMessage({
+      type: 'success',
+      text: `Imported ${selection.data.metrics.length} metrics, ${selection.data.streaks.length} streaks, and ${selection.data.charts.length} charts from ${transferSelectionSession.sourceLabel}.`
+    });
   };
 
   return (
@@ -443,7 +498,7 @@ export function AdvancedAnalyticsPage() {
               : 'See all analytics results at a glance. Metric cards show only values; charts appear only from Chart Views.'}
           </p>
           <p className="mt-1 text-xs text-muted">
-            Use Export/Import to share custom analytics definitions with friends.
+            Use Export/Import to share selected analytics definitions. Dependencies are included automatically.
           </p>
           {transferMessage ? (
             <p
@@ -455,6 +510,22 @@ export function AdvancedAnalyticsPage() {
             </p>
           ) : null}
         </section>
+
+        {transferSelectionSession ? (
+          <TransferSelectionPanel
+            key={transferSelectionSession.id}
+            mode={transferSelectionSession.mode}
+            sourceLabel={transferSelectionSession.sourceLabel}
+            data={transferSelectionSession.data}
+            existingData={
+              transferSelectionSession.mode === 'import'
+                ? { metrics, streaks, charts }
+                : undefined
+            }
+            onCancel={() => setTransferSelectionSession(null)}
+            onConfirm={handleTransferSelectionConfirm}
+          />
+        ) : null}
       </header>
 
       {activeTab === 'configure' ? (

@@ -561,7 +561,12 @@ Key behaviors:
 - `Sample time` activity timeline previews are shown in Configure previews, not in View metric cards
 - Advanced Analytics results are cached in-memory in `useAppStore` by request payload + `settings.lastScanTimestamp`; auto-run reuses cache and only runs missing request variants, while manual `Recompute` forces all current-tab requests
 - Uses Settings heart-rate zone cutoffs for HR-zone sample conditions
-- Header actions include `Export JSON` / `Import JSON` for sharing analytics definitions (file payload includes format marker, schema version, definitions, and auto-run preference)
+- Header actions include `Export JSON` / `Import JSON`, which now open a transfer selection panel:
+  - users choose exact metrics/streaks/charts to transfer
+  - metric dependencies are auto-included (chart metrics, streak metrics, and recursive formula metric dependencies)
+  - dependency-only metric rows are visually marked in the selector with reasons
+  - import merges selected definitions into existing state by matching IDs (selected IDs replace, new IDs append) without replacing the entire library
+  - export payload remains schema-versioned and now uses a more human-readable structure with top-level `summary` and nested `data`
 
 ### 5.5 Shared components and utilities
 
@@ -591,7 +596,9 @@ Libraries/helpers:
 - `src/lib/analytics/timeRange.ts`
   - shared advanced-analytics time-range presets/defaults/normalization + request-range resolution
 - `src/lib/analytics/transfer.ts`
-  - advanced analytics import/export payload builder + strict parser/validator used by JSON transfer UI
+  - advanced analytics transfer payload builder + strict parser/validator
+  - dependency-closure resolver used by selective import/export UI
+  - merge-by-ID helper used by selective import (replace selected IDs, preserve all unselected definitions)
 - `src/lib/theme.ts`
   - accent theme IDs/palettes and CSS variable application
 - `src/lib/mapStyles.ts`

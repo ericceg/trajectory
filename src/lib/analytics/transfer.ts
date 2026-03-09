@@ -112,10 +112,16 @@ export interface AdvancedAnalyticsTransferData {
   autoRun: boolean;
 }
 
-interface AdvancedAnalyticsTransferFile extends AdvancedAnalyticsTransferData {
+interface AdvancedAnalyticsTransferFile {
   format: typeof ADVANCED_ANALYTICS_TRANSFER_FORMAT;
   schemaVersion: number;
   exportedAt: string;
+  summary: {
+    metrics: number;
+    streaks: number;
+    charts: number;
+  };
+  data: AdvancedAnalyticsTransferData;
 }
 
 interface ParseSuccess {
@@ -129,6 +135,15 @@ interface ParseError {
 }
 
 export type AdvancedAnalyticsTransferParseResult = ParseSuccess | ParseError;
+
+export interface AdvancedAnalyticsTransferSelectionResult {
+  selectedMetricIds: string[];
+  selectedStreakIds: string[];
+  selectedChartIds: string[];
+  dependencyMetricIds: string[];
+  requiredMetricReasonsById: Record<string, string[]>;
+  data: AdvancedAnalyticsTransferData;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value != null && !Array.isArray(value);
@@ -420,10 +435,153 @@ export function buildAdvancedAnalyticsTransferFile(
     format: ADVANCED_ANALYTICS_TRANSFER_FORMAT,
     schemaVersion: ADVANCED_ANALYTICS_TRANSFER_SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
-    metrics: data.metrics,
-    streaks: data.streaks,
-    charts: data.charts,
-    autoRun: data.autoRun
+    summary: {
+      metrics: data.metrics.length,
+      streaks: data.streaks.length,
+      charts: data.charts.length
+    },
+    data
+  };
+}
+
+function ensureStringSet(value: readonly string[]): Set<string> {
+  return new Set(value.filter((entry) => typeof entry === 'string' && entry.length > 0));
+}
+
+function addMetricReason(
+  reasonsByMetricId: Map<string, Set<string>>,
+  metricId: string,
+  reason: string
+) {
+  const existing = reasonsByMetricId.get(metricId) ?? new Set<string>();
+  existing.add(reason);
+  reasonsByMetricId.set(metricId, existing);
+}
+
+function includeMetric(
+  metricById: Map<string, AdvancedAnalyticsMetricDefinition>,
+  selectedMetricIds: Set<string>,
+  pendingMetricIds: string[],
+  metricId: string
+) {
+  if (!metricById.has(metricId) || selectedMetricIds.has(metricId)) {
+    return;
+  }
+  selectedMetricIds.add(metricId);
+  pendingMetricIds.push(metricId);
+}
+
+export function resolveAdvancedAnalyticsTransferSelection(args: {
+  metrics: AdvancedAnalyticsMetricDefinition[];
+  streaks: AdvancedAnalyticsStreakDefinition[];
+  charts: AdvancedAnalyticsChartDefinition[];
+  selectedMetricIds: readonly string[];
+  selectedStreakIds: readonly string[];
+  selectedChartIds: readonly string[];
+  autoRun?: boolean;
+}): AdvancedAnalyticsTransferSelectionResult {
+  const { metrics, streaks, charts } = args;
+  const metricById = new Map(metrics.map((metric) => [metric.id, metric] as const));
+  const streakById = new Map(streaks.map((streak) => [streak.id, streak] as const));
+  const chartById = new Map(charts.map((chart) => [chart.id, chart] as const));
+
+  const selectedMetricSet = ensureStringSet(args.selectedMetricIds);
+  const selectedStreakSet = ensureStringSet(args.selectedStreakIds);
+  const selectedChartSet = ensureStringSet(args.selectedChartIds);
+  const pendingMetricIds = [...selectedMetricSet].filter((metricId) => metricById.has(metricId));
+  const reasonsByMetricId = new Map<string, Set<string>>();
+
+  for (const streakId of selectedStreakSet) {
+    const streak = streakById.get(streakId);
+    if (!streak) {
+      continue;
+    }
+    const sourceLabel = `Streak "${streak.name || streak.id}"`;
+    includeMetric(metricById, selectedMetricSet, pendingMetricIds, streak.metricId);
+    addMetricReason(reasonsByMetricId, streak.metricId, sourceLabel);
+    for (const metricId of streak.additionalMetricIds ?? []) {
+      includeMetric(metricById, selectedMetricSet, pendingMetricIds, metricId);
+      addMetricReason(reasonsByMetricId, metricId, sourceLabel);
+    }
+  }
+
+  for (const chartId of selectedChartSet) {
+    const chart = chartById.get(chartId);
+    if (!chart) {
+      continue;
+    }
+    const sourceLabel = `Chart "${chart.name || chart.id}"`;
+    for (const metricId of chart.metricIds) {
+      includeMetric(metricById, selectedMetricSet, pendingMetricIds, metricId);
+      addMetricReason(reasonsByMetricId, metricId, sourceLabel);
+    }
+  }
+
+  for (let index = 0; index < pendingMetricIds.length; index += 1) {
+    const metricId = pendingMetricIds[index];
+    const metric = metricById.get(metricId);
+    if (!metric || metric.kind !== 'formula' || !metric.formula) {
+      continue;
+    }
+    const sourceLabel = `Formula "${metric.name || metric.id}"`;
+    includeMetric(metricById, selectedMetricSet, pendingMetricIds, metric.formula.leftMetricId);
+    addMetricReason(reasonsByMetricId, metric.formula.leftMetricId, sourceLabel);
+    includeMetric(metricById, selectedMetricSet, pendingMetricIds, metric.formula.rightMetricId);
+    addMetricReason(reasonsByMetricId, metric.formula.rightMetricId, sourceLabel);
+  }
+
+  const selectedMetricIds = metrics
+    .filter((metric) => selectedMetricSet.has(metric.id))
+    .map((metric) => metric.id);
+  const selectedStreakIds = streaks
+    .filter((streak) => selectedStreakSet.has(streak.id))
+    .map((streak) => streak.id);
+  const selectedChartIds = charts
+    .filter((chart) => selectedChartSet.has(chart.id))
+    .map((chart) => chart.id);
+
+  const manualMetricSet = ensureStringSet(args.selectedMetricIds);
+  const dependencyMetricIds = selectedMetricIds.filter((metricId) => !manualMetricSet.has(metricId));
+  const requiredMetricReasonsById = Object.fromEntries(
+    selectedMetricIds.map((metricId) => [metricId, [...(reasonsByMetricId.get(metricId) ?? [])]])
+  );
+
+  return {
+    selectedMetricIds,
+    selectedStreakIds,
+    selectedChartIds,
+    dependencyMetricIds,
+    requiredMetricReasonsById,
+    data: {
+      metrics: metrics.filter((metric) => selectedMetricSet.has(metric.id)),
+      streaks: streaks.filter((streak) => selectedStreakSet.has(streak.id)),
+      charts: charts.filter((chart) => selectedChartSet.has(chart.id)),
+      autoRun: args.autoRun ?? true
+    }
+  };
+}
+
+function mergeById<T extends { id: string }>(base: T[], incoming: T[]): T[] {
+  const incomingById = new Map(incoming.map((entry) => [entry.id, entry] as const));
+  const next = base.map((entry) => incomingById.get(entry.id) ?? entry);
+  const existingIds = new Set(base.map((entry) => entry.id));
+  for (const entry of incoming) {
+    if (!existingIds.has(entry.id)) {
+      next.push(entry);
+    }
+  }
+  return next;
+}
+
+export function mergeAdvancedAnalyticsTransferData(args: {
+  base: AdvancedAnalyticsTransferData;
+  incoming: AdvancedAnalyticsTransferData;
+}): AdvancedAnalyticsTransferData {
+  return {
+    metrics: mergeById(args.base.metrics, args.incoming.metrics),
+    streaks: mergeById(args.base.streaks, args.incoming.streaks),
+    charts: mergeById(args.base.charts, args.incoming.charts),
+    autoRun: args.base.autoRun
   };
 }
 
