@@ -109,7 +109,6 @@ export interface AdvancedAnalyticsTransferData {
   metrics: AdvancedAnalyticsMetricDefinition[];
   streaks: AdvancedAnalyticsStreakDefinition[];
   charts: AdvancedAnalyticsChartDefinition[];
-  autoRun: boolean;
 }
 
 interface AdvancedAnalyticsTransferFile {
@@ -412,7 +411,7 @@ function parseChartDefinition(value: unknown): AdvancedAnalyticsChartDefinition 
 
 function parseObjectWithDefinitions(
   value: unknown
-): { metrics: unknown[]; streaks: unknown[]; charts: unknown[]; autoRun?: boolean } | null {
+): { metrics: unknown[]; streaks: unknown[]; charts: unknown[] } | null {
   if (!isRecord(value)) {
     return null;
   }
@@ -423,8 +422,7 @@ function parseObjectWithDefinitions(
   return {
     metrics: value.metrics,
     streaks: value.streaks,
-    charts: value.charts,
-    autoRun: typeof value.autoRun === 'boolean' ? value.autoRun : undefined
+    charts: value.charts
   };
 }
 
@@ -478,7 +476,6 @@ export function resolveAdvancedAnalyticsTransferSelection(args: {
   selectedMetricIds: readonly string[];
   selectedStreakIds: readonly string[];
   selectedChartIds: readonly string[];
-  autoRun?: boolean;
 }): AdvancedAnalyticsTransferSelectionResult {
   const { metrics, streaks, charts } = args;
   const metricById = new Map(metrics.map((metric) => [metric.id, metric] as const));
@@ -555,8 +552,7 @@ export function resolveAdvancedAnalyticsTransferSelection(args: {
     data: {
       metrics: metrics.filter((metric) => selectedMetricSet.has(metric.id)),
       streaks: streaks.filter((streak) => selectedStreakSet.has(streak.id)),
-      charts: charts.filter((chart) => selectedChartSet.has(chart.id)),
-      autoRun: args.autoRun ?? true
+      charts: charts.filter((chart) => selectedChartSet.has(chart.id))
     }
   };
 }
@@ -580,8 +576,7 @@ export function mergeAdvancedAnalyticsTransferData(args: {
   return {
     metrics: mergeById(args.base.metrics, args.incoming.metrics),
     streaks: mergeById(args.base.streaks, args.incoming.streaks),
-    charts: mergeById(args.base.charts, args.incoming.charts),
-    autoRun: args.base.autoRun
+    charts: mergeById(args.base.charts, args.incoming.charts)
   };
 }
 
@@ -658,8 +653,7 @@ export function parseAdvancedAnalyticsTransferFile(text: string): AdvancedAnalyt
     data: {
       metrics: typedMetrics,
       streaks: typedStreaks,
-      charts: typedCharts,
-      autoRun: source.autoRun ?? true
+      charts: typedCharts
     }
   };
 }

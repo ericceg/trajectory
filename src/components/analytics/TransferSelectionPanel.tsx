@@ -48,8 +48,7 @@ export function TransferSelectionPanel({
         charts: data.charts,
         selectedMetricIds: manualMetricIds,
         selectedStreakIds: manualStreakIds,
-        selectedChartIds: manualChartIds,
-        autoRun: data.autoRun
+        selectedChartIds: manualChartIds
       }),
     [data, manualChartIds, manualMetricIds, manualStreakIds]
   );
@@ -121,7 +120,7 @@ export function TransferSelectionPanel({
             }}
             className="rounded-md border border-border bg-bg px-3 py-1.5 text-xs text-foreground hover:border-accent"
           >
-            Clear manual
+            Clear all
           </button>
         </div>
       </div>

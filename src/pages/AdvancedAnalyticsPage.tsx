@@ -324,8 +324,7 @@ export function AdvancedAnalyticsPage() {
       data: {
         metrics,
         streaks,
-        charts,
-        autoRun
+        charts
       }
     });
   };
@@ -389,14 +388,13 @@ export function AdvancedAnalyticsPage() {
     }
 
     const merged = mergeAdvancedAnalyticsTransferData({
-      base: { metrics, streaks, charts, autoRun },
+      base: { metrics, streaks, charts },
       incoming: selection.data
     });
     replaceDefinitions({
       metrics: merged.metrics,
       streaks: merged.streaks,
-      charts: merged.charts,
-      autoRun: merged.autoRun
+      charts: merged.charts
     });
     setResponsesByCacheKey({});
     setRunError(null);
@@ -465,7 +463,7 @@ export function AdvancedAnalyticsPage() {
               onClick={handleExportDefinitions}
               className="rounded-md border border-border px-4 py-2 text-sm font-medium text-muted hover:bg-bg hover:text-foreground"
             >
-              Export JSON
+              Export Metrics
             </button>
 
             <button
@@ -473,7 +471,7 @@ export function AdvancedAnalyticsPage() {
               onClick={() => importInputRef.current?.click()}
               className="rounded-md border border-border px-4 py-2 text-sm font-medium text-muted hover:bg-bg hover:text-foreground"
             >
-              Import JSON
+              Import Metrics
             </button>
             <input
               ref={importInputRef}
