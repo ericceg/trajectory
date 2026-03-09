@@ -560,6 +560,7 @@ Key behaviors:
 - For multi-metric `AND` streaks, streak results include `requiredMetricValues` and the View card displays combined period progress (sum of current required-metric values versus sum of required thresholds) plus a `met/required` metric count
 - `Sample time` activity timeline previews are shown in Configure previews, not in View metric cards
 - Advanced Analytics results are cached in-memory in `useAppStore` by request payload + `settings.lastScanTimestamp`; auto-run reuses cache and only runs missing request variants, while manual `Recompute` forces all current-tab requests
+- While analytics requests are running, `AdvancedAnalyticsPage` tracks per-request completion and passes progress into `AnalyticsPreview`, which renders a loading bar with completed/total and percent
 - Uses Settings heart-rate zone cutoffs for HR-zone sample conditions
 - Header actions include `Export JSON` / `Import JSON`, which now open a transfer selection panel:
   - users choose exact metrics/streaks/charts to transfer

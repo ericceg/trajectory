@@ -94,6 +94,7 @@ export function AdvancedAnalyticsPage() {
 
   const [responsesByCacheKey, setResponsesByCacheKey] = useState<Record<string, AdvancedAnalyticsRunResponse>>({});
   const [loading, setLoading] = useState(false);
+  const [loadingProgress, setLoadingProgress] = useState<{ completed: number; total: number } | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
   const [transferMessage, setTransferMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [transferSelectionSession, setTransferSelectionSession] = useState<TransferSelectionSession | null>(
@@ -192,10 +193,12 @@ export function AdvancedAnalyticsPage() {
 
   const runRequests = async (entries: RequestEntry[], force: boolean) => {
     if (entries.length === 0) {
+      setLoadingProgress(null);
       return;
     }
 
     setLoading(true);
+    setLoadingProgress({ completed: 0, total: entries.length });
     setRunError(null);
 
     const nextResponses: Record<string, AdvancedAnalyticsRunResponse> = {};
@@ -203,20 +206,26 @@ export function AdvancedAnalyticsPage() {
 
     await Promise.all(
       entries.map(async (entry) => {
-        if (!force) {
-          const existing = getResponse(entry.cacheKey);
-          if (existing) {
-            nextResponses[entry.cacheKey] = existing;
-            return;
-          }
-        }
-
         try {
+          if (!force) {
+            const existing = getResponse(entry.cacheKey);
+            if (existing) {
+              nextResponses[entry.cacheKey] = existing;
+              return;
+            }
+          }
+
           const next = await runAdvancedAnalytics(entry.request);
           nextResponses[entry.cacheKey] = next;
           setCachedAdvancedAnalytics(entry.cacheKey, next);
         } catch (error) {
           errors.push(error instanceof Error ? error.message : String(error));
+        } finally {
+          setLoadingProgress((current) =>
+            current
+              ? { ...current, completed: Math.min(current.total, current.completed + 1) }
+              : current
+          );
         }
       })
     );
@@ -224,6 +233,7 @@ export function AdvancedAnalyticsPage() {
     setResponsesByCacheKey((current) => ({ ...current, ...nextResponses }));
     setRunError(errors.length > 0 ? errors[0] : null);
     setLoading(false);
+    setLoadingProgress(null);
   };
 
   useEffect(() => {
@@ -234,6 +244,7 @@ export function AdvancedAnalyticsPage() {
     const missing = requestEntries.filter((entry) => !getResponse(entry.cacheKey));
     if (missing.length === 0) {
       setLoading(false);
+      setLoadingProgress(null);
       setRunError(null);
       return;
     }
@@ -241,6 +252,7 @@ export function AdvancedAnalyticsPage() {
     let cancelled = false;
     const run = async () => {
       setLoading(true);
+      setLoadingProgress({ completed: 0, total: missing.length });
       setRunError(null);
 
       const nextResponses: Record<string, AdvancedAnalyticsRunResponse> = {};
@@ -258,6 +270,14 @@ export function AdvancedAnalyticsPage() {
             if (!cancelled) {
               errors.push(error instanceof Error ? error.message : String(error));
             }
+          } finally {
+            if (!cancelled) {
+              setLoadingProgress((current) =>
+                current
+                  ? { ...current, completed: Math.min(current.total, current.completed + 1) }
+                  : current
+              );
+            }
           }
         })
       );
@@ -266,6 +286,7 @@ export function AdvancedAnalyticsPage() {
         setResponsesByCacheKey((current) => ({ ...current, ...nextResponses }));
         setRunError(errors.length > 0 ? errors[0] : null);
         setLoading(false);
+        setLoadingProgress(null);
       }
     };
 
@@ -273,6 +294,7 @@ export function AdvancedAnalyticsPage() {
 
     return () => {
       cancelled = true;
+      setLoadingProgress(null);
     };
   }, [autoRun, getCachedAdvancedAnalytics, requestEntries, setCachedAdvancedAnalytics]);
 
@@ -601,6 +623,7 @@ export function AdvancedAnalyticsPage() {
               charts={charts}
               response={selectedResponse}
               loading={loading}
+              loadingProgress={loadingProgress}
               error={runError}
               onMetricTimeRangeChange={(metricId, timeRange) =>
                 updateMetric(metricId, (metric) => ({ ...metric, timeRange }))
@@ -632,6 +655,7 @@ export function AdvancedAnalyticsPage() {
             overviewStreakResultsById={overviewStreakResultsById}
             overviewChartResultsById={overviewChartResultsById}
             loading={loading}
+            loadingProgress={loadingProgress}
             error={runError}
           />
         </div>

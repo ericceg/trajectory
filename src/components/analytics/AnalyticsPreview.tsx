@@ -69,7 +69,46 @@ interface AnalyticsPreviewProps {
   onMetricTimeRangeChange?: (metricId: string, timeRange: AdvancedAnalyticsTimeRangeConfig) => void;
   onChartTimeRangeChange?: (chartId: string, timeRange: AdvancedAnalyticsTimeRangeConfig) => void;
   loading: boolean;
+  loadingProgress?: { completed: number; total: number } | null;
   error: string | null;
+}
+
+function AnalyticsLoadingBar({
+  loadingProgress
+}: {
+  loadingProgress?: { completed: number; total: number } | null;
+}) {
+  if (!loadingProgress || loadingProgress.total <= 0) {
+    return (
+      <section className="rounded-xl border border-border bg-panel p-3">
+        <p className="text-xs text-muted">Recomputing analytics...</p>
+        <div className="mt-2 h-2 rounded-full bg-bg">
+          <div className="h-full w-2/5 rounded-full bg-accent/80" />
+        </div>
+      </section>
+    );
+  }
+
+  const total = Math.max(loadingProgress?.total ?? 0, 1);
+  const completed = Math.max(0, Math.min(loadingProgress?.completed ?? 0, total));
+  const percent = Math.round((completed / total) * 100);
+
+  return (
+    <section className="rounded-xl border border-border bg-panel p-3">
+      <div className="flex items-center justify-between gap-3 text-xs text-muted">
+        <span>Recomputing analytics...</span>
+        <span>
+          {completed}/{total} ({percent}%)
+        </span>
+      </div>
+      <div className="mt-2 h-2 rounded-full bg-bg">
+        <div
+          className="h-full rounded-full bg-accent transition-[width] duration-300"
+          style={{ width: `${percent}%` }}
+        />
+      </div>
+    </section>
+  );
 }
 
 function timeRangeIndicator(range: AdvancedAnalyticsTimeRangeConfig | undefined): string {
@@ -917,6 +956,7 @@ export function AnalyticsPreview({
   onMetricTimeRangeChange,
   onChartTimeRangeChange,
   loading,
+  loadingProgress,
   error
 }: AnalyticsPreviewProps) {
   const metricsById = new Map(metrics.map((metric) => [metric.id, metric]));
@@ -939,7 +979,7 @@ export function AnalyticsPreview({
 
     return (
       <div className="space-y-5">
-        {loading ? <p className="text-sm text-muted">Recomputing analytics...</p> : null}
+        {loading ? <AnalyticsLoadingBar loadingProgress={loadingProgress} /> : null}
         {error ? (
           <div className="rounded-lg border border-accent/40 bg-accent/10 p-3 text-sm text-accent">
             {error}
@@ -1028,7 +1068,7 @@ export function AnalyticsPreview({
 
   return (
     <div className="space-y-4">
-      {loading ? <p className="text-sm text-muted">Recomputing analytics...</p> : null}
+      {loading ? <AnalyticsLoadingBar loadingProgress={loadingProgress} /> : null}
       {error ? (
         <div className="rounded-lg border border-accent/40 bg-accent/10 p-3 text-sm text-accent">
           {error}
