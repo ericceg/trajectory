@@ -1,5 +1,5 @@
 export type AccentThemeId =
-  | 'strava-orange'
+  | 'citrus-orange'
   | 'pacific-blue'
   | 'alpine-green'
   | 'crimson-rose'
@@ -28,12 +28,12 @@ export interface AccentThemePalette extends AccentThemeDefinition {
   heatmapTopLineHex: `#${string}`;
 }
 
-export const DEFAULT_ACCENT_THEME_ID: AccentThemeId = 'strava-orange';
+export const DEFAULT_ACCENT_THEME_ID: AccentThemeId = 'citrus-orange';
 
 const ACCENT_THEME_DEFINITIONS: AccentThemeDefinition[] = [
   {
-    id: 'strava-orange',
-    label: 'Strava Orange',
+    id: 'citrus-orange',
+    label: 'Citrus Orange',
     accentRgb: '252 76 2',
     accentHex: '#FC4C02',
     accentSoftRgb: '255 140 66',

@@ -21,7 +21,7 @@ impl Default for Settings {
             scan_recursive: true,
             last_scan_timestamp: None,
             dark_mode: false,
-            accent_theme: "strava-orange".to_string(),
+            accent_theme: "citrus-orange".to_string(),
             heatmap_full_opacity: false,
             chart_max_samples: 2000,
             heart_rate_zone_upper_bounds_bpm: vec![120, 140, 160, 180],

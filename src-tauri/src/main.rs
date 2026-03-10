@@ -26,7 +26,7 @@ struct AppState {
 fn is_supported_accent_theme(value: &str) -> bool {
     matches!(
         value,
-        "strava-orange"
+        "citrus-orange"
             | "pacific-blue"
             | "alpine-green"
             | "crimson-rose"
