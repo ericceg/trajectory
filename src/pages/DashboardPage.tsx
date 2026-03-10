@@ -1,4 +1,4 @@
-import { type MouseEvent, type ReactNode, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   addMonths,
@@ -13,285 +13,32 @@ import {
   startOfMonth,
   startOfWeek,
   startOfYear,
-  subWeeks,
   subDays
 } from 'date-fns';
 
+import { SparkBars } from '@/components/dashboard/SparkBars';
 import { listActivities } from '@/lib/tauri';
+import {
+  CALENDAR_METRIC_OPTIONS,
+  WEEKDAY_HEADERS,
+  ZERO_TOTALS,
+  type CalendarBarMetric,
+  type CalendarMode,
+  buildCalendarData,
+  buildMonthSummaries,
+  computeWeeklyStreak,
+  formatCalendarMetric,
+  formatCalendarMetricWithUnit,
+  metricValue,
+  selectPrimaryActivity,
+  summarizeActivities,
+  weekLabel
+} from '@/lib/dashboard/calendar';
 import { formatDateTime, formatDistanceKm, formatDuration } from '@/lib/format';
 import { MetricCard } from '@/components/MetricCard';
 import { useAppStore } from '@/store/useAppStore';
 import { useUiStateStore } from '@/store/useUiStateStore';
 import type { ActivitySummary } from '@/types';
-
-type CalendarMode = 'year' | 'month';
-type CalendarBarMetric = 'durationHours' | 'distanceKm' | 'activities';
-
-interface AggregateTotals {
-  durationHours: number;
-  distanceKm: number;
-  activities: number;
-}
-
-interface MonthBucket {
-  totals: AggregateTotals;
-  dailyTotals: Map<string, AggregateTotals>;
-  activitiesByDay: Map<string, ActivitySummary[]>;
-}
-
-interface SummaryTotals {
-  totalDistanceM: number;
-  totalTimeS: number;
-  totalElevationM: number;
-  activityCount: number;
-}
-
-type WeeklyStreakStatus = 'active' | 'pending' | 'none';
-
-interface WeeklyStreakDisplay {
-  count: number;
-  status: WeeklyStreakStatus;
-}
-
-const ZERO_TOTALS: AggregateTotals = {
-  durationHours: 0,
-  distanceKm: 0,
-  activities: 0
-};
-
-const CALENDAR_METRIC_OPTIONS: Array<{ metric: CalendarBarMetric; label: string }> = [
-  { metric: 'durationHours', label: 'Hours' },
-  { metric: 'distanceKm', label: 'Kilometers' },
-  { metric: 'activities', label: 'Activities' }
-];
-
-const WEEKDAY_HEADERS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-
-const createTotals = (): AggregateTotals => ({
-  durationHours: 0,
-  distanceKm: 0,
-  activities: 0
-});
-
-const addToTotals = (target: AggregateTotals, activity: ActivitySummary) => {
-  target.durationHours += activity.durationSeconds / 3600;
-  target.distanceKm += activity.distanceM / 1000;
-  target.activities += 1;
-};
-
-const summarizeActivities = (activities: ActivitySummary[]): SummaryTotals =>
-  activities.reduce(
-    (totals, activity) => {
-      totals.totalDistanceM += activity.distanceM;
-      totals.totalTimeS += activity.durationSeconds;
-      totals.totalElevationM += activity.elevationGainM;
-      totals.activityCount += 1;
-      return totals;
-    },
-    {
-      totalDistanceM: 0,
-      totalTimeS: 0,
-      totalElevationM: 0,
-      activityCount: 0
-    }
-  );
-
-const computeWeeklyStreak = (activities: ActivitySummary[]): WeeklyStreakDisplay => {
-  const activeWeeks = new Set<string>();
-  const weekKey = (date: Date) => format(startOfWeek(date, { weekStartsOn: 1 }), 'yyyy-MM-dd');
-
-  for (const activity of activities) {
-    const activityDate = parseISO(activity.activityStart);
-    if (Number.isNaN(activityDate.getTime())) {
-      continue;
-    }
-    activeWeeks.add(weekKey(activityDate));
-  }
-
-  const countFromWeek = (weekStart: Date) => {
-    let streak = 0;
-    let cursor = weekStart;
-
-    while (activeWeeks.has(format(cursor, 'yyyy-MM-dd'))) {
-      streak += 1;
-      cursor = subWeeks(cursor, 1);
-    }
-
-    return streak;
-  };
-
-  const currentWeekStart = startOfWeek(startOfToday(), { weekStartsOn: 1 });
-  const previousWeekStart = subWeeks(currentWeekStart, 1);
-
-  if (activeWeeks.has(format(currentWeekStart, 'yyyy-MM-dd'))) {
-    return { count: countFromWeek(currentWeekStart), status: 'active' };
-  }
-
-  if (activeWeeks.has(format(previousWeekStart, 'yyyy-MM-dd'))) {
-    return { count: countFromWeek(previousWeekStart), status: 'pending' };
-  }
-
-  return { count: 0, status: 'none' };
-};
-
-const metricValue = (totals: AggregateTotals, metric: CalendarBarMetric) => totals[metric];
-
-const formatCalendarMetric = (metric: CalendarBarMetric, value: number) => {
-  switch (metric) {
-    case 'durationHours':
-      return formatDuration(value * 3600);
-    case 'distanceKm':
-      return value.toFixed(1);
-    case 'activities':
-      return `${Math.round(value)}`;
-    default:
-      return `${value}`;
-  }
-};
-
-const formatCalendarMetricWithUnit = (metric: CalendarBarMetric, value: number) => {
-  switch (metric) {
-    case 'durationHours':
-      return formatDuration(value * 3600);
-    case 'distanceKm':
-      return `${value.toFixed(1)} km`;
-    case 'activities':
-      return `${Math.round(value)} act`;
-    default:
-      return `${value}`;
-  }
-};
-
-const activityScoreForMetric = (activity: ActivitySummary, metric: CalendarBarMetric) => {
-  switch (metric) {
-    case 'durationHours':
-      return activity.durationSeconds;
-    case 'distanceKm':
-      return activity.distanceM;
-    case 'activities':
-      return activity.durationSeconds;
-    default:
-      return 0;
-  }
-};
-
-const selectPrimaryActivity = (activities: ActivitySummary[], metric: CalendarBarMetric) => {
-  if (!activities.length) {
-    return null;
-  }
-
-  return activities.reduce((best, current) =>
-    activityScoreForMetric(current, metric) > activityScoreForMetric(best, metric) ? current : best
-  );
-};
-
-const weekLabel = (weekStart: Date) => {
-  const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 });
-  return `${format(weekStart, 'dd.MM.yyyy')} - ${format(weekEnd, 'dd.MM.yyyy')}`;
-};
-
-const SparkBars = ({
-  values,
-  ariaLabel,
-  tone = 'strong',
-  interactive = false,
-  activeIndex = null,
-  activeIndices,
-  pulseTick = 0,
-  onActiveIndexChange,
-  onBarClick,
-  renderActivePopover
-}: {
-  values: number[];
-  ariaLabel: string;
-  tone?: 'strong' | 'muted';
-  interactive?: boolean;
-  activeIndex?: number | null;
-  activeIndices?: number[];
-  pulseTick?: number;
-  onActiveIndexChange?: (index: number | null) => void;
-  onBarClick?: (index: number) => void;
-  renderActivePopover?: (index: number) => ReactNode;
-}) => {
-  const maxValue = values.reduce((max, value) => Math.max(max, value), 0);
-  const barClass = tone === 'strong' ? 'bg-accent' : 'bg-foreground/70';
-  const activePopClass = pulseTick % 2 === 0 ? 'calendar-pop-a' : 'calendar-pop-b';
-  const popoverLeft = activeIndex == null || values.length === 0 ? '0%' : `${((activeIndex + 0.5) / values.length) * 100}%`;
-  const activeIndicesSet = useMemo(() => new Set(activeIndices ?? []), [activeIndices]);
-  const handleMouseMove = (event: MouseEvent<HTMLDivElement>) => {
-    if (!interactive || values.length === 0) {
-      return;
-    }
-    const rect = event.currentTarget.getBoundingClientRect();
-    if (rect.width <= 0) {
-      return;
-    }
-    const ratio = Math.min(Math.max((event.clientX - rect.left) / rect.width, 0), 0.999999);
-    const nextIndex = Math.floor(ratio * values.length);
-    if (activeIndex !== nextIndex) {
-      onActiveIndexChange?.(nextIndex);
-    }
-  };
-
-  return (
-    <div
-      className="relative"
-      onMouseMove={handleMouseMove}
-      onMouseLeave={() => onActiveIndexChange?.(null)}
-      role={interactive ? 'group' : 'img'}
-      aria-label={ariaLabel}
-    >
-      <div className="flex h-12 items-end gap-px">
-        {values.map((value, index) => {
-          const ratio = maxValue > 0 ? value / maxValue : 0;
-          const height = value > 0 ? Math.max(ratio * 100, 10) : 6;
-          const active = activeIndex === index || activeIndicesSet.has(index);
-          const colorClass = active
-            ? 'bg-accent opacity-100'
-            : `${barClass} ${value > 0 ? 'opacity-100' : 'opacity-20'}`;
-          const barVisualClass = `rounded-sm transition-all duration-200 ${colorClass} ${
-            active ? `${activePopClass} -translate-y-0.5 scale-x-[1.06]` : ''
-          }`;
-
-          if (interactive) {
-            return (
-              <button
-                key={`${ariaLabel}-${index}`}
-                type="button"
-                onClick={() => onBarClick?.(index)}
-                onFocus={() => onActiveIndexChange?.(index)}
-                onBlur={() => onActiveIndexChange?.(null)}
-                className="min-w-[2px] flex h-full flex-1 items-end appearance-none cursor-pointer border-0 bg-transparent p-0 focus-visible:outline-none"
-                aria-label={`${ariaLabel} bar ${index + 1}`}
-              >
-                <span
-                  className={`w-full ${barVisualClass}`}
-                  style={{ height: `${height}%` }}
-                />
-              </button>
-            );
-          }
-
-          return (
-            <span
-              key={`${ariaLabel}-${index}`}
-              className={`min-w-[2px] flex-1 ${barVisualClass}`}
-              style={{ height: `${height}%` }}
-            />
-          );
-        })}
-      </div>
-      {interactive && activeIndex != null && renderActivePopover ? (
-        <div
-          className="pointer-events-none absolute -top-2 z-20 -translate-x-1/2 -translate-y-full"
-          style={{ left: popoverLeft }}
-        >
-          <div className={`calendar-hover-popover ${activePopClass}`}>{renderActivePopover(activeIndex)}</div>
-        </div>
-      ) : null}
-    </div>
-  );
-};
 
 export function DashboardPage() {
   const navigate = useNavigate();
@@ -404,84 +151,10 @@ export function DashboardPage() {
     };
   }, [allActivities]);
 
-  const calendarData = useMemo(() => {
-    const monthBuckets: MonthBucket[] = Array.from({ length: 12 }, () => ({
-      totals: createTotals(),
-      dailyTotals: new Map<string, AggregateTotals>(),
-      activitiesByDay: new Map<string, ActivitySummary[]>()
-    }));
-    const weeklyTotals = new Map<string, AggregateTotals>();
-    const weeklyActivities = new Map<string, ActivitySummary[]>();
-    const yearTotals = createTotals();
-
-    for (const activity of yearActivities) {
-      const activityDate = parseISO(activity.activityStart);
-      const monthIndex = activityDate.getMonth();
-      const dayKey = format(activityDate, 'yyyy-MM-dd');
-      const weekKey = format(startOfWeek(activityDate, { weekStartsOn: 1 }), 'yyyy-MM-dd');
-
-      addToTotals(yearTotals, activity);
-
-      const monthBucket = monthBuckets[monthIndex];
-      addToTotals(monthBucket.totals, activity);
-
-      const dayTotals = monthBucket.dailyTotals.get(dayKey) ?? createTotals();
-      addToTotals(dayTotals, activity);
-      monthBucket.dailyTotals.set(dayKey, dayTotals);
-
-      const dayActivities = monthBucket.activitiesByDay.get(dayKey) ?? [];
-      dayActivities.push(activity);
-      monthBucket.activitiesByDay.set(dayKey, dayActivities);
-
-      const weekTotals = weeklyTotals.get(weekKey) ?? createTotals();
-      addToTotals(weekTotals, activity);
-      weeklyTotals.set(weekKey, weekTotals);
-
-      const weekActivities = weeklyActivities.get(weekKey) ?? [];
-      weekActivities.push(activity);
-      weeklyActivities.set(weekKey, weekActivities);
-    }
-
-    for (const monthBucket of monthBuckets) {
-      for (const [dayKey, dayActivities] of monthBucket.activitiesByDay.entries()) {
-        monthBucket.activitiesByDay.set(
-          dayKey,
-          dayActivities.sort((a, b) => a.activityStart.localeCompare(b.activityStart))
-        );
-      }
-    }
-
-    for (const [weekKey, weekActivities] of weeklyActivities.entries()) {
-      weeklyActivities.set(
-        weekKey,
-        weekActivities.sort((a, b) => a.activityStart.localeCompare(b.activityStart))
-      );
-    }
-
-    return { monthBuckets, weeklyTotals, weeklyActivities, yearTotals };
-  }, [yearActivities]);
+  const calendarData = useMemo(() => buildCalendarData(yearActivities), [yearActivities]);
 
   const monthSummaries = useMemo(
-    () =>
-      Array.from({ length: 12 }, (_, monthIndex) => {
-        const monthDate = new Date(selectedYear, monthIndex, 1);
-        const monthEnd = endOfMonth(monthDate);
-        const daysInMonth = Number(format(monthEnd, 'd'));
-        const monthBucket = calendarData.monthBuckets[monthIndex];
-
-        const dayValues = Array.from({ length: daysInMonth }, (_, dayOffset) => {
-          const day = new Date(selectedYear, monthIndex, dayOffset + 1);
-          const dayKey = format(day, 'yyyy-MM-dd');
-          return metricValue(monthBucket.dailyTotals.get(dayKey) ?? ZERO_TOTALS, barMetric);
-        });
-
-        return {
-          monthIndex,
-          totals: monthBucket.totals,
-          dayValues,
-          activeDays: monthBucket.activitiesByDay.size
-        };
-      }),
+    () => buildMonthSummaries(selectedYear, calendarData.monthBuckets, barMetric),
     [barMetric, calendarData.monthBuckets, selectedYear]
   );
 

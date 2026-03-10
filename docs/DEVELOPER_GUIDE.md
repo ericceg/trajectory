@@ -42,8 +42,10 @@ Frontend (`src/`):
 - `src/main.tsx`: React bootstrap + global CSS + MapLibre CSS
 - `src/pages/`: route screens (`Dashboard`, `Activities`, `Activity Detail`, `Heatmap`, `Advanced Analytics`, `Settings`, `Onboarding`)
 - `src/components/`: reusable UI pieces (`Sidebar`, `MetricCard`, `ScanStatusCard`, map frame)
+- `src/components/analytics/preview/`: extracted Advanced Analytics preview cards + shared helpers (`MetricPreview`, `StreakPreview`, `ChartPreview`, shared tooltip/zoom/notice helpers)
+- `src/components/dashboard/`: dashboard-specific reusable components (currently `SparkBars`)
 - `src/store/`: Zustand stores (app/runtime state, persisted UI state, advanced analytics definitions)
-- `src/lib/`: Tauri bridge, analytics/formatting helpers, central chart plotting engine (`src/lib/charts/plottingEngine.ts`), map styles, theming, MapLibre hook
+- `src/lib/`: Tauri bridge, analytics/formatting helpers, central chart plotting engine (`src/lib/charts/plottingEngine.ts`), dashboard aggregation helpers (`src/lib/dashboard/calendar.ts`), Activity Detail chart helpers (`src/lib/activityDetail/chartHelpers.ts`), map styles, theming, MapLibre hook
 - `src/types.ts`: TypeScript command/event payload contracts
 
 Display formatting conventions (shared helpers in `src/lib/format.ts`):
@@ -56,7 +58,7 @@ Central plotting engine:
 
 - `src/lib/charts/plottingEngine.ts` centralizes shared plotting behavior used by both Activity Detail and Advanced Analytics.
 - Shared exports include chart visual constants (axis/grid/tooltip styles, selection/cursor defaults, and animation defaults), pointer parsing helpers, and the reusable `usePlotDragZoom` hook.
-- Both `src/pages/ActivityDetailPage.tsx` and `src/components/analytics/AnalyticsPreview.tsx` consume the same drag-to-zoom and click-to-reset interaction core.
+- Both `src/pages/ActivityDetailPage.tsx` and the Advanced Analytics preview components (`src/components/analytics/preview/*`) consume the same drag-to-zoom and click-to-reset interaction core.
 - `src/index.css` applies a global Recharts `user-select: none` rule (`.recharts-responsive-container` and descendants) so drag operations do not accidentally select chart text, including on newly added plots.
 
 Backend (`src-tauri/src/`):
@@ -451,8 +453,8 @@ Current dashboard implementation is more advanced than the original simple month
 
 Key behaviors:
 
-- Loads summary cards using multiple `listActivities(...)` queries (last 7 days, YTD, all-time for streak)
-- Loads all activities for the selected year for calendar drill-down rendering
+- Loads all activities via `listActivities(...)` (with app-store cache keying by import folder + last scan timestamp)
+- Derives summary cards and streaks in-memory from the loaded activity list
 - Computes:
   - weekly summary totals
   - yearly summary totals
@@ -468,6 +470,9 @@ Key behaviors:
 - Hover/click interactions:
   - year bars preview weeks and drill into month mode
   - month bars preview days and navigate to the primary activity for that day
+- Decomposition details:
+  - calendar aggregation/formatting logic lives in `src/lib/dashboard/calendar.ts`
+  - bar-strip rendering lives in `src/components/dashboard/SparkBars.tsx`
 
 #### `ActivitiesPage.tsx`
 
@@ -499,6 +504,7 @@ Chart behaviors:
 - adaptive re-scaling to visible domain
 - series toggles (combined mode)
 - no-data handling for missing samples
+- pure chart/zone helpers are extracted to `src/lib/activityDetail/chartHelpers.ts` to keep rendering/state code in the page leaner
 
 Map behaviors:
 
@@ -554,6 +560,7 @@ Key behaviors:
 - `Sample time` metric preview activity rows are clickable and open `ActivityDetailPage` (`/activities/:id`) while passing return context (`fromPath`/`fromLabel`) so Activity Detail can route back to Advanced Analytics
 - Metric unit display is selected from predefined dropdown options with `Auto` as the default (no free-form unit text input), and backend analytics converts scalar/series values to compatible display units before previews/charts/streaks consume them (including dimensionless ratio -> `%` scaling); chart tooltips render resolved units for `Auto` instead of showing literal `auto`
 - UI separates analytics editing vs preview into Configure/View tabs (View is default and renders an at-a-glance overview); the active tab is persisted in UI state, and metrics include a persisted `showInView` toggle used to filter the View metrics section
+- Preview rendering is decomposed into focused modules under `src/components/analytics/preview/` (`MetricPreview`, `StreakPreview`, `ChartPreview`, and shared helpers), while `src/components/analytics/AnalyticsPreview.tsx` now mainly orchestrates selected/overview mode composition
 - Configure-mode library supports explicit metric reordering (up/down controls) separately for base and formula metric sections, persisted via `useAdvancedAnalyticsStore.metrics` order
 - Each metric/chart definition includes its own persisted card time range config (`all`, `7d`, `30d`, `90d`, `365d`, `custom` + optional dates); streaks always run with all-time range in the current UI
 - Metric/chart time ranges are editable in Configure only for View-card rendering; Configure previews intentionally run with all-time history while View is read-only and displays each card's active range as an indicator
@@ -581,6 +588,10 @@ Components:
   - section navigation with last-route memory (except `Activities`, which always goes to `/activities`), including Advanced Analytics
 - `src/components/analytics/*`
   - advanced analytics library list, builders, and preview UI (library can run in configure or view-only mode)
+- `src/components/analytics/preview/*`
+  - extracted preview composition modules and shared chart/tooltip/notice utilities used by analytics Configure/View preview surfaces
+- `src/components/dashboard/SparkBars.tsx`
+  - reusable interactive/non-interactive compact bar strip used by year/month calendar summaries
 - `src/components/MetricCard.tsx`
   - reusable metric display card
 - `src/components/ScanStatusCard.tsx`
@@ -604,6 +615,10 @@ Libraries/helpers:
   - advanced analytics transfer payload builder + strict parser/validator
   - dependency-closure resolver used by selective import/export UI
   - merge-by-ID helper used by selective import (replace selected IDs, preserve all unselected definitions)
+- `src/lib/dashboard/calendar.ts`
+  - dashboard aggregation helpers (weekly/yearly summaries, streak calculation, calendar bucket generation, metric display formatting)
+- `src/lib/activityDetail/chartHelpers.ts`
+  - Activity Detail chart constants + pure helpers (series defaults, range normalization, heart-rate zone summaries/highlighting, chart tick/tooltip formatters)
 - `src/lib/theme.ts`
   - accent theme IDs/palettes and CSS variable application
 - `src/lib/mapStyles.ts`
@@ -682,6 +697,7 @@ Local development:
 
 - `npm install`
 - `npm run tauri dev`
+- `npm run check` (frontend `tsc --noEmit` + backend `cargo check`)
 
 Production build:
 

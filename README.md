@@ -90,6 +90,14 @@ npm install
 npm run tauri dev
 ```
 
+### Quality Checks
+
+```bash
+npm run check
+```
+
+This runs frontend TypeScript type-checking and backend Rust `cargo check`.
+
 ## Usage
 
 1. Launch Trajectory.
@@ -188,6 +196,10 @@ User workaround (expected):
 ## Architecture
 
 - `src/`: React frontend (routes/pages/components/store)
+- `src/components/analytics/preview/`: extracted Advanced Analytics preview cards/helpers
+- `src/components/dashboard/`: dashboard-specific reusable components (for example `SparkBars`)
+- `src/lib/dashboard/`: dashboard aggregation + calendar formatting helpers
+- `src/lib/activityDetail/`: Activity Detail chart/heart-rate helper functions
 - `src-tauri/src/`: Rust backend (TCX/FIT parsers, scan pipeline, DB, commands)
 - `src-tauri/tauri.conf.json`: Tauri app/bundle configuration
 
