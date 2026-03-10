@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-macOS-lightgrey)
-[![Desktop](https://img.shields.io/badge/desktop-Tauri%20v2-yellow)](https://tauri.app/)
+[![Framework](https://img.shields.io/badge/framework-Tauri%20v2-yellow)](https://tauri.app/)
 [![Backend](https://img.shields.io/badge/backend-Rust-orange)](https://www.rust-lang.org/)
 [![Frontend](https://img.shields.io/badge/frontend-React%20%2B%20TypeScript-3178c6)](https://reactjs.org/)
 
@@ -60,7 +60,13 @@ Here is the workflow I personally use (and would recommend) for athletes in the 
 todo...
 
 
+
+
+
+
 ## Advanced Analytics
+
+todo...
 
 
 ## Privacy

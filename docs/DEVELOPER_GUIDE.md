@@ -9,7 +9,7 @@ It is intentionally practical: what exists today, how it fits together, and how 
 
 ### Prerequisites
 
-- Node.js `22+`
+- Node.js 22+
 - Rust stable toolchain
 - macOS (primary supported platform for local dev and release)
 
