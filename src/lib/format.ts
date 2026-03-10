@@ -3,7 +3,7 @@ import { format, parseISO } from 'date-fns';
 export const formatDistanceKm = (meters: number) => `${(meters / 1000).toFixed(2)} km`;
 
 export const formatDuration = (seconds: number) => {
-  const total = Math.max(0, Math.floor(seconds));
+  const total = Number.isFinite(seconds) ? Math.max(0, Math.floor(seconds)) : 0;
   const hours = Math.floor(total / 3600)
     .toString()
     .padStart(2, '0');
@@ -30,6 +30,6 @@ export const formatPaceMinKm = (mps: number | null | undefined) => {
   return `${minutes}:${seconds} /km`;
 };
 
-export const formatDateTime = (iso: string) => format(parseISO(iso), 'MMM d, yyyy HH:mm');
+export const formatDateTime = (iso: string) => format(parseISO(iso), 'dd.MM.yyyy HH:mm:ss');
 
-export const formatDate = (iso: string) => format(parseISO(iso), 'yyyy-MM-dd');
+export const formatDate = (iso: string) => format(parseISO(iso), 'dd.MM.yyyy');

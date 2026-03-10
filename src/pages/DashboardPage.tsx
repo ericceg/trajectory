@@ -139,7 +139,7 @@ const metricValue = (totals: AggregateTotals, metric: CalendarBarMetric) => tota
 const formatCalendarMetric = (metric: CalendarBarMetric, value: number) => {
   switch (metric) {
     case 'durationHours':
-      return value.toFixed(1);
+      return formatDuration(value * 3600);
     case 'distanceKm':
       return value.toFixed(1);
     case 'activities':
@@ -152,7 +152,7 @@ const formatCalendarMetric = (metric: CalendarBarMetric, value: number) => {
 const formatCalendarMetricWithUnit = (metric: CalendarBarMetric, value: number) => {
   switch (metric) {
     case 'durationHours':
-      return `${value.toFixed(1)} h`;
+      return formatDuration(value * 3600);
     case 'distanceKm':
       return `${value.toFixed(1)} km`;
     case 'activities':
@@ -187,7 +187,7 @@ const selectPrimaryActivity = (activities: ActivitySummary[], metric: CalendarBa
 
 const weekLabel = (weekStart: Date) => {
   const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 });
-  return `${format(weekStart, 'MMM d')} - ${format(weekEnd, 'MMM d')}`;
+  return `${format(weekStart, 'dd.MM.yyyy')} - ${format(weekEnd, 'dd.MM.yyyy')}`;
 };
 
 const SparkBars = ({
@@ -790,7 +790,7 @@ export function DashboardPage() {
                     return (
                       <>
                         <p className="text-[10px] uppercase tracking-[0.14em] text-muted">
-                          {format(hoverDate, 'EEE, MMM d')}
+                          {format(hoverDate, 'EEE dd.MM.yyyy')}
                         </p>
                         <p className="mt-1 text-sm font-semibold text-foreground">
                           {formatCalendarMetricWithUnit(barMetric, hoverValue)}

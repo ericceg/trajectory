@@ -12,7 +12,13 @@ import {
   onScanProgress
 } from '@/lib/tauri';
 import type { AccentThemeId } from '@/lib/theme';
-import type { ActivitySummary, ScanDoneEvent, ScanProgressEvent, Settings } from '@/types';
+import type {
+  ActivitySummary,
+  AdvancedAnalyticsRunResponse,
+  ScanDoneEvent,
+  ScanProgressEvent,
+  Settings
+} from '@/types';
 
 interface AppState {
   settings: Settings | null;
@@ -21,6 +27,7 @@ interface AppState {
   scanProgress: ScanProgressEvent | null;
   scanDone: ScanDoneEvent | null;
   activitiesCache: Record<string, ActivitySummary[]>;
+  advancedAnalyticsCache: Record<string, AdvancedAnalyticsRunResponse>;
   init: () => Promise<void>;
   updateImportFolder: (path: string, recursive: boolean) => Promise<void>;
   setScanRecursive: (recursive: boolean) => Promise<void>;
@@ -33,6 +40,9 @@ interface AppState {
   getCachedActivities: (cacheKey: string) => ActivitySummary[] | null;
   setCachedActivities: (cacheKey: string, activities: ActivitySummary[]) => void;
   clearActivitiesCache: () => void;
+  getCachedAdvancedAnalytics: (cacheKey: string) => AdvancedAnalyticsRunResponse | null;
+  setCachedAdvancedAnalytics: (cacheKey: string, response: AdvancedAnalyticsRunResponse) => void;
+  clearAdvancedAnalyticsCache: () => void;
 }
 
 let listenersInitialized = false;
@@ -44,6 +54,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   scanProgress: null,
   scanDone: null,
   activitiesCache: {},
+  advancedAnalyticsCache: {},
   init: async () => {
     if (!listenersInitialized) {
       listenersInitialized = true;
@@ -58,7 +69,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   updateImportFolder: async (path, recursive) => {
     const settings = await setImportFolder(path, recursive);
-    set({ settings, scanDone: null, activitiesCache: {} });
+    set({ settings, scanDone: null, activitiesCache: {}, advancedAnalyticsCache: {} });
   },
   setScanRecursive: async (recursive) => {
     const current = get().settings;
@@ -67,7 +78,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
 
     const settings = await setImportFolder(current.importFolderPath, recursive);
-    set({ settings, scanDone: null, activitiesCache: {} });
+    set({ settings, scanDone: null, activitiesCache: {}, advancedAnalyticsCache: {} });
   },
   updateDarkMode: async (darkMode) => {
     const settings = await setDarkMode(darkMode);
@@ -94,7 +105,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     try {
       const done = await scanImportFolder(fullRescan);
       const settings = await getSettings();
-      set({ scanDone: done, scanning: false, scanProgress: null, settings, activitiesCache: {} });
+      set({
+        scanDone: done,
+        scanning: false,
+        scanProgress: null,
+        settings,
+        activitiesCache: {},
+        advancedAnalyticsCache: {}
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       set({
@@ -113,5 +131,14 @@ export const useAppStore = create<AppState>((set, get) => ({
         [cacheKey]: activities
       }
     })),
-  clearActivitiesCache: () => set({ activitiesCache: {} })
+  clearActivitiesCache: () => set({ activitiesCache: {} }),
+  getCachedAdvancedAnalytics: (cacheKey) => get().advancedAnalyticsCache[cacheKey] ?? null,
+  setCachedAdvancedAnalytics: (cacheKey, response) =>
+    set((state) => ({
+      advancedAnalyticsCache: {
+        ...state.advancedAnalyticsCache,
+        [cacheKey]: response
+      }
+    })),
+  clearAdvancedAnalyticsCache: () => set({ advancedAnalyticsCache: {} })
 }));

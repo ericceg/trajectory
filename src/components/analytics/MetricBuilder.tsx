@@ -1,0 +1,963 @@
+import {
+  createBlankActivityCondition,
+  createBlankActivityConditionGroup,
+  createBlankSampleCondition,
+  createBlankSampleConditionGroup
+} from '@/store/useAdvancedAnalyticsStore';
+import { TimeRangeControl } from '@/components/analytics/TimeRangeControl';
+import type {
+  AdvancedAnalyticsActivityCondition,
+  AdvancedAnalyticsActivityConditionField,
+  AdvancedAnalyticsActivityConditionGroup,
+  AdvancedAnalyticsActivityConditionOperator,
+  AdvancedAnalyticsBaseMetricDefinition,
+  AdvancedAnalyticsBaseMeasure,
+  AdvancedAnalyticsConditionJoin,
+  AdvancedAnalyticsMetricDefinition,
+  AdvancedAnalyticsSampleCondition,
+  AdvancedAnalyticsSampleConditionField,
+  AdvancedAnalyticsSampleConditionGroup,
+  AdvancedAnalyticsSampleConditionOperator
+} from '@/types';
+
+const BASE_MEASURE_OPTIONS: Array<{ value: AdvancedAnalyticsBaseMeasure; label: string }> = [
+  { value: 'activitiesCount', label: 'Activities count' },
+  { value: 'activeDaysCount', label: 'Active days count' },
+  { value: 'distanceSum', label: 'Distance sum' },
+  { value: 'durationSum', label: 'Duration sum' },
+  { value: 'movingTimeSum', label: 'Moving time sum' },
+  { value: 'elevationGainSum', label: 'Elevation gain sum' },
+  { value: 'sampleTime', label: 'Sample time' }
+];
+
+const UNIT_DISPLAY_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'auto', label: 'Auto (best unit)' },
+  { value: 'count', label: 'Count' },
+  { value: '%', label: 'Percent (%)' },
+  { value: 's', label: 'Seconds (s)' },
+  { value: 'min', label: 'Minutes (min)' },
+  { value: 'h', label: 'Hours (h)' },
+  { value: 'km', label: 'Kilometers (km)' },
+  { value: 'm', label: 'Meters (m)' },
+  { value: 'mi', label: 'Miles (mi)' },
+  { value: 'km/h', label: 'Speed (km/h)' },
+  { value: 'm/s', label: 'Speed (m/s)' },
+  { value: 'bpm', label: 'Heart rate (bpm)' },
+  { value: 'W', label: 'Power (W)' },
+  { value: 'rpm', label: 'Cadence (rpm)' }
+];
+
+const ACTIVITY_FIELD_OPTIONS: Array<{ value: AdvancedAnalyticsActivityConditionField; label: string }> = [
+  { value: 'title', label: 'Title' },
+  { value: 'category', label: 'Category' },
+  { value: 'sportType', label: 'Sport Type' },
+  { value: 'distanceM', label: 'Distance (m)' },
+  { value: 'durationSeconds', label: 'Duration (s)' },
+  { value: 'movingDurationSeconds', label: 'Moving Time (s)' },
+  { value: 'elevationGainM', label: 'Elevation Gain (m)' },
+  { value: 'avgHr', label: 'Avg HR' },
+  { value: 'maxHr', label: 'Max HR' },
+  { value: 'hasGps', label: 'Has GPS' },
+  { value: 'weekday', label: 'Weekday' }
+];
+
+const SAMPLE_FIELD_OPTIONS: Array<{ value: AdvancedAnalyticsSampleConditionField; label: string }> = [
+  { value: 'heartRateZone', label: 'Heart Rate Zone' },
+  { value: 'heartRate', label: 'Heart Rate' },
+  { value: 'powerWatts', label: 'Power (W)' },
+  { value: 'cadence', label: 'Cadence' },
+  { value: 'speedMps', label: 'Speed (m/s)' }
+];
+
+const TEXT_OPERATORS: AdvancedAnalyticsActivityConditionOperator[] = [
+  'contains',
+  'containsAny',
+  'containsAll',
+  'equals',
+  'startsWith'
+];
+const NUM_OPERATORS: AdvancedAnalyticsActivityConditionOperator[] = [
+  'greaterThan',
+  'greaterThanOrEqual',
+  'lessThan',
+  'lessThanOrEqual',
+  'numberEquals',
+  'notEquals'
+];
+const BOOL_OPERATORS: AdvancedAnalyticsActivityConditionOperator[] = ['is', 'isNot'];
+
+const SAMPLE_NUM_OPERATORS: AdvancedAnalyticsSampleConditionOperator[] = [
+  'greaterThan',
+  'greaterThanOrEqual',
+  'lessThan',
+  'lessThanOrEqual',
+  'numberEquals',
+  'notEquals'
+];
+
+function activityFieldKind(field: AdvancedAnalyticsActivityConditionField): 'text' | 'number' | 'bool' {
+  if (field === 'hasGps') {
+    return 'bool';
+  }
+  if (field === 'title' || field === 'category' || field === 'sportType' || field === 'weekday') {
+    return 'text';
+  }
+  return 'number';
+}
+
+function activityOperatorsForField(
+  field: AdvancedAnalyticsActivityConditionField
+): AdvancedAnalyticsActivityConditionOperator[] {
+  const kind = activityFieldKind(field);
+  if (kind === 'text') {
+    return field === 'weekday' ? ['equals', 'is', 'isNot'] : TEXT_OPERATORS;
+  }
+  if (kind === 'bool') {
+    return BOOL_OPERATORS;
+  }
+  return NUM_OPERATORS;
+}
+
+function displayOperator(label: string) {
+  return label
+    .replace(/[A-Z]/g, (ch) => ` ${ch.toLowerCase()}`)
+    .replace(/^./, (ch) => ch.toUpperCase());
+}
+
+function unitDisplayOptionsForValue(value?: string | null): Array<{ value: string; label: string }> {
+  const currentValue = normalizeUnitDisplaySelection(value);
+  if (!currentValue || UNIT_DISPLAY_OPTIONS.some((option) => option.value === currentValue)) {
+    return UNIT_DISPLAY_OPTIONS;
+  }
+  return [{ value: currentValue, label: `Custom (${currentValue})` }, ...UNIT_DISPLAY_OPTIONS];
+}
+
+function normalizeUnitDisplaySelection(value?: string | null): string {
+  const trimmed = value?.trim() ?? '';
+  return trimmed.length > 0 ? trimmed : 'auto';
+}
+
+function normalizeActivityConditionGroups(
+  base: AdvancedAnalyticsBaseMetricDefinition
+): AdvancedAnalyticsActivityConditionGroup[] {
+  if ((base.activityConditionGroups ?? []).length > 0) {
+    return (base.activityConditionGroups ?? []).map((group, index) => ({
+      id: group.id || `activity_group_${index}`,
+      conditions: group.conditions ?? []
+    }));
+  }
+  if (base.activityConditions.length === 0) {
+    return [];
+  }
+  const join: AdvancedAnalyticsConditionJoin = base.activityConditionJoin ?? 'and';
+  if (join === 'or') {
+    return base.activityConditions.map((condition, index) => ({
+      id: `legacy_activity_group_${index}`,
+      conditions: [condition]
+    }));
+  }
+  return [
+    {
+      id: 'legacy_activity_group_0',
+      conditions: base.activityConditions
+    }
+  ];
+}
+
+function normalizeSampleConditionGroups(
+  base: AdvancedAnalyticsBaseMetricDefinition
+): AdvancedAnalyticsSampleConditionGroup[] {
+  if ((base.sampleConditionGroups ?? []).length > 0) {
+    return (base.sampleConditionGroups ?? []).map((group, index) => ({
+      id: group.id || `sample_group_${index}`,
+      conditions: group.conditions ?? []
+    }));
+  }
+  if (base.sampleConditions.length === 0) {
+    return [];
+  }
+  const join: AdvancedAnalyticsConditionJoin = base.sampleConditionJoin ?? 'and';
+  if (join === 'or') {
+    return base.sampleConditions.map((condition, index) => ({
+      id: `legacy_sample_group_${index}`,
+      conditions: [condition]
+    }));
+  }
+  return [
+    {
+      id: 'legacy_sample_group_0',
+      conditions: base.sampleConditions
+    }
+  ];
+}
+
+interface MetricBuilderProps {
+  metric: AdvancedAnalyticsMetricDefinition;
+  allMetrics: AdvancedAnalyticsMetricDefinition[];
+  onChange: (metric: AdvancedAnalyticsMetricDefinition) => void;
+  onDelete: () => void;
+}
+
+export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: MetricBuilderProps) {
+  const base: AdvancedAnalyticsBaseMetricDefinition = {
+    measure: 'activitiesCount',
+    activityConditions: [],
+    sampleConditions: [],
+    activityConditionGroups: [],
+    sampleConditionGroups: [],
+    activityConditionJoin: 'and',
+    sampleConditionJoin: 'and',
+    minimumSampleMatchSeconds: 0,
+    defaultChartGranularity: 'week',
+    displayUnit: 'auto',
+    ...metric.base
+  };
+  const formula = metric.formula ?? {
+    leftMetricId: allMetrics.find((candidate) => candidate.id !== metric.id)?.id ?? '',
+    operator: 'divide',
+    rightMetricId: allMetrics.find((candidate) => candidate.id !== metric.id)?.id ?? '',
+    displayUnit: 'auto'
+  };
+  const baseDisplayUnitOptions = unitDisplayOptionsForValue(base.displayUnit);
+  const formulaDisplayUnitOptions = unitDisplayOptionsForValue(formula.displayUnit);
+  const activityConditionGroups = normalizeActivityConditionGroups(base);
+  const sampleConditionGroups = normalizeSampleConditionGroups(base);
+
+  const updateBase = (patch: Partial<AdvancedAnalyticsBaseMetricDefinition>) => {
+    onChange({
+      ...metric,
+      kind: 'base',
+      base: {
+        ...base,
+        ...patch
+      }
+    });
+  };
+
+  const updateActivityGroups = (groups: AdvancedAnalyticsActivityConditionGroup[]) => {
+    updateBase({
+      activityConditionGroups: groups,
+      activityConditions: [],
+      activityConditionJoin: 'and'
+    });
+  };
+
+  const updateSampleGroups = (groups: AdvancedAnalyticsSampleConditionGroup[]) => {
+    updateBase({
+      sampleConditionGroups: groups,
+      sampleConditions: [],
+      sampleConditionJoin: 'and'
+    });
+  };
+
+  const updateActivityCondition = (
+    groupId: string,
+    conditionId: string,
+    updater: (condition: AdvancedAnalyticsActivityCondition) => AdvancedAnalyticsActivityCondition
+  ) => {
+    updateActivityGroups(
+      activityConditionGroups.map((group) =>
+        group.id === groupId
+          ? {
+              ...group,
+              conditions: group.conditions.map((condition) =>
+                condition.id === conditionId ? updater(condition) : condition
+              )
+            }
+          : group
+      )
+    );
+  };
+
+  const updateSampleCondition = (
+    groupId: string,
+    conditionId: string,
+    updater: (condition: AdvancedAnalyticsSampleCondition) => AdvancedAnalyticsSampleCondition
+  ) => {
+    updateSampleGroups(
+      sampleConditionGroups.map((group) =>
+        group.id === groupId
+          ? {
+              ...group,
+              conditions: group.conditions.map((condition) =>
+                condition.id === conditionId ? updater(condition) : condition
+              )
+            }
+          : group
+      )
+    );
+  };
+
+  return (
+    <section className="space-y-4 rounded-xl border border-border bg-panel p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-lg font-semibold text-foreground">Metric Builder</h3>
+          <p className="text-sm text-muted">Define a base metric or combine two existing metrics.</p>
+        </div>
+        <button
+          type="button"
+          onClick={onDelete}
+          className="rounded-md border border-border px-2 py-1 text-xs text-muted hover:text-foreground"
+        >
+          Delete
+        </button>
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2">
+        <label className="space-y-1 text-sm">
+          <span className="text-muted">Name</span>
+          <input
+            value={metric.name}
+            onChange={(event) => onChange({ ...metric, name: event.target.value })}
+            className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm"
+          />
+        </label>
+        <label className="space-y-1 text-sm">
+          <span className="text-muted">Type</span>
+          <select
+            value={metric.kind}
+            onChange={(event) => {
+              const kind = event.target.value as 'base' | 'formula';
+              onChange(
+                kind === 'base'
+                  ? {
+                      ...metric,
+                      kind,
+                      base,
+                      formula: undefined
+                    }
+                  : {
+                      ...metric,
+                      kind,
+                      formula,
+                      base: undefined
+                    }
+              );
+            }}
+            className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm"
+          >
+            <option value="base">Base metric</option>
+            <option value="formula">Formula metric</option>
+          </select>
+        </label>
+      </div>
+
+      <label className="flex items-center gap-2 rounded-md border border-border bg-bg/30 px-3 py-2 text-sm text-foreground">
+        <input
+          type="checkbox"
+          checked={metric.showInView !== false}
+          onChange={(event) => onChange({ ...metric, showInView: event.target.checked })}
+        />
+        Show in View tab
+      </label>
+
+      <div className="space-y-2 rounded-lg border border-border bg-bg/30 p-3">
+        <p className="text-sm font-medium text-foreground">Card time range (View tab)</p>
+        <TimeRangeControl
+          value={metric.timeRange}
+          onChange={(timeRange) => onChange({ ...metric, timeRange })}
+        />
+      </div>
+
+      {metric.kind === 'base' ? (
+        <div className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-3">
+            <label className="space-y-1 text-sm md:col-span-2">
+              <span className="text-muted">Measure</span>
+              <select
+                value={base.measure}
+                onChange={(event) =>
+                  updateBase({
+                    measure: event.target.value as AdvancedAnalyticsBaseMeasure
+                  })
+                }
+                className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm"
+              >
+                {BASE_MEASURE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-muted">Preview granularity</span>
+              <select
+                value={base.defaultChartGranularity ?? 'week'}
+                onChange={(event) =>
+                  updateBase({
+                    defaultChartGranularity: event.target.value as 'day' | 'week' | 'month'
+                  })
+                }
+                className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm"
+              >
+                <option value="day">Day</option>
+                <option value="week">Week</option>
+                <option value="month">Month</option>
+              </select>
+            </label>
+          </div>
+
+          <label className="space-y-1 text-sm">
+            <span className="text-muted">Unit display (optional override)</span>
+            <select
+              value={normalizeUnitDisplaySelection(base.displayUnit)}
+              onChange={(event) =>
+                updateBase({
+                  displayUnit: event.target.value
+                })
+              }
+              className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm"
+            >
+              {baseDisplayUnitOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <p className="text-sm font-medium text-foreground">Where groups (OR)</p>
+                <p className="text-xs text-muted">
+                  If any group matches, the activity is included. Conditions inside each group use
+                  AND.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  updateActivityGroups([
+                    ...activityConditionGroups,
+                    createBlankActivityConditionGroup()
+                  ])
+                }
+                className="rounded-md border border-border px-2.5 py-1.5 text-xs font-medium hover:bg-bg/60"
+              >
+                + Group
+              </button>
+            </div>
+            {activityConditionGroups.length === 0 ? (
+              <p className="text-xs text-muted">No activity groups (matches all activities).</p>
+            ) : (
+              activityConditionGroups.map((group, groupIndex) => (
+                <div
+                  key={group.id}
+                  className={`space-y-2 ${groupIndex > 0 ? 'border-t border-border/70 pt-3' : ''}`}
+                >
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-medium text-foreground">
+                        Group {groupIndex + 1} (AND){' '}
+                        <span className="text-muted">
+                          {group.conditions.length} condition
+                          {group.conditions.length === 1 ? '' : 's'}
+                        </span>
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            updateActivityGroups(
+                              activityConditionGroups.map((currentGroup) =>
+                                currentGroup.id === group.id
+                                  ? {
+                                      ...currentGroup,
+                                      conditions: [
+                                        ...currentGroup.conditions,
+                                        createBlankActivityCondition()
+                                      ]
+                                    }
+                                  : currentGroup
+                              )
+                            )
+                          }
+                          className="rounded-md border border-border px-2 py-1 text-xs hover:bg-bg/60"
+                        >
+                          + Condition
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            updateActivityGroups(
+                              activityConditionGroups.filter(
+                                (currentGroup) => currentGroup.id !== group.id
+                              )
+                            )
+                          }
+                          className="rounded-md border border-border px-2 py-1 text-xs text-muted hover:text-foreground"
+                        >
+                          Remove Group
+                        </button>
+                      </div>
+                    </div>
+                    {group.conditions.length === 0 ? (
+                      <p className="text-xs text-muted">
+                        Empty group (ignored until at least one condition is added).
+                      </p>
+                    ) : (
+                      group.conditions.map((condition) => {
+                        const kind = activityFieldKind(condition.field);
+                        const operators = activityOperatorsForField(condition.field);
+                        return (
+                          <div
+                            key={condition.id}
+                            className="grid gap-2 md:grid-cols-12"
+                          >
+                            <select
+                              value={condition.field}
+                              onChange={(event) => {
+                                const nextField =
+                                  event.target.value as AdvancedAnalyticsActivityConditionField;
+                                const nextOperator = activityOperatorsForField(nextField)[0];
+                                updateActivityCondition(group.id, condition.id, (current) => ({
+                                  ...current,
+                                  field: nextField,
+                                  operator: nextOperator,
+                                  value:
+                                    activityFieldKind(nextField) === 'text'
+                                      ? current.value ?? ''
+                                      : activityFieldKind(nextField) === 'bool'
+                                        ? 'true'
+                                        : '',
+                                  numberValue:
+                                    activityFieldKind(nextField) === 'number'
+                                      ? Number.isFinite(current.numberValue)
+                                        ? current.numberValue
+                                        : 0
+                                      : undefined,
+                                  boolValue:
+                                    activityFieldKind(nextField) === 'bool'
+                                      ? current.boolValue ?? true
+                                      : undefined
+                                }));
+                              }}
+                              className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-3"
+                            >
+                              {ACTIVITY_FIELD_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                            <select
+                              value={condition.operator}
+                              onChange={(event) =>
+                                updateActivityCondition(group.id, condition.id, (current) => ({
+                                  ...current,
+                                  operator:
+                                    event.target
+                                      .value as AdvancedAnalyticsActivityConditionOperator
+                                }))
+                              }
+                              className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-3"
+                            >
+                              {operators.map((operator) => (
+                                <option key={operator} value={operator}>
+                                  {displayOperator(operator)}
+                                </option>
+                              ))}
+                            </select>
+                            {kind === 'text' ? (
+                              <input
+                                value={condition.value ?? ''}
+                                onChange={(event) =>
+                                  updateActivityCondition(group.id, condition.id, (current) => ({
+                                    ...current,
+                                    value: event.target.value
+                                  }))
+                                }
+                                placeholder={
+                                  condition.operator === 'containsAny' ||
+                                  condition.operator === 'containsAll'
+                                    ? 'comma-separated'
+                                    : 'value'
+                                }
+                                className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-5"
+                              />
+                            ) : kind === 'bool' ? (
+                              <select
+                                value={String(condition.boolValue ?? true)}
+                                onChange={(event) =>
+                                  updateActivityCondition(group.id, condition.id, (current) => ({
+                                    ...current,
+                                    boolValue: event.target.value === 'true',
+                                    value: event.target.value
+                                  }))
+                                }
+                                className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-5"
+                              >
+                                <option value="true">True</option>
+                                <option value="false">False</option>
+                              </select>
+                            ) : (
+                              <input
+                                type="number"
+                                value={condition.numberValue ?? 0}
+                                onChange={(event) =>
+                                  updateActivityCondition(group.id, condition.id, (current) => ({
+                                    ...current,
+                                    numberValue: Number(event.target.value)
+                                  }))
+                                }
+                                className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-5"
+                              />
+                            )}
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updateActivityGroups(
+                                  activityConditionGroups.map((currentGroup) =>
+                                    currentGroup.id === group.id
+                                      ? {
+                                          ...currentGroup,
+                                          conditions: currentGroup.conditions.filter(
+                                            (item) => item.id !== condition.id
+                                          )
+                                        }
+                                      : currentGroup
+                                  )
+                                )
+                              }
+                              className="rounded-md border border-border px-2 py-2 text-xs text-muted hover:text-foreground md:col-span-1"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          {base.measure === 'sampleTime' ? (
+            <div className="space-y-3">
+              <label className="space-y-1 text-sm">
+                <span className="text-muted">Minimum continuous match time (seconds)</span>
+                <input
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={
+                    (base.minimumSampleMatchSeconds ?? 0) > 0
+                      ? base.minimumSampleMatchSeconds
+                      : ''
+                  }
+                  onChange={(event) => {
+                    if (event.target.value === '') {
+                      updateBase({ minimumSampleMatchSeconds: 0 });
+                      return;
+                    }
+                    const parsed = Number(event.target.value);
+                    updateBase({
+                      minimumSampleMatchSeconds:
+                        Number.isFinite(parsed) && parsed > 0 ? parsed : 0
+                    });
+                  }}
+                  className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm"
+                />
+                <p className="text-xs text-muted">
+                  Ignore short spikes. Only contiguous matching intervals that last at least this
+                  long are counted.
+                </p>
+              </label>
+              <div className="flex items-center justify-between">
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-foreground">Sample groups (OR)</p>
+                  <p className="text-xs text-muted">
+                    Time is accumulated for intervals where any group matches. Conditions inside each
+                    group use AND.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    updateSampleGroups([
+                      ...sampleConditionGroups,
+                      createBlankSampleConditionGroup()
+                    ])
+                  }
+                  className="rounded-md border border-border px-2.5 py-1.5 text-xs font-medium hover:bg-bg/60"
+                >
+                  + Group
+                </button>
+              </div>
+              {sampleConditionGroups.length === 0 ? (
+                <p className="text-xs text-muted">
+                  No sample groups: all tracked sample intervals count.
+                </p>
+              ) : (
+                sampleConditionGroups.map((group, groupIndex) => (
+                  <div
+                    key={group.id}
+                    className={`space-y-2 ${groupIndex > 0 ? 'border-t border-border/70 pt-3' : ''}`}
+                  >
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-medium text-foreground">
+                          Group {groupIndex + 1} (AND){' '}
+                          <span className="text-muted">
+                            {group.conditions.length} condition
+                            {group.conditions.length === 1 ? '' : 's'}
+                          </span>
+                        </p>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              updateSampleGroups(
+                                sampleConditionGroups.map((currentGroup) =>
+                                  currentGroup.id === group.id
+                                    ? {
+                                        ...currentGroup,
+                                        conditions: [
+                                          ...currentGroup.conditions,
+                                          createBlankSampleCondition()
+                                        ]
+                                      }
+                                    : currentGroup
+                                )
+                              )
+                            }
+                            className="rounded-md border border-border px-2 py-1 text-xs hover:bg-bg/60"
+                          >
+                            + Condition
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              updateSampleGroups(
+                                sampleConditionGroups.filter(
+                                  (currentGroup) => currentGroup.id !== group.id
+                                )
+                              )
+                            }
+                            className="rounded-md border border-border px-2 py-1 text-xs text-muted hover:text-foreground"
+                          >
+                            Remove Group
+                          </button>
+                        </div>
+                      </div>
+                      {group.conditions.length === 0 ? (
+                        <p className="text-xs text-muted">
+                          Empty group (ignored until at least one condition is added).
+                        </p>
+                      ) : (
+                        group.conditions.map((condition) => {
+                          const isZone = condition.field === 'heartRateZone';
+                          const operators = isZone ? (['is'] as const) : SAMPLE_NUM_OPERATORS;
+                          return (
+                            <div
+                              key={condition.id}
+                              className="grid gap-2 md:grid-cols-12"
+                            >
+                              <select
+                                value={condition.field}
+                                onChange={(event) => {
+                                  const field =
+                                    event.target.value as AdvancedAnalyticsSampleConditionField;
+                                  updateSampleCondition(group.id, condition.id, (current) => ({
+                                    ...current,
+                                    field,
+                                    operator:
+                                      field === 'heartRateZone'
+                                        ? 'is'
+                                        : 'greaterThanOrEqual',
+                                    zone: field === 'heartRateZone' ? current.zone ?? 2 : undefined,
+                                    numberValue:
+                                      field === 'heartRateZone'
+                                        ? undefined
+                                        : current.numberValue ?? 0
+                                  }));
+                                }}
+                                className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-4"
+                              >
+                                {SAMPLE_FIELD_OPTIONS.map((option) => (
+                                  <option key={option.value} value={option.value}>
+                                    {option.label}
+                                  </option>
+                                ))}
+                              </select>
+                              <select
+                                value={condition.operator}
+                                onChange={(event) =>
+                                  updateSampleCondition(group.id, condition.id, (current) => ({
+                                    ...current,
+                                    operator:
+                                      event.target
+                                        .value as AdvancedAnalyticsSampleConditionOperator
+                                  }))
+                                }
+                                className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-3"
+                              >
+                                {operators.map((operator) => (
+                                  <option key={operator} value={operator}>
+                                    {displayOperator(operator)}
+                                  </option>
+                                ))}
+                              </select>
+                              {isZone ? (
+                                <select
+                                  value={String(condition.zone ?? 2)}
+                                  onChange={(event) =>
+                                    updateSampleCondition(group.id, condition.id, (current) => ({
+                                      ...current,
+                                      zone: Number(event.target.value)
+                                    }))
+                                  }
+                                  className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-4"
+                                >
+                                  {[1, 2, 3, 4, 5].map((zone) => (
+                                    <option key={zone} value={zone}>
+                                      Z{zone}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <input
+                                  type="number"
+                                  value={condition.numberValue ?? 0}
+                                  onChange={(event) =>
+                                    updateSampleCondition(group.id, condition.id, (current) => ({
+                                      ...current,
+                                      numberValue: Number(event.target.value)
+                                    }))
+                                  }
+                                  className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-4"
+                                />
+                              )}
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  updateSampleGroups(
+                                    sampleConditionGroups.map((currentGroup) =>
+                                      currentGroup.id === group.id
+                                        ? {
+                                            ...currentGroup,
+                                            conditions: currentGroup.conditions.filter(
+                                              (item) => item.id !== condition.id
+                                            )
+                                          }
+                                        : currentGroup
+                                    )
+                                  )
+                                }
+                                className="rounded-md border border-border px-2 py-2 text-xs text-muted hover:text-foreground md:col-span-1"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-4">
+            <label className="space-y-1 text-sm md:col-span-2">
+              <span className="text-muted">Metric A</span>
+              <select
+                value={formula.leftMetricId}
+                onChange={(event) =>
+                  onChange({
+                    ...metric,
+                    kind: 'formula',
+                    formula: { ...formula, leftMetricId: event.target.value }
+                  })
+                }
+                className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm"
+              >
+                <option value="">Select metric</option>
+                {allMetrics
+                  .filter((candidate) => candidate.id !== metric.id)
+                  .map((candidate) => (
+                    <option key={candidate.id} value={candidate.id}>
+                      {candidate.name}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-muted">Operator</span>
+              <select
+                value={formula.operator}
+                onChange={(event) =>
+                  onChange({
+                    ...metric,
+                    kind: 'formula',
+                    formula: {
+                      ...formula,
+                      operator: event.target.value as 'add' | 'subtract' | 'divide' | 'percent'
+                    }
+                  })
+                }
+                className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm"
+              >
+                <option value="add">+</option>
+                <option value="subtract">-</option>
+                <option value="divide">/</option>
+                <option value="percent">%</option>
+              </select>
+            </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-muted">Metric B</span>
+              <select
+                value={formula.rightMetricId}
+                onChange={(event) =>
+                  onChange({
+                    ...metric,
+                    kind: 'formula',
+                    formula: { ...formula, rightMetricId: event.target.value }
+                  })
+                }
+                className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm"
+              >
+                <option value="">Select metric</option>
+                {allMetrics
+                  .filter((candidate) => candidate.id !== metric.id)
+                  .map((candidate) => (
+                    <option key={candidate.id} value={candidate.id}>
+                      {candidate.name}
+                    </option>
+                  ))}
+              </select>
+            </label>
+          </div>
+
+          <label className="space-y-1 text-sm">
+            <span className="text-muted">Unit display</span>
+            <select
+              value={normalizeUnitDisplaySelection(formula.displayUnit)}
+              onChange={(event) =>
+                onChange({
+                  ...metric,
+                  kind: 'formula',
+                  formula: { ...formula, displayUnit: event.target.value }
+                })
+              }
+              className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm"
+            >
+              {formulaDisplayUnitOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      )}
+    </section>
+  );
+}

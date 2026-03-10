@@ -944,9 +944,8 @@ pub fn parse_fit_file(path: &Path) -> Result<ParsedActivity> {
                     }
                     "total_elapsed_time" => {
                         if let Some(v) = fit_value_as_f64(value) {
-                            summary.elapsed_duration_seconds = Some(
-                                summary.elapsed_duration_seconds.map_or(v, |cur| cur.max(v)),
-                            );
+                            summary.elapsed_duration_seconds =
+                                Some(summary.elapsed_duration_seconds.map_or(v, |cur| cur.max(v)));
                         }
                     }
                     "total_timer_time" => {

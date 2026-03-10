@@ -40,11 +40,24 @@ Frontend (`src/`):
 
 - `src/App.tsx`: route gating, startup scan trigger, layout, lazy routes
 - `src/main.tsx`: React bootstrap + global CSS + MapLibre CSS
-- `src/pages/`: route screens (`Dashboard`, `Activities`, `Activity Detail`, `Heatmap`, `Settings`, `Onboarding`)
+- `src/pages/`: route screens (`Dashboard`, `Activities`, `Activity Detail`, `Heatmap`, `Advanced Analytics`, `Settings`, `Onboarding`)
 - `src/components/`: reusable UI pieces (`Sidebar`, `MetricCard`, `ScanStatusCard`, map frame)
-- `src/store/`: Zustand stores (app/runtime state + persisted UI state)
-- `src/lib/`: Tauri bridge, formatting helpers, map styles, theming, MapLibre hook
+- `src/store/`: Zustand stores (app/runtime state, persisted UI state, advanced analytics definitions)
+- `src/lib/`: Tauri bridge, analytics/formatting helpers, central chart plotting engine (`src/lib/charts/plottingEngine.ts`), map styles, theming, MapLibre hook
 - `src/types.ts`: TypeScript command/event payload contracts
+
+Display formatting conventions (shared helpers in `src/lib/format.ts`):
+
+- Duration/time values are rendered as `HH:mm:ss`.
+- Dates are rendered as `dd.MM.yyyy` (and `dd.MM.yyyy HH:mm:ss` for date+time).
+- Distances are rendered in kilometers (`km`).
+
+Central plotting engine:
+
+- `src/lib/charts/plottingEngine.ts` centralizes shared plotting behavior used by both Activity Detail and Advanced Analytics.
+- Shared exports include chart visual constants (axis/grid/tooltip styles, selection/cursor defaults, and animation defaults), pointer parsing helpers, and the reusable `usePlotDragZoom` hook.
+- Both `src/pages/ActivityDetailPage.tsx` and `src/components/analytics/AnalyticsPreview.tsx` consume the same drag-to-zoom and click-to-reset interaction core.
+- `src/index.css` applies a global Recharts `user-select: none` rule (`.recharts-responsive-container` and descendants) so drag operations do not accidentally select chart text, including on newly added plots.
 
 Backend (`src-tauri/src/`):
 
@@ -52,6 +65,7 @@ Backend (`src-tauri/src/`):
 - `scanner.rs`: import folder scan / incremental indexing / progress events
 - `parser.rs`: TCX + FIT parsing and derived metric computation
 - `db.rs`: SQLite schema, migrations, upsert/query logic
+- `analytics.rs`: advanced analytics rule evaluation (custom metrics/streaks/charts)
 - `settings.rs`: JSON settings persistence
 - `models.rs`: Rust command/event DTOs and parser/db shared structs
 
@@ -112,11 +126,12 @@ Implemented Tauri commands (current):
 - `get_activity(id)`
 - `get_activity_samples(id, query?)`
 - `get_heatmap_data(filters)`
+- `run_advanced_analytics(request)`
 
 Notes:
 
 - `scan_import_folder` supports an optional `full_rescan` boolean (defaults to `false`).
-- There is no `get_stats()` command in the current implementation.
+- `run_advanced_analytics(request)` evaluates custom metric/streak/chart definitions in one backend roundtrip and returns per-item errors/warnings when possible instead of failing the whole page.
 
 ### 4.2 `src-tauri/src/models.rs`
 
@@ -135,9 +150,11 @@ Important serialized types:
 - `ActivityDetail`
   - `summary`, `track`, `samples`, `original_sample_count`
 - `HeatmapFilters` / `HeatmapData`
+- `AdvancedAnalytics*`
+  - request/definition/result DTOs for custom metrics, streaks, and chart views
 - `ScanProgressEvent` / `ScanDoneEvent`
 
-Internal/shared (not currently exposed via Tauri commands):
+Internal/shared (lower-level/internal structs):
 
 - `ActivitySampleQuery`
 - `ActivitySamplesResponse`
@@ -321,6 +338,7 @@ This internal API is a good starting point if the UI later needs server-side cha
 - applies light/dark mode via `document.documentElement.dataset.theme`
 - applies accent theme CSS variables (`applyAccentThemeToDocument`)
 - triggers one automatic startup scan per selected import folder path
+- after startup scan completion, precomputes advanced analytics request variants and warms app-store analytics cache
 - lazy-loads all routes with `React.lazy` + `Suspense`
 - gates routing based on settings state:
   - loading -> loading screen
@@ -363,13 +381,14 @@ Tracks:
 - backend `settings`
 - scan lifecycle state (`scanning`, `scanProgress`, `scanDone`)
 - in-memory `activitiesCache` keyed by filter/import-folder/scan timestamp
+- in-memory `advancedAnalyticsCache` keyed by analytics request payload + scan timestamp
 
 Actions:
 
 - `init()` loads settings and installs scan listeners once
 - settings mutators (`updateImportFolder`, `setScanRecursive`, `updateDarkMode`, `updateAccentTheme`, `updateHeatmapFullOpacity`)
-- `runScan(fullRescan?)` runs scan, refreshes settings, clears activities cache, and normalizes error state
-- cache helpers (`getCachedActivities`, `setCachedActivities`, `clearActivitiesCache`)
+- `runScan(fullRescan?)` runs scan, refreshes settings, clears activities/analytics caches, and normalizes error state
+- cache helpers (`getCachedActivities`, `setCachedActivities`, `clearActivitiesCache`, `getCachedAdvancedAnalytics`, `setCachedAdvancedAnalytics`, `clearAdvancedAnalyticsCache`)
 
 #### `src/store/useUiStateStore.ts` (persisted UI/view state)
 
@@ -382,8 +401,26 @@ Persists UI preferences/navigation state for:
 - activities filters + sorting
 - sidebar last-route memory
 - heatmap time span/custom dates/category/sport/reduced map complexity
+- advanced analytics active tab (`view`/`configure`)
 
 This store intentionally contains view state only (not backend data).
+
+#### `src/store/useAdvancedAnalyticsStore.ts` (persisted analytics definitions)
+
+Uses `zustand/middleware/persist` under key `trajectory-advanced-analytics`.
+
+Persists:
+
+- custom metric definitions (base + formula)
+- custom streak definitions
+- chart view definitions
+- selected analytics item
+- legacy global advanced analytics time range fields (no longer used by the current page UI)
+- per-definition card time ranges (`metric.timeRange`, `chart.timeRange`; streaks use fixed all-time range in UI/request grouping)
+- auto-run toggle
+- includes `replaceDefinitions(...)` for atomic import/replace of metrics/streaks/charts (with selection reconciliation)
+
+Computed analytics results are **not** persisted.
 
 ### 5.4 Pages (`src/pages/`)
 
@@ -496,12 +533,54 @@ Rendering features:
 - maximize/minimize frame
 - point count summary (including downsampled count)
 
+#### `AdvancedAnalyticsPage.tsx`
+
+Prototype custom analytics builder page.
+
+Key behaviors:
+
+- Loads/saves analytics definitions from `useAdvancedAnalyticsStore`
+- Runs analytics via `runAdvancedAnalytics(...)` (Tauri command `run_advanced_analytics`)
+- Supports:
+  - base metrics (summary aggregates + sample-time metrics)
+  - formula metrics (`+`, `-`, `/`, `%`)
+  - daily/weekly threshold streaks, including optional multi-metric `AND` requirements (`streak.metricId` + `streak.additionalMetricIds`) where each required metric must pass the same operator/threshold in each period
+  - time-bucketed chart views (`bar`, `line`, `stackedBar`)
+- Multi-series chart previews render a legend; stacked bars use per-segment corner logic so only the top visible segment per stack bucket has rounded top corners (internal joins stay square)
+- Guided builder UI only (no DSL), grouped activity/sample filters (`OR` between groups, `AND` within each group)
+- Metric-builder group editors intentionally use a flatter structure for larger rule sets (fewer nested containers and inline condition counts) to reduce scanning fatigue when many conditions are configured
+- `Sample time` base metrics can set `minimumSampleMatchSeconds` to count only contiguous matching runs above the threshold (useful for suppressing short HR-zone spikes)
+- `Sample time` metric preview cards render activity timeline strips that show tracked intervals and highlight contiguous runs that were included vs filtered out by the minimum-match threshold; cards progressively expand in batches via “Show more” and support one-click full expansion via “Show all”
+- `Sample time` metric preview activity rows are clickable and open `ActivityDetailPage` (`/activities/:id`) while passing return context (`fromPath`/`fromLabel`) so Activity Detail can route back to Advanced Analytics
+- Metric unit display is selected from predefined dropdown options with `Auto` as the default (no free-form unit text input), and backend analytics converts scalar/series values to compatible display units before previews/charts/streaks consume them (including dimensionless ratio -> `%` scaling); chart tooltips render resolved units for `Auto` instead of showing literal `auto`
+- UI separates analytics editing vs preview into Configure/View tabs (View is default and renders an at-a-glance overview); the active tab is persisted in UI state, and metrics include a persisted `showInView` toggle used to filter the View metrics section
+- Configure-mode library supports explicit metric reordering (up/down controls) separately for base and formula metric sections, persisted via `useAdvancedAnalyticsStore.metrics` order
+- Each metric/chart definition includes its own persisted card time range config (`all`, `7d`, `30d`, `90d`, `365d`, `custom` + optional dates); streaks always run with all-time range in the current UI
+- Metric/chart time ranges are editable in Configure only for View-card rendering; Configure previews intentionally run with all-time history while View is read-only and displays each card's active range as an indicator
+- View tab metric cards intentionally render scalar values only in a responsive multi-column grid; charts in View are shown only for explicit Chart View definitions
+- View tab streak cards use a compact stat layout with current streak, longest streak, and current value plus progress bars
+- For multi-metric `AND` streaks, streak results include `requiredMetricValues` and the View card displays combined period progress (sum of current required-metric values versus sum of required thresholds) plus a `met/required` metric count
+- `Sample time` activity timeline previews are shown in Configure previews, not in View metric cards
+- Advanced Analytics results are cached in-memory in `useAppStore` by request payload + `settings.lastScanTimestamp`; auto-run reuses cache and only runs missing request variants, while manual `Recompute` forces all current-tab requests
+- `App.tsx` also warms this same analytics cache automatically after startup scan completion, precomputing unique request ranges so Advanced Analytics View/Configure loads are typically immediate on first open
+- While analytics requests are running, `AdvancedAnalyticsPage` tracks per-request completion and renders a loading bar with completed/total and percent (Configure mode shows it directly under the top action toolbar; View mode shows it in the preview section)
+- Uses Settings heart-rate zone cutoffs for HR-zone sample conditions
+- Header actions include `Export JSON` / `Import JSON`, which now open a transfer selection panel:
+  - users choose exact metrics/streaks/charts to transfer
+  - metric dependencies are auto-included (chart metrics, streak metrics, and recursive formula metric dependencies)
+  - dependency-only metric rows are visually marked in the selector with reasons
+  - import merges selected definitions into existing state by matching IDs (selected IDs replace, new IDs append) without replacing the entire library
+  - export prompts for a destination folder and writes a timestamped JSON file there
+  - export payload remains schema-versioned and now uses a more human-readable structure with top-level `summary` and nested `data`
+
 ### 5.5 Shared components and utilities
 
 Components:
 
 - `src/components/Sidebar.tsx`
-  - section navigation with last-route memory (except `Activities`, which always goes to `/activities`)
+  - section navigation with last-route memory (except `Activities`, which always goes to `/activities`), including Advanced Analytics
+- `src/components/analytics/*`
+  - advanced analytics library list, builders, and preview UI (library can run in configure or view-only mode)
 - `src/components/MetricCard.tsx`
   - reusable metric display card
 - `src/components/ScanStatusCard.tsx`
@@ -515,6 +594,16 @@ Libraries/helpers:
 
 - `src/lib/format.ts`
   - UI formatting helpers for distance/time/speed/pace/date values
+- `src/lib/analytics/validation.ts`
+  - frontend validation for definition shape and chart metric-count constraints
+- `src/lib/analytics/formatting.ts`
+  - formatting helpers for advanced analytics values/units and previews
+- `src/lib/analytics/timeRange.ts`
+  - shared advanced-analytics time-range presets/defaults/normalization + request-range resolution
+- `src/lib/analytics/transfer.ts`
+  - advanced analytics transfer payload builder + strict parser/validator
+  - dependency-closure resolver used by selective import/export UI
+  - merge-by-ID helper used by selective import (replace selected IDs, preserve all unselected definitions)
 - `src/lib/theme.ts`
   - accent theme IDs/palettes and CSS variable application
 - `src/lib/mapStyles.ts`
@@ -572,6 +661,7 @@ Typical paths:
 2. If an import folder exists, `App.tsx` triggers `runScan()` once for that folder path.
 3. App store listens for `scan:progress` and updates UI scan state.
 4. On completion, app store refreshes settings (`lastScanTimestamp`) and clears cached activity lists.
+5. `App.tsx` then computes startup advanced analytics requests (unique per time range + current definitions) and stores results in `advancedAnalyticsCache`.
 
 ### Manual rescan (Settings)
 
@@ -645,16 +735,15 @@ GitHub release workflow (`.github/workflows/release.yml`):
 
 ### Add a new chart/query optimization path
 
-A likely next extension is exposing `db::get_activity_samples(...)` as a Tauri command so `ActivityDetailPage` can request windowed/downsampled chart data on demand instead of always loading the default sample set from `get_activity(...)`.
+A likely next extension is reusing the new analytics evaluator infrastructure to add cached/precomputed custom analytics results (instead of recomputing everything on demand per run).
 
 ## 11. Known Implementation Notes / Gaps
 
 Current codebase deviations from the original prototype spec in `AGENTS.md`:
 
-- There is **no `Statistics` page** yet.
-- There is **no `get_stats()` Tauri command** yet.
+- The app now includes an **Advanced Analytics** prototype page and `run_advanced_analytics(request)` command instead of a generic `get_stats()` API.
+- Advanced Analytics is intentionally limited to a guided builder, simple title text matching (no regex), grouped conditions (`OR` between groups, `AND` within each group), and time-series charts only in the current prototype.
 - The app currently supports **FIT** in addition to TCX/TXC (an expansion beyond the original TCX-only spec).
-- `db::get_activity_samples(...)` exists but is not currently exposed through Tauri.
 - `MonthCalendar.tsx` is present but not used by the current dashboard implementation.
 - There is no automated test suite in the repository yet (the `test/` folder contains sample FIT files, not test code).
 

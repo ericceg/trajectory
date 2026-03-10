@@ -44,6 +44,25 @@ Prototype (actively evolving).
 - Map views support in-place maximize/minimize (with `Esc` to close expanded view)
 - Global path-based heatmap page that overlays all matching GPS tracks
 - Heatmap filters for time span (presets + custom), category, and sport type
+- Advanced Analytics tab (prototype) with locally saved custom metrics, formula metrics, threshold streaks, and time-bucketed charts (bar/line/stacked bar), plus separate Configure/View tabs (View opens by default with an at-a-glance overview)
+- Advanced Analytics Configure library supports per-section metric reordering (up/down controls for base metrics and formula metrics), and the saved order is used throughout previews and View cards
+- Advanced Analytics metric and chart cards each have their own adjustable time range (including `7d`, `30d`, `90d`, `365d`, `all`, and custom dates); streak cards always use all-time range
+- Advanced Analytics metric/chart time ranges are configured in **Configure** for **View** cards; Configure previews always run on all activity history, and the **View** tab is read-only with per-card range indicators
+- Advanced Analytics View streak cards are compact and at-a-glance: they show current streak, longest streak (high score), status, a clear current day/week period label, and current period value
+- For multi-metric (`AND`) streaks, View streak cards show a combined current period value/goal across all required metrics (plus how many required metrics currently meet threshold), to avoid misleading single-metric progress
+- Advanced Analytics supports title-based conditions (e.g. push/pull names), grouped conditions (`OR` between groups, `AND` within each group), and sample-derived metrics such as heart-rate zone time via `Sample time` rules, including a minimum continuous-match duration to ignore short fluctuations
+- Advanced Analytics streaks can require multiple metrics at once (`AND`): for example, a weekly streak can require both a `pull` metric and a `push` metric to each meet the same threshold in the same week
+- Metric Builder condition UIs use a flatter layout for complex logic (fewer nested containers and per-group condition counts) to keep dense AND/OR rule sets easier to scan
+- `Sample time` metric previews include an activity-level timeline strip that highlights which contiguous sub-intervals were included vs filtered out by the minimum continuous-match threshold, with progressive “Show more” expansion and a one-click “Show all” option for larger activity sets
+- `Sample time` metric preview activities are clickable: selecting a row opens Activity Detail, and returning to Advanced Analytics preserves the analytics view context (including the active Configure/View tab)
+- Advanced Analytics metric builders use a predefined unit-display dropdown with `Auto` as the default (for example `Auto`, `%`, `s`, `count`, `km`, `bpm`) instead of free-form text input, and metric values/series are converted to the selected compatible display unit (including ratio-to-percent scaling, e.g. `0.5` -> `50%`); chart tooltips show the resolved unit when `Auto` is selected
+- Advanced Analytics metric/chart plots support Activity Detail-style interactions and visual treatment: drag-to-zoom on x-axis buckets, click-to-reset, zoom-window rendering so y-axes re-fit to the visible range, matching tooltip/axis/grid styling, no chart animations, multi-series legends, and stacked bars that round only the true stack top (internal segment joins stay square)
+- Advanced Analytics keeps an in-memory result cache (keyed by analytics definitions + per-card request range + last scan timestamp), so revisiting the page feels instant when nothing changed; recomputation only runs when definitions/range/data version change or when you press `Recompute`
+- After each automatic startup scan, the app precomputes Advanced Analytics request variants in the background and warms the same in-memory analytics cache used by the Analytics page, so first-open latency is reduced
+- Advanced Analytics recomputation shows a loading/progress bar (completed requests, total requests, and percent) while results are being computed; in Configure mode the bar is pinned directly under the top action toolbar
+- Advanced Analytics supports selective JSON export/import of custom definitions (metrics/streaks/charts), with dependency-aware metric auto-inclusion (charts/streaks/formulas pull required metrics automatically), merge-by-ID import (selected items update/add without wiping everything), a human-readable payload layout (`summary` + `data`), and an export folder picker before writing JSON
+- Chart text/number labels inside plot surfaces are non-selectable to avoid accidental text highlighting during drag-to-zoom
+- Standardized display formatting: durations/times render as `HH:mm:ss`, dates as `dd.MM.yyyy` (or `dd.MM.yyyy HH:mm:ss` where date+time is shown), and distances in kilometers (`km`)
 - Appearance settings for accent theme selection and optional full-opacity heatmap routes (100% opacity)
 - "Reduced complexity" toggle on map views for a grayscale, lower-noise basemap with stronger route contrast
 - Map controls (including reduced-complexity toggles/legend) are overlaid on maps so they remain visible in maximized map mode
@@ -76,6 +95,7 @@ npm run tauri dev
 1. Launch Trajectory.
 2. On first launch, select an existing import folder containing `.tcx` and/or `.fit` files.
 3. After selecting a folder (and on every app startup), Trajectory automatically runs a background scan.
+   - After that startup scan completes, Trajectory also precomputes Advanced Analytics in the background using your saved definitions.
 4. Open **Settings** any time to run:
    - **Rescan** for a normal incremental pass.
    - **Clear Cache + Full Rescan** when you want to wipe cached activities and re-import everything.
@@ -90,6 +110,9 @@ npm run tauri dev
    - **Activities** for filtering/sorting workouts (category + distance filters auto-apply)
    - **Heatmap** for a global path heatmap (overlapping GPS tracks; filter by time span/category/sport)
    - Enable **Reduced complexity (grayscale)** in Heatmap to declutter the map and emphasize route overlap
+   - **Advanced Analytics** to build custom metrics/streaks/charts (prototype): guided builder, grouped conditions (`OR` between groups, `AND` within each group), simple title text matching (no regex), optional minimum continuous-match time for `Sample time` metrics with activity timeline previews of included/filtered intervals, clickable preview activities that open Activity Detail, time-series charts by day/week/month, separate Configure/View tabs, and metric/chart per-card time ranges for View cards (streaks use all-time range); Configure previews always run against full history; streak builders support multi-metric `AND` requirements (same threshold per required metric), View metric cards show scalar values only in a responsive grid, streak cards show current/longest streak status values, charts appear only when explicitly configured under Chart Views, and `Sample time` activity previews remain configure-only
+   - In **Advanced Analytics**, **Export JSON** / **Import JSON** opens a selection panel where you can pick exact metrics/streaks/charts; required metric dependencies are auto-selected, export then prompts for a destination folder and writes the JSON there, and import merges selected definitions into your existing library by ID instead of replacing the full library
+   - In **Advanced Analytics** metric/chart previews, click-drag across the plot to zoom the visible time buckets; single-click resets to full range
    - **Activity Detail** for metrics plus a route map (GPS activities) and a chart area that switches between distance-based plots (with GPS) and time-based plots (without GPS); split view hides unavailable metric panels and surfaces cadence/power panels when present
    - Hover **Activity Detail** charts to see the matching point on the route map highlighted with an animated moving dot (when GPS samples exist)
    - In **Activity Detail** charts, click-drag across the plot to zoom into the visible x-axis range (distance or elapsed time); chart Y-axes/overlay scaling automatically re-fit to the visible segment, and single-click resets back to the full range
@@ -190,6 +213,7 @@ Implemented commands:
 - `get_activity(id)`
 - `get_activity_samples(id, query?)`
 - `get_heatmap_data(filters)`
+- `run_advanced_analytics(request)`
 
 `list_activities(filters)` supports:
 - `startDate`, `endDate`
@@ -207,6 +231,13 @@ Implemented commands:
 `get_activity_samples(id, query?)` supports:
 - `distanceMinKm`, `distanceMaxKm` (optional visible chart window)
 - `maxSamples` (optional cap for returned chart samples in that window)
+
+`run_advanced_analytics(request)` supports:
+- `startDate`, `endDate` (optional time-range bounds)
+- `metrics` (base + formula metric definitions)
+- base `sampleTime` metrics can set `minimumSampleMatchSeconds` to ignore short matching bursts
+- `streaks` (daily/weekly threshold streak definitions)
+- `charts` (bar/line/stacked-bar time-series chart definitions)
 
 Progress events:
 

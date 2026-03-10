@@ -6,7 +6,8 @@ type SettingsTab = 'import' | 'appearance' | 'athlete';
 type DashboardMode = 'year' | 'month';
 type DashboardBarMetric = 'durationHours' | 'distanceKm' | 'activities';
 type HeatmapTimeSpan = 'all' | '30d' | '90d' | '365d' | 'custom';
-type NavSection = 'dashboard' | 'activities' | 'heatmap' | 'settings';
+type NavSection = 'dashboard' | 'activities' | 'heatmap' | 'analytics' | 'settings';
+type AnalyticsTab = 'configure' | 'view';
 
 interface UiState {
   settingsActiveTab: SettingsTab;
@@ -25,6 +26,7 @@ interface UiState {
   heatmapCategory: string;
   heatmapSportType: string;
   heatmapReducedMapComplexity: boolean;
+  analyticsActiveTab: AnalyticsTab;
   setSettingsActiveTab: (tab: SettingsTab) => void;
   setDashboardMode: (mode: DashboardMode) => void;
   setDashboardSelectedYear: (year: number) => void;
@@ -41,6 +43,7 @@ interface UiState {
   setHeatmapCategory: (category: string) => void;
   setHeatmapSportType: (sportType: string) => void;
   setHeatmapReducedMapComplexity: (checked: boolean) => void;
+  setAnalyticsActiveTab: (tab: AnalyticsTab) => void;
 }
 
 const today = new Date();
@@ -61,6 +64,7 @@ export const useUiStateStore = create<UiState>()(
         dashboard: '/',
         activities: '/activities',
         heatmap: '/heatmap',
+        analytics: '/analytics',
         settings: '/settings'
       },
       heatmapTimeSpan: 'all',
@@ -69,6 +73,7 @@ export const useUiStateStore = create<UiState>()(
       heatmapCategory: '',
       heatmapSportType: '',
       heatmapReducedMapComplexity: false,
+      analyticsActiveTab: 'view',
       setSettingsActiveTab: (tab) => set({ settingsActiveTab: tab }),
       setDashboardMode: (mode) => set({ dashboardMode: mode }),
       setDashboardSelectedYear: (year) => set({ dashboardSelectedYear: year }),
@@ -91,7 +96,8 @@ export const useUiStateStore = create<UiState>()(
       setHeatmapCustomEndDate: (date) => set({ heatmapCustomEndDate: date }),
       setHeatmapCategory: (category) => set({ heatmapCategory: category }),
       setHeatmapSportType: (sportType) => set({ heatmapSportType: sportType }),
-      setHeatmapReducedMapComplexity: (checked) => set({ heatmapReducedMapComplexity: checked })
+      setHeatmapReducedMapComplexity: (checked) => set({ heatmapReducedMapComplexity: checked }),
+      setAnalyticsActiveTab: (tab) => set({ analyticsActiveTab: tab })
     }),
     {
       name: 'trajectory-ui-state',
@@ -111,7 +117,8 @@ export const useUiStateStore = create<UiState>()(
         heatmapCustomEndDate: state.heatmapCustomEndDate,
         heatmapCategory: state.heatmapCategory,
         heatmapSportType: state.heatmapSportType,
-        heatmapReducedMapComplexity: state.heatmapReducedMapComplexity
+        heatmapReducedMapComplexity: state.heatmapReducedMapComplexity,
+        analyticsActiveTab: state.analyticsActiveTab
       })
     }
   )

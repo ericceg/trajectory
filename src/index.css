@@ -68,6 +68,13 @@ a {
   background-color: rgba(var(--color-panel), 0.9);
 }
 
+/* Keep chart drag interactions from selecting axis/tooltip text. */
+.recharts-responsive-container,
+.recharts-responsive-container * {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 @keyframes calendar-pop-a {
   0% {
     transform: translateY(0) scale(1);
