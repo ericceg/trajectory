@@ -120,9 +120,11 @@ export function AdvancedAnalyticsPage() {
   const addStreak = useAdvancedAnalyticsStore((state) => state.addStreak);
   const updateStreak = useAdvancedAnalyticsStore((state) => state.updateStreak);
   const removeStreak = useAdvancedAnalyticsStore((state) => state.removeStreak);
+  const moveStreak = useAdvancedAnalyticsStore((state) => state.moveStreak);
   const addChart = useAdvancedAnalyticsStore((state) => state.addChart);
   const updateChart = useAdvancedAnalyticsStore((state) => state.updateChart);
   const removeChart = useAdvancedAnalyticsStore((state) => state.removeChart);
+  const moveChart = useAdvancedAnalyticsStore((state) => state.moveChart);
   const replaceDefinitions = useAdvancedAnalyticsStore((state) => state.replaceDefinitions);
   const activeTab = useUiStateStore((state) => state.analyticsActiveTab);
   const setActiveTab = useUiStateStore((state) => state.setAnalyticsActiveTab);
@@ -613,7 +615,9 @@ export function AdvancedAnalyticsPage() {
             onAddFormulaMetric={() => addMetric('formula')}
             onMoveMetric={moveMetric}
             onAddStreak={addStreak}
+            onMoveStreak={moveStreak}
             onAddChart={addChart}
+            onMoveChart={moveChart}
           />
 
           <div className="space-y-4">

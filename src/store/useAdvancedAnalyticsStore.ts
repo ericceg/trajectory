@@ -42,9 +42,11 @@ interface AdvancedAnalyticsState {
   addStreak: () => void;
   updateStreak: (id: string, updater: (streak: AdvancedAnalyticsStreakDefinition) => AdvancedAnalyticsStreakDefinition) => void;
   removeStreak: (id: string) => void;
+  moveStreak: (id: string, direction: 'up' | 'down') => void;
   addChart: () => void;
   updateChart: (id: string, updater: (chart: AdvancedAnalyticsChartDefinition) => AdvancedAnalyticsChartDefinition) => void;
   removeChart: (id: string) => void;
+  moveChart: (id: string, direction: 'up' | 'down') => void;
   replaceDefinitions: (next: {
     metrics: AdvancedAnalyticsMetricDefinition[];
     streaks: AdvancedAnalyticsStreakDefinition[];
@@ -267,6 +269,25 @@ export const useAdvancedAnalyticsStore = create<AdvancedAnalyticsState>()(
               ? null
               : state.selectedItem
         })),
+      moveStreak: (id, direction) =>
+        set((state) => {
+          const currentIndex = state.streaks.findIndex((streak) => streak.id === id);
+          if (currentIndex < 0) {
+            return { streaks: state.streaks };
+          }
+
+          const swapIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+          if (swapIndex < 0 || swapIndex >= state.streaks.length) {
+            return { streaks: state.streaks };
+          }
+
+          const nextStreaks = [...state.streaks];
+          [nextStreaks[currentIndex], nextStreaks[swapIndex]] = [
+            nextStreaks[swapIndex],
+            nextStreaks[currentIndex]
+          ];
+          return { streaks: nextStreaks };
+        }),
       addChart: () =>
         set((state) => {
           const defaultMetricIds = state.metrics.slice(0, 2).map((metric) => metric.id);
@@ -296,6 +317,25 @@ export const useAdvancedAnalyticsStore = create<AdvancedAnalyticsState>()(
               ? null
               : state.selectedItem
         })),
+      moveChart: (id, direction) =>
+        set((state) => {
+          const currentIndex = state.charts.findIndex((chart) => chart.id === id);
+          if (currentIndex < 0) {
+            return { charts: state.charts };
+          }
+
+          const swapIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+          if (swapIndex < 0 || swapIndex >= state.charts.length) {
+            return { charts: state.charts };
+          }
+
+          const nextCharts = [...state.charts];
+          [nextCharts[currentIndex], nextCharts[swapIndex]] = [
+            nextCharts[swapIndex],
+            nextCharts[currentIndex]
+          ];
+          return { charts: nextCharts };
+        }),
       replaceDefinitions: (next) =>
         set((state) => ({
           metrics: next.metrics,

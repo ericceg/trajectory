@@ -16,7 +16,9 @@ interface AnalyticsLibraryProps {
   onAddFormulaMetric: () => void;
   onMoveMetric: (metricId: string, direction: 'up' | 'down') => void;
   onAddStreak: () => void;
+  onMoveStreak: (streakId: string, direction: 'up' | 'down') => void;
   onAddChart: () => void;
+  onMoveChart: (chartId: string, direction: 'up' | 'down') => void;
 }
 
 function LibrarySection({
@@ -122,7 +124,9 @@ export function AnalyticsLibrary({
   onAddFormulaMetric,
   onMoveMetric,
   onAddStreak,
-  onAddChart
+  onMoveStreak,
+  onAddChart,
+  onMoveChart
 }: AnalyticsLibraryProps) {
   const baseMetrics = metrics.filter((metric) => metric.kind === 'base');
   const formulaMetrics = metrics.filter((metric) => metric.kind === 'formula');
@@ -137,7 +141,7 @@ export function AnalyticsLibrary({
         {baseMetrics.length === 0 ? (
           <p className="text-xs text-muted">No custom metrics yet.</p>
         ) : (
-          baseMetrics.map((metric) => (
+          baseMetrics.map((metric, index) => (
             <LibraryItem
               key={metric.id}
               label={metric.name}
@@ -145,11 +149,8 @@ export function AnalyticsLibrary({
               active={selectedItem?.kind === 'metric' && selectedItem.id === metric.id}
               onClick={() => onSelect({ kind: 'metric', id: metric.id })}
               showMoveControls={showActions}
-              canMoveUp={baseMetrics.findIndex((candidate) => candidate.id === metric.id) > 0}
-              canMoveDown={
-                baseMetrics.findIndex((candidate) => candidate.id === metric.id) <
-                baseMetrics.length - 1
-              }
+              canMoveUp={index > 0}
+              canMoveDown={index < baseMetrics.length - 1}
               onMoveUp={() => onMoveMetric(metric.id, 'up')}
               onMoveDown={() => onMoveMetric(metric.id, 'down')}
             />
@@ -165,7 +166,7 @@ export function AnalyticsLibrary({
         {formulaMetrics.length === 0 ? (
           <p className="text-xs text-muted">No formula metrics yet.</p>
         ) : (
-          formulaMetrics.map((metric) => (
+          formulaMetrics.map((metric, index) => (
             <LibraryItem
               key={metric.id}
               label={metric.name}
@@ -173,11 +174,8 @@ export function AnalyticsLibrary({
               active={selectedItem?.kind === 'metric' && selectedItem.id === metric.id}
               onClick={() => onSelect({ kind: 'metric', id: metric.id })}
               showMoveControls={showActions}
-              canMoveUp={formulaMetrics.findIndex((candidate) => candidate.id === metric.id) > 0}
-              canMoveDown={
-                formulaMetrics.findIndex((candidate) => candidate.id === metric.id) <
-                formulaMetrics.length - 1
-              }
+              canMoveUp={index > 0}
+              canMoveDown={index < formulaMetrics.length - 1}
               onMoveUp={() => onMoveMetric(metric.id, 'up')}
               onMoveDown={() => onMoveMetric(metric.id, 'down')}
             />
@@ -193,18 +191,23 @@ export function AnalyticsLibrary({
         {streaks.length === 0 ? (
           <p className="text-xs text-muted">No streaks yet.</p>
         ) : (
-          streaks.map((streak) => {
+          streaks.map((streak, index) => {
             const requiredMetricCount = 1 + (streak.additionalMetricIds?.length ?? 0);
             return (
-            <LibraryItem
-              key={streak.id}
-              label={streak.name}
-              sublabel={`${streak.period} ${streak.thresholdOperator} ${streak.thresholdValue}${
-                requiredMetricCount > 1 ? ` · ${requiredMetricCount} metrics (AND)` : ''
-              }`}
-              active={selectedItem?.kind === 'streak' && selectedItem.id === streak.id}
-              onClick={() => onSelect({ kind: 'streak', id: streak.id })}
-            />
+              <LibraryItem
+                key={streak.id}
+                label={streak.name}
+                sublabel={`${streak.period} ${streak.thresholdOperator} ${streak.thresholdValue}${
+                  requiredMetricCount > 1 ? ` · ${requiredMetricCount} metrics (AND)` : ''
+                }`}
+                active={selectedItem?.kind === 'streak' && selectedItem.id === streak.id}
+                onClick={() => onSelect({ kind: 'streak', id: streak.id })}
+                showMoveControls={showActions}
+                canMoveUp={index > 0}
+                canMoveDown={index < streaks.length - 1}
+                onMoveUp={() => onMoveStreak(streak.id, 'up')}
+                onMoveDown={() => onMoveStreak(streak.id, 'down')}
+              />
             );
           })
         )}
@@ -218,13 +221,18 @@ export function AnalyticsLibrary({
         {charts.length === 0 ? (
           <p className="text-xs text-muted">No chart views yet.</p>
         ) : (
-          charts.map((chart) => (
+          charts.map((chart, index) => (
             <LibraryItem
               key={chart.id}
               label={chart.name}
               sublabel={`${chart.chartType} · ${chart.granularity}`}
               active={selectedItem?.kind === 'chart' && selectedItem.id === chart.id}
               onClick={() => onSelect({ kind: 'chart', id: chart.id })}
+              showMoveControls={showActions}
+              canMoveUp={index > 0}
+              canMoveDown={index < charts.length - 1}
+              onMoveUp={() => onMoveChart(chart.id, 'up')}
+              onMoveDown={() => onMoveChart(chart.id, 'down')}
             />
           ))
         )}
