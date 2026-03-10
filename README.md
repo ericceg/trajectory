@@ -1,10 +1,10 @@
 # Trajectory
 
-![License](https://img.shields.io/badge/license-MIT-blue)
+[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-macOS-lightgrey)
-![Desktop](https://img.shields.io/badge/desktop-Tauri%20v2-yellow)
-![Backend](https://img.shields.io/badge/backend-Rust-orange)
-![Frontend](https://img.shields.io/badge/frontend-React%20%2B%20TypeScript-3178c6)
+[![Desktop](https://img.shields.io/badge/desktop-Tauri%20v2-yellow)](https://tauri.app/)
+[![Backend](https://img.shields.io/badge/backend-Rust-orange)](https://www.rust-lang.org/)
+[![Frontend](https://img.shields.io/badge/frontend-React%20%2B%20TypeScript-3178c6)](https://reactjs.org/)
 
 
 **Lightweight, powerful local-first workout analyzer that keeps your data private**. 
