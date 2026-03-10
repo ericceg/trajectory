@@ -1,7 +1,10 @@
 import { useMemo } from 'react';
 import type { TooltipProps } from 'recharts';
 
-import { normalizeAdvancedAnalyticsTimeRange } from '@/lib/analytics/timeRange';
+import {
+  ADVANCED_ANALYTICS_TIME_RANGE_OPTIONS,
+  normalizeAdvancedAnalyticsTimeRange
+} from '@/lib/analytics/timeRange';
 import {
   CHART_TOOLTIP_STYLE,
   isValueInDomain,
@@ -19,6 +22,9 @@ export const CHART_COLORS = ['#2563eb', '#dc2626', '#10b981', '#f59e0b', '#7c3ae
 export const SAMPLE_TIME_PREVIEW_PAGE_SIZE = 6;
 export type ChartRow = { key: string; label: string } & Record<string, string | number | null>;
 const compareBucketKeys = (left: string, right: string) => left.localeCompare(right);
+const timeRangeLabelByPreset = new Map(
+  ADVANCED_ANALYTICS_TIME_RANGE_OPTIONS.map((option) => [option.value, option.label])
+);
 
 export function timeRangeIndicator(range: AdvancedAnalyticsTimeRangeConfig | undefined): string {
   const normalized = normalizeAdvancedAnalyticsTimeRange(range);
@@ -34,7 +40,7 @@ export function timeRangeIndicator(range: AdvancedAnalyticsTimeRangeConfig | und
     }
     return 'custom';
   }
-  return normalized.preset;
+  return timeRangeLabelByPreset.get(normalized.preset) ?? normalized.preset;
 }
 
 export function trimOuterEmptyBuckets<T>(rows: T[], hasData: (row: T) => boolean): T[] {

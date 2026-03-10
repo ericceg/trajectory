@@ -108,7 +108,16 @@ export interface ScanDoneEvent {
 export type AdvancedAnalyticsGranularity = 'day' | 'week' | 'month';
 export type AdvancedAnalyticsChartType = 'bar' | 'line' | 'stackedBar';
 export type AdvancedAnalyticsMetricKind = 'base' | 'formula';
-export type AdvancedAnalyticsTimeRangePreset = 'all' | '7d' | '30d' | '90d' | '365d' | 'custom';
+export type AdvancedAnalyticsTimeRangePreset =
+  | 'all'
+  | '7d'
+  | '30d'
+  | '90d'
+  | '365d'
+  | 'thisWeek'
+  | 'thisMonth'
+  | 'ytd'
+  | 'custom';
 export type AdvancedAnalyticsBaseMeasure =
   | 'activitiesCount'
   | 'activeDaysCount'

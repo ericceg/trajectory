@@ -63,8 +63,20 @@ todo...
 
 
 
-
 ## Advanced Analytics
+
+Trajectory includes a configurable analytics workspace to build training insights beyond the default dashboard.
+
+### Features
+
+- Define **base metrics** from activity data (distance, duration, elevation, pace/speed, heart-rate, cadence, power, etc.).
+- Create **formula metrics** that combine existing metrics (e.g. sum, difference, ratio).
+- Configure **time ranges** per metric/chart.
+- Build **streak definitions** with activity and metric conditions.
+- Create multi-series **custom charts** for trend analysis.
+- **Import/export analytics definitions** as JSON so setups can be shared or backed up.
+
+### Some Examples
 
 todo...
 

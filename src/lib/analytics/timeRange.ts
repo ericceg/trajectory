@@ -1,4 +1,4 @@
-import { format, subDays } from 'date-fns';
+import { format, startOfMonth, startOfWeek, startOfYear, subDays } from 'date-fns';
 
 import type { AdvancedAnalyticsTimeRangeConfig, AdvancedAnalyticsTimeRangePreset } from '@/types';
 
@@ -17,6 +17,9 @@ export const ADVANCED_ANALYTICS_TIME_RANGE_OPTIONS: Array<{
   { value: '30d', label: '30d' },
   { value: '90d', label: '90d' },
   { value: '365d', label: '365d' },
+  { value: 'thisWeek', label: 'This week' },
+  { value: 'thisMonth', label: 'This month' },
+  { value: 'ytd', label: 'YTD' },
   { value: 'custom', label: 'Custom' }
 ];
 
@@ -53,6 +56,24 @@ export function resolveAdvancedAnalyticsTimeRange(range: AdvancedAnalyticsTimeRa
     return {
       startDate: normalized.customStartDate || undefined,
       endDate: normalized.customEndDate || undefined
+    };
+  }
+  if (normalized.preset === 'thisWeek') {
+    return {
+      startDate: format(startOfWeek(today, { weekStartsOn: 1 }), 'yyyy-MM-dd'),
+      endDate: format(today, 'yyyy-MM-dd')
+    };
+  }
+  if (normalized.preset === 'thisMonth') {
+    return {
+      startDate: format(startOfMonth(today), 'yyyy-MM-dd'),
+      endDate: format(today, 'yyyy-MM-dd')
+    };
+  }
+  if (normalized.preset === 'ytd') {
+    return {
+      startDate: format(startOfYear(today), 'yyyy-MM-dd'),
+      endDate: format(today, 'yyyy-MM-dd')
     };
   }
 

@@ -57,6 +57,9 @@ const TIME_RANGE_PRESETS: AdvancedAnalyticsTimeRangePreset[] = [
   '30d',
   '90d',
   '365d',
+  'thisWeek',
+  'thisMonth',
+  'ytd',
   'custom'
 ];
 const CONDITION_JOINS: AdvancedAnalyticsConditionJoin[] = ['and', 'or'];
