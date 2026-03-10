@@ -1,6 +1,7 @@
 import { Suspense, lazy, useEffect, useRef } from 'react';
 import { HashRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 
+import { advancedAnalyticsRequestCacheKey } from '@/lib/analytics/cacheKey';
 import { resolveAdvancedAnalyticsTimeRange } from '@/lib/analytics/timeRange';
 import { runAdvancedAnalytics } from '@/lib/tauri';
 import { Sidebar } from '@/components/Sidebar';
@@ -158,9 +159,6 @@ export default function App() {
     }
     startupAdvancedAnalyticsDataVersion.current = startupDataVersionKey;
 
-    const requestCacheKey = (request: AdvancedAnalyticsRunRequest) =>
-      JSON.stringify({ request, dataVersion });
-
     const fixedAllTimeRange: AdvancedAnalyticsTimeRangeConfig = { preset: 'all' };
     const requestsByRangeKey = new Map<string, AdvancedAnalyticsRunRequest>();
     const appendRequestForRange = (timeRange: AdvancedAnalyticsTimeRangeConfig | undefined) => {
@@ -192,7 +190,10 @@ export default function App() {
           try {
             const response = await runAdvancedAnalytics(request);
             if (!cancelled) {
-              setCachedAdvancedAnalytics(requestCacheKey(request), response);
+              setCachedAdvancedAnalytics(
+                advancedAnalyticsRequestCacheKey(request, dataVersion),
+                response
+              );
             }
           } catch (error) {
             console.error('Automatic startup advanced analytics computation failed', error);

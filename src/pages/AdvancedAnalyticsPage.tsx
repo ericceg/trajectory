@@ -3,6 +3,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 
 import { AnalyticsLibrary } from '@/components/analytics/AnalyticsLibrary';
 import { TransferSelectionPanel } from '@/components/analytics/TransferSelectionPanel';
+import { advancedAnalyticsRequestCacheKey } from '@/lib/analytics/cacheKey';
 import {
   buildAdvancedAnalyticsTransferFile,
   mergeAdvancedAnalyticsTransferData,
@@ -77,34 +78,6 @@ function AnalyticsLoadingBar({
       </div>
     </section>
   );
-}
-
-function requestCacheKey(request: AdvancedAnalyticsRunRequest, dataVersion: string | null) {
-  const requestSignature = {
-    startDate: request.startDate,
-    endDate: request.endDate,
-    metrics: request.metrics.map((metric) => ({
-      id: metric.id,
-      kind: metric.kind,
-      base: metric.base,
-      formula: metric.formula
-    })),
-    streaks: request.streaks.map((streak) => ({
-      id: streak.id,
-      metricId: streak.metricId,
-      additionalMetricIds: streak.additionalMetricIds,
-      period: streak.period,
-      thresholdOperator: streak.thresholdOperator,
-      thresholdValue: streak.thresholdValue
-    })),
-    charts: request.charts.map((chart) => ({
-      id: chart.id,
-      chartType: chart.chartType,
-      metricIds: chart.metricIds,
-      granularity: chart.granularity
-    }))
-  };
-  return JSON.stringify({ request: requestSignature, dataVersion });
 }
 
 function buildRequest(
@@ -217,7 +190,7 @@ export function AdvancedAnalyticsPage() {
     const request = buildRequest(range, metrics, streaks, charts);
     return {
       request,
-      cacheKey: requestCacheKey(request, dataVersion)
+      cacheKey: advancedAnalyticsRequestCacheKey(request, dataVersion)
     };
   }, [charts, dataVersion, metrics, selectedItem, streaks]);
 
@@ -238,7 +211,7 @@ export function AdvancedAnalyticsPage() {
       const request = buildRequest(range, metrics, streaks, charts);
       byRangeKey.set(key, {
         request,
-        cacheKey: requestCacheKey(request, dataVersion)
+        cacheKey: advancedAnalyticsRequestCacheKey(request, dataVersion)
       });
     }
 
@@ -367,7 +340,7 @@ export function AdvancedAnalyticsPage() {
     for (const metric of viewTabMetrics) {
       const range = resolveAdvancedAnalyticsTimeRange(metric.timeRange);
       const request = buildRequest(range, metrics, streaks, charts);
-      const cacheKey = requestCacheKey(request, dataVersion);
+      const cacheKey = advancedAnalyticsRequestCacheKey(request, dataVersion);
       const response = getResponse(cacheKey);
       results[metric.id] = response?.metricResults[metric.id];
     }
@@ -379,7 +352,7 @@ export function AdvancedAnalyticsPage() {
     for (const streak of streaks) {
       const range = resolveAdvancedAnalyticsTimeRange(STREAK_FIXED_TIME_RANGE);
       const request = buildRequest(range, metrics, streaks, charts);
-      const cacheKey = requestCacheKey(request, dataVersion);
+      const cacheKey = advancedAnalyticsRequestCacheKey(request, dataVersion);
       const response = getResponse(cacheKey);
       results[streak.id] = response?.streakResults[streak.id];
     }
@@ -391,7 +364,7 @@ export function AdvancedAnalyticsPage() {
     for (const chart of charts) {
       const range = resolveAdvancedAnalyticsTimeRange(chart.timeRange);
       const request = buildRequest(range, metrics, streaks, charts);
-      const cacheKey = requestCacheKey(request, dataVersion);
+      const cacheKey = advancedAnalyticsRequestCacheKey(request, dataVersion);
       const response = getResponse(cacheKey);
       results[chart.id] = response?.chartResults[chart.id];
     }
