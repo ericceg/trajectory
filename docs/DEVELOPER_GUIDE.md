@@ -338,6 +338,7 @@ This internal API is a good starting point if the UI later needs server-side cha
 - applies light/dark mode via `document.documentElement.dataset.theme`
 - applies accent theme CSS variables (`applyAccentThemeToDocument`)
 - triggers one automatic startup scan per selected import folder path
+- after startup scan completion, precomputes advanced analytics request variants and warms app-store analytics cache
 - lazy-loads all routes with `React.lazy` + `Suspense`
 - gates routing based on settings state:
   - loading -> loading screen
@@ -380,13 +381,14 @@ Tracks:
 - backend `settings`
 - scan lifecycle state (`scanning`, `scanProgress`, `scanDone`)
 - in-memory `activitiesCache` keyed by filter/import-folder/scan timestamp
+- in-memory `advancedAnalyticsCache` keyed by analytics request payload + scan timestamp
 
 Actions:
 
 - `init()` loads settings and installs scan listeners once
 - settings mutators (`updateImportFolder`, `setScanRecursive`, `updateDarkMode`, `updateAccentTheme`, `updateHeatmapFullOpacity`)
-- `runScan(fullRescan?)` runs scan, refreshes settings, clears activities cache, and normalizes error state
-- cache helpers (`getCachedActivities`, `setCachedActivities`, `clearActivitiesCache`)
+- `runScan(fullRescan?)` runs scan, refreshes settings, clears activities/analytics caches, and normalizes error state
+- cache helpers (`getCachedActivities`, `setCachedActivities`, `clearActivitiesCache`, `getCachedAdvancedAnalytics`, `setCachedAdvancedAnalytics`, `clearAdvancedAnalyticsCache`)
 
 #### `src/store/useUiStateStore.ts` (persisted UI/view state)
 
@@ -560,6 +562,7 @@ Key behaviors:
 - For multi-metric `AND` streaks, streak results include `requiredMetricValues` and the View card displays combined period progress (sum of current required-metric values versus sum of required thresholds) plus a `met/required` metric count
 - `Sample time` activity timeline previews are shown in Configure previews, not in View metric cards
 - Advanced Analytics results are cached in-memory in `useAppStore` by request payload + `settings.lastScanTimestamp`; auto-run reuses cache and only runs missing request variants, while manual `Recompute` forces all current-tab requests
+- `App.tsx` also warms this same analytics cache automatically after startup scan completion, precomputing unique request ranges so Advanced Analytics View/Configure loads are typically immediate on first open
 - While analytics requests are running, `AdvancedAnalyticsPage` tracks per-request completion and renders a loading bar with completed/total and percent (Configure mode shows it directly under the top action toolbar; View mode shows it in the preview section)
 - Uses Settings heart-rate zone cutoffs for HR-zone sample conditions
 - Header actions include `Export JSON` / `Import JSON`, which now open a transfer selection panel:
@@ -658,6 +661,7 @@ Typical paths:
 2. If an import folder exists, `App.tsx` triggers `runScan()` once for that folder path.
 3. App store listens for `scan:progress` and updates UI scan state.
 4. On completion, app store refreshes settings (`lastScanTimestamp`) and clears cached activity lists.
+5. `App.tsx` then computes startup advanced analytics requests (unique per time range + current definitions) and stores results in `advancedAnalyticsCache`.
 
 ### Manual rescan (Settings)
 

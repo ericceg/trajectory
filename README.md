@@ -58,6 +58,7 @@ Prototype (actively evolving).
 - Advanced Analytics metric builders use a predefined unit-display dropdown with `Auto` as the default (for example `Auto`, `%`, `s`, `count`, `km`, `bpm`) instead of free-form text input, and metric values/series are converted to the selected compatible display unit (including ratio-to-percent scaling, e.g. `0.5` -> `50%`)
 - Advanced Analytics metric/chart plots support Activity Detail-style interactions and visual treatment: drag-to-zoom on x-axis buckets, click-to-reset, zoom-window rendering so y-axes re-fit to the visible range, matching tooltip/axis/grid styling, no chart animations, multi-series legends, and stacked bars that round only the true stack top (internal segment joins stay square)
 - Advanced Analytics keeps an in-memory result cache (keyed by analytics definitions + per-card request range + last scan timestamp), so revisiting the page feels instant when nothing changed; recomputation only runs when definitions/range/data version change or when you press `Recompute`
+- After each automatic startup scan, the app precomputes Advanced Analytics request variants in the background and warms the same in-memory analytics cache used by the Analytics page, so first-open latency is reduced
 - Advanced Analytics recomputation shows a loading/progress bar (completed requests, total requests, and percent) while results are being computed; in Configure mode the bar is pinned directly under the top action toolbar
 - Advanced Analytics supports selective JSON export/import of custom definitions (metrics/streaks/charts), with dependency-aware metric auto-inclusion (charts/streaks/formulas pull required metrics automatically), merge-by-ID import (selected items update/add without wiping everything), a human-readable payload layout (`summary` + `data`), and an export folder picker before writing JSON
 - Chart text/number labels inside plot surfaces are non-selectable to avoid accidental text highlighting during drag-to-zoom
@@ -94,6 +95,7 @@ npm run tauri dev
 1. Launch Trajectory.
 2. On first launch, select an existing import folder containing `.tcx` and/or `.fit` files.
 3. After selecting a folder (and on every app startup), Trajectory automatically runs a background scan.
+   - After that startup scan completes, Trajectory also precomputes Advanced Analytics in the background using your saved definitions.
 4. Open **Settings** any time to run:
    - **Rescan** for a normal incremental pass.
    - **Clear Cache + Full Rescan** when you want to wipe cached activities and re-import everything.
