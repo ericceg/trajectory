@@ -590,7 +590,7 @@ export function DashboardPage() {
                 return (
                   <div
                     key={dayKey}
-                    className={`min-h-[140px] border-r border-t border-border p-2 text-xs transition-[background-color,transform] duration-200 last:border-r-0 ${
+                    className={`min-h-[75px] border-r border-t border-border p-2 text-xs transition-[background-color,transform] duration-200 last:border-r-0 ${
                       inCurrentMonth ? 'bg-bg/20' : 'bg-bg/10 text-muted/40'
                     } ${
                       hoveredDay
