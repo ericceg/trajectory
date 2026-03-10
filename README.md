@@ -12,13 +12,15 @@ A local-first desktop app for exploring `.tcx`/`.fit` activities with dashboard,
 No cloud sync, no account, no server. Just you and your training data.
 
 
-## Why Trajectory
+## Why I Built This
 
-Trajectory is built for athletes who want full control of their training data.
-You get
-- a modern, responsive dashboard to get an overview of your activities
-- a local-first architecture that keeps your data private and secure
-- a powerful tool to explore your training history and build custom analytics (my favorite use case: time in aerobic zone).
+There is no single reason for why I built Trajectory, but rather a combination of factors:
+
+- I wanted a local-first solution to analyze my workout data without relying on cloud platforms or accounts.
+- I wanted to get the most out of my workout data. Having collected so many data points over the years, I wanted a way to explore and analyze it in more depth, beyond what the usual fitness platforms offer (and more tailored to my needs). See [Advanced Analytics](#advanced-analytics) for more details and some useful examples.
+- I wanted to learn about Tauri and Rust by building a real-world app.
+- Last but not least, I was inspired by the "you can just build it" philosophy by [Peter Steinberger](https://github.com/steipete).
+
 
 
 ## Download
@@ -56,6 +58,9 @@ Here is the workflow I personally use (and would recommend) for athletes in the 
 ## App Preview
 
 todo...
+
+
+## Advanced Analytics
 
 
 ## Privacy
