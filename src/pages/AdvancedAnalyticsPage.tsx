@@ -1,13 +1,22 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { open } from '@tauri-apps/plugin-dialog';
 
 import { AnalyticsLibrary } from '@/components/analytics/AnalyticsLibrary';
+import { TransferSelectionPanel } from '@/components/analytics/TransferSelectionPanel';
+import {
+  buildAdvancedAnalyticsTransferFile,
+  mergeAdvancedAnalyticsTransferData,
+  type AdvancedAnalyticsTransferData,
+  type AdvancedAnalyticsTransferSelectionResult,
+  parseAdvancedAnalyticsTransferFile
+} from '@/lib/analytics/transfer';
 import { AnalyticsPreview } from '@/components/analytics/AnalyticsPreview';
 import { ChartBuilder } from '@/components/analytics/ChartBuilder';
 import { MetricBuilder } from '@/components/analytics/MetricBuilder';
 import { StreakBuilder } from '@/components/analytics/StreakBuilder';
 import { resolveAdvancedAnalyticsTimeRange } from '@/lib/analytics/timeRange';
 import { validateAdvancedAnalyticsDefinitions } from '@/lib/analytics/validation';
-import { runAdvancedAnalytics } from '@/lib/tauri';
+import { exportAnalyticsJson, runAdvancedAnalytics } from '@/lib/tauri';
 import { useAdvancedAnalyticsStore } from '@/store/useAdvancedAnalyticsStore';
 import { useAppStore } from '@/store/useAppStore';
 import { useUiStateStore } from '@/store/useUiStateStore';
@@ -23,6 +32,51 @@ import type {
 interface RequestEntry {
   cacheKey: string;
   request: AdvancedAnalyticsRunRequest;
+}
+
+interface TransferSelectionSession {
+  id: string;
+  mode: 'import' | 'export';
+  sourceLabel: string;
+  data: AdvancedAnalyticsTransferData;
+}
+
+function AnalyticsLoadingBar({
+  loadingProgress
+}: {
+  loadingProgress: { completed: number; total: number } | null;
+}) {
+  if (!loadingProgress || loadingProgress.total <= 0) {
+    return (
+      <section className="rounded-xl border border-border bg-panel p-3">
+        <p className="text-xs text-muted">Recomputing analytics...</p>
+        <div className="mt-2 h-2 rounded-full bg-bg">
+          <div className="h-full w-2/5 rounded-full bg-accent/80" />
+        </div>
+      </section>
+    );
+  }
+
+  const total = Math.max(loadingProgress.total, 1);
+  const completed = Math.max(0, Math.min(loadingProgress.completed, total));
+  const percent = Math.round((completed / total) * 100);
+
+  return (
+    <section className="rounded-xl border border-border bg-panel p-3">
+      <div className="flex items-center justify-between gap-3 text-xs text-muted">
+        <span>Recomputing analytics...</span>
+        <span>
+          {completed}/{total} ({percent}%)
+        </span>
+      </div>
+      <div className="mt-2 h-2 rounded-full bg-bg">
+        <div
+          className="h-full rounded-full bg-accent transition-[width] duration-300"
+          style={{ width: `${percent}%` }}
+        />
+      </div>
+    </section>
+  );
 }
 
 function requestCacheKey(request: AdvancedAnalyticsRunRequest, dataVersion: string | null) {
@@ -72,12 +126,19 @@ export function AdvancedAnalyticsPage() {
   const addChart = useAdvancedAnalyticsStore((state) => state.addChart);
   const updateChart = useAdvancedAnalyticsStore((state) => state.updateChart);
   const removeChart = useAdvancedAnalyticsStore((state) => state.removeChart);
+  const replaceDefinitions = useAdvancedAnalyticsStore((state) => state.replaceDefinitions);
   const activeTab = useUiStateStore((state) => state.analyticsActiveTab);
   const setActiveTab = useUiStateStore((state) => state.setAnalyticsActiveTab);
 
   const [responsesByCacheKey, setResponsesByCacheKey] = useState<Record<string, AdvancedAnalyticsRunResponse>>({});
   const [loading, setLoading] = useState(false);
+  const [loadingProgress, setLoadingProgress] = useState<{ completed: number; total: number } | null>(null);
   const [runError, setRunError] = useState<string | null>(null);
+  const [transferMessage, setTransferMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [transferSelectionSession, setTransferSelectionSession] = useState<TransferSelectionSession | null>(
+    null
+  );
+  const importInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (selectedItem) {
@@ -170,10 +231,12 @@ export function AdvancedAnalyticsPage() {
 
   const runRequests = async (entries: RequestEntry[], force: boolean) => {
     if (entries.length === 0) {
+      setLoadingProgress(null);
       return;
     }
 
     setLoading(true);
+    setLoadingProgress({ completed: 0, total: entries.length });
     setRunError(null);
 
     const nextResponses: Record<string, AdvancedAnalyticsRunResponse> = {};
@@ -181,20 +244,26 @@ export function AdvancedAnalyticsPage() {
 
     await Promise.all(
       entries.map(async (entry) => {
-        if (!force) {
-          const existing = getResponse(entry.cacheKey);
-          if (existing) {
-            nextResponses[entry.cacheKey] = existing;
-            return;
-          }
-        }
-
         try {
+          if (!force) {
+            const existing = getResponse(entry.cacheKey);
+            if (existing) {
+              nextResponses[entry.cacheKey] = existing;
+              return;
+            }
+          }
+
           const next = await runAdvancedAnalytics(entry.request);
           nextResponses[entry.cacheKey] = next;
           setCachedAdvancedAnalytics(entry.cacheKey, next);
         } catch (error) {
           errors.push(error instanceof Error ? error.message : String(error));
+        } finally {
+          setLoadingProgress((current) =>
+            current
+              ? { ...current, completed: Math.min(current.total, current.completed + 1) }
+              : current
+          );
         }
       })
     );
@@ -202,6 +271,7 @@ export function AdvancedAnalyticsPage() {
     setResponsesByCacheKey((current) => ({ ...current, ...nextResponses }));
     setRunError(errors.length > 0 ? errors[0] : null);
     setLoading(false);
+    setLoadingProgress(null);
   };
 
   useEffect(() => {
@@ -212,6 +282,7 @@ export function AdvancedAnalyticsPage() {
     const missing = requestEntries.filter((entry) => !getResponse(entry.cacheKey));
     if (missing.length === 0) {
       setLoading(false);
+      setLoadingProgress(null);
       setRunError(null);
       return;
     }
@@ -219,6 +290,7 @@ export function AdvancedAnalyticsPage() {
     let cancelled = false;
     const run = async () => {
       setLoading(true);
+      setLoadingProgress({ completed: 0, total: missing.length });
       setRunError(null);
 
       const nextResponses: Record<string, AdvancedAnalyticsRunResponse> = {};
@@ -236,6 +308,14 @@ export function AdvancedAnalyticsPage() {
             if (!cancelled) {
               errors.push(error instanceof Error ? error.message : String(error));
             }
+          } finally {
+            if (!cancelled) {
+              setLoadingProgress((current) =>
+                current
+                  ? { ...current, completed: Math.min(current.total, current.completed + 1) }
+                  : current
+              );
+            }
           }
         })
       );
@@ -244,6 +324,7 @@ export function AdvancedAnalyticsPage() {
         setResponsesByCacheKey((current) => ({ ...current, ...nextResponses }));
         setRunError(errors.length > 0 ? errors[0] : null);
         setLoading(false);
+        setLoadingProgress(null);
       }
     };
 
@@ -251,6 +332,7 @@ export function AdvancedAnalyticsPage() {
 
     return () => {
       cancelled = true;
+      setLoadingProgress(null);
     };
   }, [autoRun, getCachedAdvancedAnalytics, requestEntries, setCachedAdvancedAnalytics]);
 
@@ -292,6 +374,111 @@ export function AdvancedAnalyticsPage() {
     return results;
   }, [charts, dataVersion, getCachedAdvancedAnalytics, metrics, responsesByCacheKey, streaks]);
 
+  const handleExportDefinitions = () => {
+    setTransferSelectionSession({
+      id:
+        typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+          ? crypto.randomUUID()
+          : String(Date.now()),
+      mode: 'export',
+      sourceLabel: 'Current analytics library',
+      data: {
+        metrics,
+        streaks,
+        charts
+      }
+    });
+  };
+
+  const handleImportDefinitions = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    try {
+      const text = await file.text();
+      const parsed = parseAdvancedAnalyticsTransferFile(text);
+      if (!parsed.ok) {
+        setTransferMessage({ type: 'error', text: parsed.error });
+        return;
+      }
+
+      setTransferSelectionSession({
+        id:
+          typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+            ? crypto.randomUUID()
+            : String(Date.now()),
+        mode: 'import',
+        sourceLabel: file.name,
+        data: parsed.data
+      });
+      setTransferMessage(null);
+    } catch (error) {
+      setTransferMessage({
+        type: 'error',
+        text: error instanceof Error ? error.message : String(error)
+      });
+    } finally {
+      event.target.value = '';
+    }
+  };
+
+  const handleTransferSelectionConfirm = async (
+    selection: AdvancedAnalyticsTransferSelectionResult
+  ) => {
+    if (!transferSelectionSession) {
+      return;
+    }
+
+    if (transferSelectionSession.mode === 'export') {
+      const folderPath = await open({
+        directory: true,
+        multiple: false,
+        title: 'Select Export Folder'
+      });
+      if (!folderPath || Array.isArray(folderPath)) {
+        return;
+      }
+
+      try {
+        const payload = buildAdvancedAnalyticsTransferFile(selection.data);
+        const fileText = JSON.stringify(payload, null, 2);
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const fileName = `trajectory-analytics-${timestamp}.json`;
+        const outputPath = await exportAnalyticsJson(folderPath, fileName, fileText);
+        setTransferMessage({
+          type: 'success',
+          text: `Exported ${selection.data.metrics.length} metrics, ${selection.data.streaks.length} streaks, and ${selection.data.charts.length} charts to ${outputPath}.`
+        });
+        setTransferSelectionSession(null);
+      } catch (error) {
+        setTransferMessage({
+          type: 'error',
+          text: error instanceof Error ? error.message : String(error)
+        });
+      }
+      return;
+    }
+
+    const merged = mergeAdvancedAnalyticsTransferData({
+      base: { metrics, streaks, charts },
+      incoming: selection.data
+    });
+    replaceDefinitions({
+      metrics: merged.metrics,
+      streaks: merged.streaks,
+      charts: merged.charts
+    });
+    setResponsesByCacheKey({});
+    setRunError(null);
+    setTransferSelectionSession(null);
+    setTransferMessage({
+      type: 'success',
+      text: `Imported ${selection.data.metrics.length} metrics, ${selection.data.streaks.length} streaks, and ${selection.data.charts.length} charts from ${transferSelectionSession.sourceLabel}.`
+    });
+  };
+
   return (
     <div className="space-y-6">
       <header className="space-y-3">
@@ -305,7 +492,7 @@ export function AdvancedAnalyticsPage() {
         </div>
 
         <section className="rounded-xl border border-border bg-panel p-3">
-          <div className="grid gap-3 lg:grid-cols-[auto_auto_auto_1fr] lg:items-center">
+          <div className="grid gap-3 lg:grid-cols-[auto_auto_auto_auto_auto_1fr] lg:items-center">
             <div className="inline-flex rounded-lg border border-border bg-bg/40 p-1">
               {(['view', 'configure'] as const).map((tab) => {
                 const active = activeTab === tab;
@@ -345,6 +532,31 @@ export function AdvancedAnalyticsPage() {
               Recompute
             </button>
 
+            <button
+              type="button"
+              onClick={handleExportDefinitions}
+              className="rounded-md border border-border px-4 py-2 text-sm font-medium text-muted hover:bg-bg hover:text-foreground"
+            >
+              Export Metrics
+            </button>
+
+            <button
+              type="button"
+              onClick={() => importInputRef.current?.click()}
+              className="rounded-md border border-border px-4 py-2 text-sm font-medium text-muted hover:bg-bg hover:text-foreground"
+            >
+              Import Metrics
+            </button>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".json,application/json"
+              className="hidden"
+              onChange={(event) => {
+                void handleImportDefinitions(event);
+              }}
+            />
+
             <div className="text-xs text-muted lg:text-right">
               Using HR zones from Settings:
               <span className="ml-1 font-medium text-foreground">
@@ -357,8 +569,40 @@ export function AdvancedAnalyticsPage() {
               ? 'Create and edit analytics definitions. Set metric/chart card time ranges for View cards here; Configure previews always use all activity history.'
               : 'See all analytics results at a glance. Metric cards show only values; charts appear only from Chart Views.'}
           </p>
+          <p className="mt-1 text-xs text-muted">
+            Use Export/Import to share selected analytics definitions. Dependencies are included automatically.
+          </p>
+          {transferMessage ? (
+            <p
+              className={`mt-2 text-xs ${
+                transferMessage.type === 'error' ? 'text-accent' : 'text-muted'
+              }`}
+            >
+              {transferMessage.text}
+            </p>
+          ) : null}
         </section>
+
+        {transferSelectionSession ? (
+          <TransferSelectionPanel
+            key={transferSelectionSession.id}
+            mode={transferSelectionSession.mode}
+            sourceLabel={transferSelectionSession.sourceLabel}
+            data={transferSelectionSession.data}
+            existingData={
+              transferSelectionSession.mode === 'import'
+                ? { metrics, streaks, charts }
+                : undefined
+            }
+            onCancel={() => setTransferSelectionSession(null)}
+            onConfirm={handleTransferSelectionConfirm}
+          />
+        ) : null}
       </header>
+
+      {activeTab === 'configure' && loading ? (
+        <AnalyticsLoadingBar loadingProgress={loadingProgress} />
+      ) : null}
 
       {activeTab === 'configure' ? (
         <div className="grid gap-6 xl:grid-cols-[340px_minmax(0,1fr)]">
@@ -420,7 +664,8 @@ export function AdvancedAnalyticsPage() {
               streaks={streaks}
               charts={charts}
               response={selectedResponse}
-              loading={loading}
+              loading={false}
+              loadingProgress={loadingProgress}
               error={runError}
               onMetricTimeRangeChange={(metricId, timeRange) =>
                 updateMetric(metricId, (metric) => ({ ...metric, timeRange }))
@@ -452,6 +697,7 @@ export function AdvancedAnalyticsPage() {
             overviewStreakResultsById={overviewStreakResultsById}
             overviewChartResultsById={overviewChartResultsById}
             loading={loading}
+            loadingProgress={loadingProgress}
             error={runError}
           />
         </div>

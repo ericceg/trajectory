@@ -416,6 +416,7 @@ Persists:
 - legacy global advanced analytics time range fields (no longer used by the current page UI)
 - per-definition card time ranges (`metric.timeRange`, `chart.timeRange`; streaks use fixed all-time range in UI/request grouping)
 - auto-run toggle
+- includes `replaceDefinitions(...)` for atomic import/replace of metrics/streaks/charts (with selection reconciliation)
 
 Computed analytics results are **not** persisted.
 
@@ -559,7 +560,15 @@ Key behaviors:
 - For multi-metric `AND` streaks, streak results include `requiredMetricValues` and the View card displays combined period progress (sum of current required-metric values versus sum of required thresholds) plus a `met/required` metric count
 - `Sample time` activity timeline previews are shown in Configure previews, not in View metric cards
 - Advanced Analytics results are cached in-memory in `useAppStore` by request payload + `settings.lastScanTimestamp`; auto-run reuses cache and only runs missing request variants, while manual `Recompute` forces all current-tab requests
+- While analytics requests are running, `AdvancedAnalyticsPage` tracks per-request completion and renders a loading bar with completed/total and percent (Configure mode shows it directly under the top action toolbar; View mode shows it in the preview section)
 - Uses Settings heart-rate zone cutoffs for HR-zone sample conditions
+- Header actions include `Export JSON` / `Import JSON`, which now open a transfer selection panel:
+  - users choose exact metrics/streaks/charts to transfer
+  - metric dependencies are auto-included (chart metrics, streak metrics, and recursive formula metric dependencies)
+  - dependency-only metric rows are visually marked in the selector with reasons
+  - import merges selected definitions into existing state by matching IDs (selected IDs replace, new IDs append) without replacing the entire library
+  - export prompts for a destination folder and writes a timestamped JSON file there
+  - export payload remains schema-versioned and now uses a more human-readable structure with top-level `summary` and nested `data`
 
 ### 5.5 Shared components and utilities
 
@@ -588,6 +597,10 @@ Libraries/helpers:
   - formatting helpers for advanced analytics values/units and previews
 - `src/lib/analytics/timeRange.ts`
   - shared advanced-analytics time-range presets/defaults/normalization + request-range resolution
+- `src/lib/analytics/transfer.ts`
+  - advanced analytics transfer payload builder + strict parser/validator
+  - dependency-closure resolver used by selective import/export UI
+  - merge-by-ID helper used by selective import (replace selected IDs, preserve all unselected definitions)
 - `src/lib/theme.ts`
   - accent theme IDs/palettes and CSS variable application
 - `src/lib/mapStyles.ts`
