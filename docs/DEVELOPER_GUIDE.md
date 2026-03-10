@@ -32,6 +32,7 @@ Top-level:
 - `src-tauri/`: Tauri shell + Rust backend
 - `docs/DEVELOPER_GUIDE.md`: this guide
 - `README.md`: user-facing usage/build/release notes
+- `.github/workflows/ci.yml`: PR/push quality gate workflow (typecheck/check/fmt)
 - `.github/workflows/release.yml`: tag-based macOS release build/publish workflow
 - `import_example/`: sample import folder contents
 - `test/`: sample FIT files used for manual verification (not an automated test suite)
@@ -698,6 +699,13 @@ Local development:
 - `npm install`
 - `npm run tauri dev`
 - `npm run check` (frontend `tsc --noEmit` + backend `cargo check`)
+
+Continuous Integration (`.github/workflows/ci.yml`):
+
+- runs on pull requests and pushes to `main`
+- installs Node 22 + Rust stable
+- runs `npm run check`
+- runs `cargo fmt --check` against `src-tauri/Cargo.toml`
 
 Production build:
 

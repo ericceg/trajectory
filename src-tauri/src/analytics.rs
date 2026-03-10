@@ -1535,7 +1535,10 @@ fn build_streak_results(
         };
         let longest = longest_consecutive_count(primary_series, &required_series, streak);
 
-        if required_metrics.iter().any(|(_, metric)| !metric.errors.is_empty()) {
+        if required_metrics
+            .iter()
+            .any(|(_, metric)| !metric.errors.is_empty())
+        {
             errors.push(format!(
                 "One or more required metrics have errors and may produce incomplete streak values."
             ));
@@ -1583,7 +1586,9 @@ fn period_matches_metric(
     series
         .get(key)
         .and_then(|point| point.value)
-        .is_some_and(|value| threshold_matches(streak.threshold_operator, value, streak.threshold_value))
+        .is_some_and(|value| {
+            threshold_matches(streak.threshold_operator, value, streak.threshold_value)
+        })
 }
 
 fn period_matches_all_required_metrics(

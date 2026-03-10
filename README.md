@@ -98,6 +98,8 @@ npm run check
 
 This runs frontend TypeScript type-checking and backend Rust `cargo check`.
 
+GitHub Actions CI (`.github/workflows/ci.yml`) runs the same checks on every pull request and on pushes to `main`, plus `cargo fmt --check`.
+
 ## Usage
 
 1. Launch Trajectory.
@@ -151,6 +153,10 @@ If you replace the icon, keep it as a single square PNG in that same path.
 A GitHub Actions workflow builds and publishes macOS artifacts on version tags (`v*`).
 
 Workflow file: `.github/workflows/release.yml`
+
+Continuous quality checks run in a separate workflow:
+
+- `.github/workflows/ci.yml` (PRs + pushes to `main`; runs `npm run check` and `cargo fmt --check`)
 
 Release guardrails:
 - The pushed tag version must match all of:
