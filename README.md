@@ -98,7 +98,9 @@ npm run check
 
 This runs frontend TypeScript type-checking and backend Rust `cargo check`.
 
-GitHub Actions CI (`.github/workflows/ci.yml`) runs the same checks on every pull request and on pushes to `main`, plus `cargo fmt --check`.
+GitHub Actions CI (`.github/workflows/ci.yml`) runs on every pull request and push to `main`:
+- frontend typecheck on Ubuntu
+- Rust `cargo check` and `cargo fmt --check` on macOS (to avoid Linux GTK/GLib system dependency failures for Tauri)
 
 ## Usage
 
@@ -156,7 +158,7 @@ Workflow file: `.github/workflows/release.yml`
 
 Continuous quality checks run in a separate workflow:
 
-- `.github/workflows/ci.yml` (PRs + pushes to `main`; runs `npm run check` and `cargo fmt --check`)
+- `.github/workflows/ci.yml` (PRs + pushes to `main`; runs frontend typecheck on Ubuntu and Rust `cargo check` + `cargo fmt --check` on macOS)
 
 Release guardrails:
 - The pushed tag version must match all of:
