@@ -7,7 +7,7 @@
 [![Frontend](https://img.shields.io/badge/frontend-React%20%2B%20TypeScript-3178c6)](https://reactjs.org/)
 
 
-**Lightweight, powerful local-first workout analyzer that keeps your data private**. 
+**Lightweight, powerful local-first workout analyzer that keeps your data private.**
 A local-first desktop app for exploring `.tcx`/`.fit` activities with dashboard, maps, streaks and custom analytics.
 No cloud sync, no account, no server. Just you and your training data.
 

@@ -1,19 +1,59 @@
 # Trajectory Developer Guide
 
-This document describes the current codebase (as implemented), with a focus on how data flows from local activity files into the Tauri/Rust backend and React UI.
+> Last verified against the codebase: **March 10, 2026**
 
-## 1. Project Purpose and Current Scope
+This guide is for contributors working on Trajectory's desktop app codebase.
+It is intentionally practical: what exists today, how it fits together, and how to extend it safely.
 
-Trajectory is a local-first desktop app for analyzing activity files.
+## 1. Quick Start
 
-Current implementation:
+### Prerequisites
 
-- Tauri v2 shell (desktop app, no HTTP server)
-- Rust backend for scanning/parsing/indexing/querying
-- React + TypeScript frontend for dashboard/list/detail/heatmap/settings UI
-- SQLite + JSON settings stored in OS app data/config directories
+- Node.js `22+`
+- Rust stable toolchain
+- macOS (primary supported platform for local dev and release)
 
-Supported import file types in the current codebase:
+### Install and run
+
+```bash
+npm ci
+npm run tauri dev
+```
+
+### Quality checks
+
+```bash
+npm run check
+```
+
+This runs:
+
+- TypeScript typecheck (`npm run typecheck`)
+- Rust check (`cargo check --manifest-path src-tauri/Cargo.toml`)
+
+### Build local production artifacts
+
+```bash
+npm run tauri build
+```
+
+Artifacts are created under:
+
+- `src-tauri/target/release/bundle/macos/*.app`
+- `src-tauri/target/release/bundle/dmg/*.dmg`
+
+## 2. Product Scope (Current)
+
+Trajectory is a local-first desktop app for exploring activity files.
+
+Current stack:
+
+- **Shell/runtime:** Tauri v2
+- **Backend:** Rust
+- **Frontend:** React + TypeScript + Vite + Tailwind
+- **Storage:** SQLite + JSON settings
+
+Supported activity files:
 
 - `.tcx`
 - `.txc` (accepted alias)
@@ -21,756 +61,313 @@ Supported import file types in the current codebase:
 
 Important behavior:
 
-- The user-owned import folder is read-only from the app's perspective (Trajectory does not modify source files).
-- The app maintains its own DB/cache/settings under Tauri app data/config paths.
-
-## 2. Repository Layout
-
-Top-level:
-
-- `src/`: React frontend
-- `src-tauri/`: Tauri shell + Rust backend
-- `docs/DEVELOPER_GUIDE.md`: this guide
-- `README.md`: user-facing overview, download instructions, and developer quick start
-- `LICENSE`: MIT license for repository usage and distribution
-- `.github/workflows/ci.yml`: PR/push quality gate workflow (frontend typecheck + Rust check/fmt)
-- `.github/workflows/release.yml`: tag-based macOS release build/publish workflow
-- `import_example/`: sample import folder contents
-- `test/`: sample FIT files used for manual verification (not an automated test suite)
-
-Frontend (`src/`):
-
-- `src/App.tsx`: route gating, startup scan trigger, layout, lazy routes
-- `src/main.tsx`: React bootstrap + global CSS + MapLibre CSS
-- `src/pages/`: route screens (`Dashboard`, `Activities`, `Activity Detail`, `Heatmap`, `Advanced Analytics`, `Settings`, `Onboarding`)
-- `src/components/`: reusable UI pieces (`Sidebar`, `MetricCard`, `ScanStatusCard`, map frame)
-- `src/components/analytics/preview/`: extracted Advanced Analytics preview cards + shared helpers (`MetricPreview`, `StreakPreview`, `ChartPreview`, shared tooltip/zoom/notice helpers)
-- `src/components/dashboard/`: dashboard-specific reusable components (currently `SparkBars`)
-- `src/store/`: Zustand stores (app/runtime state, persisted UI state, advanced analytics definitions)
-- `src/lib/`: Tauri bridge, analytics/formatting helpers, central chart plotting engine (`src/lib/charts/plottingEngine.ts`), dashboard aggregation helpers (`src/lib/dashboard/calendar.ts`), Activity Detail chart helpers (`src/lib/activityDetail/chartHelpers.ts`), map styles, theming, MapLibre hook
-- `src/types.ts`: TypeScript command/event payload contracts
-
-Display formatting conventions (shared helpers in `src/lib/format.ts`):
-
-- Duration/time values are rendered as `HH:mm:ss`.
-- Dates are rendered as `dd.MM.yyyy` (and `dd.MM.yyyy HH:mm:ss` for date+time).
-- Distances are rendered in kilometers (`km`).
-
-Central plotting engine:
-
-- `src/lib/charts/plottingEngine.ts` centralizes shared plotting behavior used by both Activity Detail and Advanced Analytics.
-- Shared exports include chart visual constants (axis/grid/tooltip styles, selection/cursor defaults, and animation defaults), pointer parsing helpers, and the reusable `usePlotDragZoom` hook.
-- Both `src/pages/ActivityDetailPage.tsx` and the Advanced Analytics preview components (`src/components/analytics/preview/*`) consume the same drag-to-zoom and click-to-reset interaction core.
-- `src/index.css` applies a global Recharts `user-select: none` rule (`.recharts-responsive-container` and descendants) so drag operations do not accidentally select chart text, including on newly added plots.
-
-Backend (`src-tauri/src/`):
-
-- `main.rs`: Tauri app bootstrap + command handlers
-- `scanner.rs`: import folder scan / incremental indexing / progress events
-- `parser.rs`: TCX + FIT parsing and derived metric computation
-- `db.rs`: SQLite schema, migrations, upsert/query logic
-- `analytics.rs`: advanced analytics rule evaluation (custom metrics/streaks/charts)
-- `settings.rs`: JSON settings persistence
-- `models.rs`: Rust command/event DTOs and parser/db shared structs
-
-Tauri/build config:
-
-- `src-tauri/tauri.conf.json`: bundle/window/build settings
-- `src-tauri/capabilities/default.json`: Tauri capability permissions
-- `src-tauri/Cargo.toml`: Rust dependencies and app version
-- `vite.config.ts`: Vite config + `@` alias + Tauri dev port
-- `tailwind.config.cjs`: Tailwind theme tokens mapped to CSS variables
-
-## 3. Runtime Architecture
-
-High-level flow:
-
-1. React UI calls typed wrappers in `src/lib/tauri.ts`.
-2. Wrappers call Tauri `invoke(...)` commands handled in `src-tauri/src/main.rs`.
-3. Backend commands open/query SQLite or run scan/parse work.
-4. Long-running scan work emits Tauri events (`scan:progress`, `scan:done`).
-5. Zustand app store (`src/store/useAppStore.ts`) tracks settings and scan status.
-6. UI pages fetch summaries/details/heatmap data directly via command wrappers.
-
-Concurrency behavior:
-
-- DB and scan commands are run in `tauri::async_runtime::spawn_blocking(...)` from `main.rs` to avoid blocking the UI thread.
-- The UI listens to `scan:progress` events and updates progress state while scans run.
-
-## 4. Backend Architecture (Rust)
-
-### 4.1 `src-tauri/src/main.rs`
-
-Responsibilities:
-
-- Resolve/create app data and app config directories using Tauri path APIs
-- Initialize SQLite (`db::init_db`)
-- Ensure a default settings file exists
-- Register command handlers and the dialog plugin
-- Hold shared `AppState { db_path, settings_path }`
-
-Key helpers:
-
-- `init_state(app)` sets up app-owned directories and files
-- `update_app_settings(...)` centralizes read-modify-write settings updates
-- `is_supported_accent_theme(...)` validates allowed accent theme IDs from the frontend
-- `validate_heart_rate_zone_upper_bounds_bpm(...)` validates user-configured HR zone cutoffs (4 ascending bpm thresholds)
-
-Implemented Tauri commands (current):
-
-- `get_settings()`
-- `set_import_folder(path, recursive)`
-- `set_dark_mode(dark_mode)`
-- `set_accent_theme(accent_theme)`
-- `set_heatmap_full_opacity(heatmap_full_opacity)`
-- `set_chart_max_samples(chart_max_samples)`
-- `set_heart_rate_zone_upper_bounds_bpm(upper_bounds_bpm)`
-- `scan_import_folder(full_rescan?)`
-- `list_activities(filters)`
-- `get_activity(id)`
-- `get_activity_samples(id, query?)`
-- `get_heatmap_data(filters)`
-- `run_advanced_analytics(request)`
-
-Notes:
-
-- `scan_import_folder` supports an optional `full_rescan` boolean (defaults to `false`).
-- `run_advanced_analytics(request)` evaluates custom metric/streak/chart definitions in one backend roundtrip and returns per-item errors/warnings when possible instead of failing the whole page.
-
-### 4.2 `src-tauri/src/models.rs`
-
-Defines serialized command/event payloads and internal parser/scanner types.
-
-Important serialized types:
-
-- `Settings`
-  - `import_folder_path`, `scan_recursive`, `last_scan_timestamp`
-  - `dark_mode`, `accent_theme`, `heatmap_full_opacity`
-  - `chart_max_samples`, `heart_rate_zone_upper_bounds_bpm`
-- `ActivityFilters`
-  - `start_date`, `end_date`, `category`, `sport_type`, `min_distance`, `max_distance`, `day`
-- `ActivitySummary`
-  - list/dashboard row payload used across multiple pages
-- `ActivityDetail`
-  - `summary`, `track`, `samples`, `original_sample_count`
-- `HeatmapFilters` / `HeatmapData`
-- `AdvancedAnalytics*`
-  - request/definition/result DTOs for custom metrics, streaks, and chart views
-- `ScanProgressEvent` / `ScanDoneEvent`
-
-Internal/shared (lower-level/internal structs):
-
-- `ActivitySampleQuery`
-- `ActivitySamplesResponse`
-- `ParsedActivity`
-- `SourceFileMeta`
-
-`serde(rename_all = "camelCase")` is used so Rust snake_case fields map cleanly to frontend camelCase interfaces.
-
-### 4.3 `src-tauri/src/settings.rs`
-
-Simple JSON settings persistence:
-
-- `load_settings(path)` returns defaults if file is missing
-- `save_settings(path, settings)` creates parent dirs and writes pretty JSON
-
-The settings file lives in the Tauri app config directory (e.g. macOS `~/Library/Application Support/...` via Tauri path APIs, depending on app identifier/platform conventions).
-
-### 4.4 `src-tauri/src/scanner.rs`
-
-Responsible for import folder enumeration, incremental change detection, parsing, DB upserts, and progress events.
-
-Key behaviors:
-
-- Accepts `.tcx`, `.txc`, and `.fit` files (`is_activity_file`)
-- Supports recursive and non-recursive scans
-- Recursive scans use `walkdir` and skip hidden entries (`.` prefix)
-- Canonicalizes discovered file paths when possible
-- Uses `(source_path, source_mtime, source_size)` for change detection
-- Emits progress on every processed/skipped file
-- Updates `last_scan_timestamp` after scan completion
-
-Incremental and full-rescan behavior:
-
-- Normal rescan:
-  - deletes DB rows for source files no longer present on disk
-  - skips unchanged files by size + mtime
-  - parses/upserts changed/new files only
-- Full rescan (`full_rescan = true`):
-  - clears cached activities and samples (`db::clear_activity_cache`)
-  - reimports all discovered activity files
-
-Error handling:
-
-- Parser errors are collected into `ScanDoneEvent.errors`
-- "No trackpoints" parser errors are treated as skipped (not fatal), enabling summary-only or unsupported-record edge cases to fail gracefully depending on parser outcome
-
-Events emitted:
-
-- `scan:progress` `{ parsed, total, currentFile }`
-- `scan:done` `{ added, updated, skipped, errors }`
-
-### 4.5 `src-tauri/src/parser.rs`
-
-Parses activity files and computes derived metrics.
-
-Supported parser entrypoints:
-
-- `parse_activity_file(path)` dispatches by extension
-- `parse_tcx_file(path)`
-- `parse_fit_file(path)`
-
-#### TCX parsing
-
-Uses `quick-xml` streaming parsing to extract:
-
-- sport type (`Activity@Sport`)
-- activity start time (`Lap@StartTime`, fallbacks to `Id` / trackpoint time)
-- notes
-- trackpoints with time, lat/lon, altitude, distance, speed, HR
-- lap totals (distance/time) as fallbacks
-
-#### FIT parsing
-
-Uses `fitparser` and processes multiple record types (`record`, `session`, `activity`, `sport`, `workout`).
-
-Extracts when present:
-
-- timestamp / start time
-- lat/lon (including semicircle normalization)
-- altitude, HR, speed, distance
-- sport / sub-sport
-- workout/session title fields
-- summary totals (distance, duration, ascent, avg/max speed, HR)
-
-Important FIT behavior:
-
-- If no point records exist, the parser can still build a **summary-only** activity (`build_summary_only_activity`) using session/activity totals.
-- Summary-only FIT activities have no GPS track and no chart samples.
-
-#### Derived metrics and normalization
-
-`build_parsed_activity(...)` computes:
-
-- duration (timestamp delta with fallback to summary/lap duration)
-- distance (reported distance delta > GPS haversine > fallback totals)
-- elevation gain (positive deltas > 1m)
-- avg/max speed (reported/derived)
-- avg/max heart rate
-- category (normalized bucket: Running/Biking/Strength/etc.)
-- title (explicit title/notes/sport/file-name fallback)
-
-Downsampling behavior in parser:
-
-- `MAX_UI_POINTS = 2000`
-- `track` is downsampled before storing in `activities.track_json`
-- `samples` are **not** downsampled in the parser (full parsed sample list is passed to DB upsert)
-
-### 4.6 `src-tauri/src/db.rs`
-
-Owns SQLite schema creation, lightweight migrations/backfills, upsert logic, and all query paths used by Tauri commands.
-
-Schema:
-
-- `activities`
-  - source metadata (`source_path`, `source_mtime`, `source_size`)
-  - summary metrics (time/distance/elevation/speed/HR)
-  - display fields (`title`, `category`, `sport_type`)
-  - map payload (`track_json`)
-  - `original_sample_count`
-- `activity_samples`
-  - time-series rows for charting (`elapsed_seconds`, distance/speed/hr/altitude/lat/lon/time)
-  - FK `activity_id -> activities.id ON DELETE CASCADE`
-
-Connection/bootstrap:
-
-- `open_connection(...)` enables WAL + foreign keys
-- `init_db(...)` creates tables/indexes and runs compatibility helpers
-
-Compatibility helpers (idempotent):
-
-- `ensure_activity_category_column(...)`
-  - adds/backfills `category`
-  - creates category index
-- `ensure_activity_title_column(...)`
-  - adds/backfills `title`
-
-Scan/index support:
-
-- `source_file_meta_map(...)`
-- `delete_activity_by_source_path(...)`
-- `clear_activity_cache(...)`
-- `upsert_activity(...)`
-  - upserts `activities` by unique `source_path`
-  - rewrites all `activity_samples` rows for the activity inside a transaction
-
-Query functions used by Tauri commands:
-
-- `list_activities(conn, filters)`
-  - supports date range, `category`, `sport_type`, distance min/max, exact day
-  - orders by `activity_start DESC`
-- `get_activity(conn, id)`
-  - loads summary + `track_json` + `original_sample_count`
-  - loads all samples
-  - returns a **downsampled default chart window** for `samples` (uses internal sampling helper)
-- `get_heatmap_data(conn, filters)`
-  - filters GPS activities and returns `track_json` tracks
-  - downscales aggregate heatmap point volume via stride if needed
-
-Internal sampling helpers (currently not exposed as a Tauri command):
-
-- `get_activity_samples(conn, id, query)`
-- `sample_activity_window(...)`
-- `ActivitySampleQuery` supports distance-window filtering + `max_samples`
-- sample count clamp: `50..=20_000`, default `2000`
-
-This internal API is a good starting point if the UI later needs server-side chart zoom/window requests instead of loading `get_activity(...)` samples up front.
-
-## 5. Frontend Architecture (React + TypeScript)
-
-### 5.1 Entry and app shell
-
-`src/main.tsx`:
-
-- imports MapLibre CSS (`maplibre-gl/dist/maplibre-gl.css`)
-- imports global styles (`src/index.css`)
-- mounts `<App />` in `React.StrictMode`
-
-`src/App.tsx`:
-
-- initializes app store (`init()`) on mount
-- applies light/dark mode via `document.documentElement.dataset.theme`
-- applies accent theme CSS variables (`applyAccentThemeToDocument`)
-- triggers one automatic startup scan per selected import folder path
-- after startup scan completion, precomputes advanced analytics request variants and warms app-store analytics cache
-- lazy-loads all routes with `React.lazy` + `Suspense`
-- gates routing based on settings state:
-  - loading -> loading screen
-  - no import folder -> onboarding page
-  - otherwise -> main app layout + `HashRouter`
-
-Routes currently implemented:
-
-- `/` -> `DashboardPage`
-- `/activities` -> `ActivitiesPage`
-- `/activities/:id` -> `ActivityDetailPage`
-- `/heatmap` -> `HeatmapPage`
-- `/settings` -> `SettingsPage`
-
-`NavigationMemoryTracker` persists the last visited route for sidebar sections (`dashboard`, `heatmap`, `settings`) using the UI state store.
-
-### 5.2 Tauri bridge (`src/lib/tauri.ts`)
-
-This file is the frontend source of truth for command and event string names.
-
-Wrappers:
+- The selected import folder is treated as read-only input.
+- App data is stored in app-owned directories (`activities.sqlite`, `settings.json`).
+- No cloud backend. No telemetry service.
+- Map views still fetch external map tiles (OSM/CARTO) at runtime.
+
+## 3. Repository Map
+
+| Path | Purpose |
+| --- | --- |
+| `src/` | React frontend |
+| `src-tauri/` | Tauri shell + Rust backend |
+| `docs/DEVELOPER_GUIDE.md` | This document |
+| `.github/workflows/ci.yml` | Typecheck + Rust quality gate |
+| `.github/workflows/release.yml` | Tag-based macOS release pipeline |
+
+## 4. Architecture At A Glance
+
+```mermaid
+flowchart LR
+  UI[React Pages + Zustand Stores] --> Bridge[src/lib/tauri.ts]
+  Bridge --> TauriInvoke[Tauri invoke commands]
+  TauriInvoke --> Main[src-tauri/src/main.rs]
+  Main --> Scanner[scanner.rs]
+  Main --> DB[db.rs]
+  Main --> Analytics[analytics.rs]
+  Main --> Settings[settings.rs]
+  Scanner --> Parser[parser.rs]
+  Scanner --> DB
+  DB --> SQLite[(activities.sqlite)]
+  Settings --> SettingsFile[(settings.json)]
+  Scanner --> Events[scan:progress / scan:done]
+  Events --> UI
+```
+
+## 5. Frontend Overview
+
+### App shell and routing
+
+`src/App.tsx` handles:
+
+- app bootstrap (`useAppStore.init()`)
+- dark/light theme application
+- accent theme CSS variable application
+- automatic startup scan (once per selected import folder path)
+- startup advanced analytics cache warm-up after a completed scan
+- route rendering via `HashRouter`
+
+Current routes:
+
+| Route | Page |
+| --- | --- |
+| `/` | `DashboardPage` |
+| `/activities` | `ActivitiesPage` |
+| `/activities/:id` | `ActivityDetailPage` |
+| `/heatmap` | `HeatmapPage` |
+| `/analytics` | `AdvancedAnalyticsPage` |
+| `/settings` | `SettingsPage` |
+
+### Tauri bridge source of truth
+
+`src/lib/tauri.ts` defines command wrappers and event listeners.
+
+Current wrappers:
 
 - `getSettings`
 - `setImportFolder`
 - `setDarkMode`
 - `setAccentTheme`
 - `setHeatmapFullOpacity`
-- `scanImportFolder(fullRescan?)`
-- `listActivities(filters?)`
-- `getActivity(id)`
-- `getHeatmapData(filters?)`
-- `onScanProgress(handler)`
+- `setChartMaxSamples`
+- `setHeartRateZoneUpperBoundsBpm`
+- `scanImportFolder`
+- `listActivities`
+- `getActivity`
+- `getActivitySamples`
+- `getHeatmapData`
+- `runAdvancedAnalytics`
+- `exportAnalyticsJson`
+- `onScanProgress`
 
-### 5.3 Global state stores
+### Global state stores
 
-#### `src/store/useAppStore.ts` (runtime/app state)
+| Store | File | Responsibility |
+| --- | --- | --- |
+| App/runtime state | `src/store/useAppStore.ts` | settings, scan lifecycle, in-memory activity cache, in-memory analytics cache |
+| Persisted UI state | `src/store/useUiStateStore.ts` | filters, tabs, navigation memory, dashboard mode, heatmap controls |
+| Persisted analytics definitions | `src/store/useAdvancedAnalyticsStore.ts` | metrics/streaks/charts definitions, selection, auto-run |
 
-Tracks:
+### Page behavior highlights
 
-- backend `settings`
-- scan lifecycle state (`scanning`, `scanProgress`, `scanDone`)
-- in-memory `activitiesCache` keyed by filter/import-folder/scan timestamp
-- in-memory `advancedAnalyticsCache` keyed by analytics request payload + scan timestamp
+- **Onboarding:** directory picker + recursive toggle.
+- **Settings:** tabs for Import, Appearance, Athlete Metrics.
+  - Import actions: incremental rescan and full cache clear + rescan.
+  - Appearance includes chart sample cap slider and heatmap opacity preference.
+  - Athlete Metrics manages heart-rate zone cutoffs.
+- **Dashboard:** year/month calendar views with aggregate metrics and drilldowns.
+- **Activities:** filter + sort table, navigation into details.
+- **Activity Detail:**
+  - fetches summary/track via `getActivity`
+  - fetches chart samples via `getActivitySamples`
+  - re-queries samples when zoom window or `chartMaxSamples` changes
+- **Heatmap:** map overlay rendering with date/category/sport filters.
+- **Advanced Analytics:** custom metrics/streaks/charts builder + preview, selective JSON import/export.
 
-Actions:
+## 6. Backend Overview
 
-- `init()` loads settings and installs scan listeners once
-- settings mutators (`updateImportFolder`, `setScanRecursive`, `updateDarkMode`, `updateAccentTheme`, `updateHeatmapFullOpacity`)
-- `runScan(fullRescan?)` runs scan, refreshes settings, clears activities/analytics caches, and normalizes error state
-- cache helpers (`getCachedActivities`, `setCachedActivities`, `clearActivitiesCache`, `getCachedAdvancedAnalytics`, `setCachedAdvancedAnalytics`, `clearAdvancedAnalyticsCache`)
+### Main app entry (`src-tauri/src/main.rs`)
 
-#### `src/store/useUiStateStore.ts` (persisted UI/view state)
+Responsibilities:
 
-Uses `zustand/middleware/persist` under key `trajectory-ui-state`.
+- initialize app state and storage paths
+- initialize SQLite schema
+- ensure default settings file exists
+- register Tauri command handlers
+- validate input settings (accent theme, chart sample limits, HR zones)
 
-Persists UI preferences/navigation state for:
+Registered Tauri commands:
 
-- active settings tab
-- dashboard mode/year/month/bar metric
-- activities filters + sorting
-- sidebar last-route memory
-- heatmap time span/custom dates/category/sport/reduced map complexity
-- advanced analytics active tab (`view`/`configure`)
+| Command | Purpose |
+| --- | --- |
+| `get_settings` | Read settings JSON |
+| `set_import_folder` | Set folder + recursive scan option |
+| `set_dark_mode` | Update theme mode |
+| `set_accent_theme` | Update accent palette |
+| `set_heatmap_full_opacity` | Toggle heatmap opacity mode |
+| `set_chart_max_samples` | Persist chart sample cap |
+| `set_heart_rate_zone_upper_bounds_bpm` | Save Z1-Z4 upper bpm limits (Z5 is everything above Z4) |
+| `scan_import_folder` | Run incremental/full scan |
+| `list_activities` | Query activity list |
+| `get_activity` | Get activity summary + route track |
+| `get_activity_samples` | Query/downsample chart samples |
+| `get_heatmap_data` | Return heatmap tracks |
+| `run_advanced_analytics` | Compute analytics payload |
+| `export_analytics_json` | Write exported analytics JSON file |
 
-This store intentionally contains view state only (not backend data).
 
-#### `src/store/useAdvancedAnalyticsStore.ts` (persisted analytics definitions)
 
-Uses `zustand/middleware/persist` under key `trajectory-advanced-analytics`.
+### Scanner (`src-tauri/src/scanner.rs`)
 
-Persists:
+What it does:
 
-- custom metric definitions (base + formula)
-- custom streak definitions
-- chart view definitions
-- selected analytics item
-- legacy global advanced analytics time range fields (no longer used by the current page UI)
-- per-definition card time ranges (`metric.timeRange`, `chart.timeRange`; streaks use fixed all-time range in UI/request grouping)
-- auto-run toggle
-- includes `replaceDefinitions(...)` for atomic import/replace of metrics/streaks/charts (with selection reconciliation)
+- discovers activity files (`.tcx`, `.txc`, `.fit`)
+- supports recursive/non-recursive scan modes
+- canonicalizes paths when possible
+- compares `(source_path, source_mtime, source_size)` for incremental detection
+- prunes deleted source files from DB on incremental scans
+- supports full rebuild (`full_rescan = true`)
+- emits progress/done events:
+  - `scan:progress` `{ parsed, total, currentFile }`
+  - `scan:done` `{ added, updated, skipped, errors }`
 
-Computed analytics results are **not** persisted.
+### Parser (`src-tauri/src/parser.rs`)
 
-### 5.4 Pages (`src/pages/`)
+Parses TCX and FIT into normalized activity models.
 
-#### `OnboardingPage.tsx`
+Notable behavior:
 
-- first-launch folder selection using `@tauri-apps/plugin-dialog`
-- recursive scan toggle before saving
-- persists import folder settings via app store
+- derives category/title fallbacks
+- computes duration, moving time, distance, elevation, speed, HR stats
+- supports summary-only FIT import if no point records are present
+- parses cadence and power when available
+- downsamples stored route track to `MAX_UI_POINTS = 2000`
+- preserves full sample rows for DB insert (sampling happens at query time)
 
-#### `SettingsPage.tsx`
+### Database layer (`src-tauri/src/db.rs`)
 
-Tabbed settings UI:
+Responsibilities:
 
-- `Import` tab
-  - choose import folder
-  - toggle recursive scans
-  - `Rescan`
-  - `Clear Cache + Full Rescan` (with inline confirmation)
-  - scan status card and scan error list
-- `Appearance` tab
-  - dark mode toggle
-  - accent theme selection
-  - heatmap opacity preference (`heatmapFullOpacity`)
+- schema creation and migrations (`DB_SCHEMA_VERSION = 2`)
+- upsert activity + sample rows
+- query list/detail/heatmap/sample windows
+- query-side downsampling
 
-#### `DashboardPage.tsx`
+Tables:
 
-Current dashboard implementation is more advanced than the original simple month grid prototype.
+- `activities`
+- `activity_samples`
 
-Key behaviors:
+Recent schema/migration coverage includes:
 
-- Loads all activities via `listActivities(...)` (with app-store cache keying by import folder + last scan timestamp)
-- Derives summary cards and streaks in-memory from the loaded activity list
-- Computes:
-  - weekly summary totals
-  - yearly summary totals
-  - weekly activity streak
-  - monthly/day/weekly aggregates in-memory
-- Supports two calendar modes:
-  - `year` (weekly bars across the year)
-  - `month` (daily bars for selected month)
-- Supports bar metrics:
-  - hours
-  - kilometers
-  - activity count
-- Hover/click interactions:
-  - year bars preview weeks and drill into month mode
-  - month bars preview days and navigate to the primary activity for that day
-- Decomposition details:
-  - calendar aggregation/formatting logic lives in `src/lib/dashboard/calendar.ts`
-  - bar-strip rendering lives in `src/components/dashboard/SparkBars.tsx`
+- `category`, `title`, `min_hr`, `moving_duration_seconds`
+- sample-level `cadence`, `power_watts`
 
-#### `ActivitiesPage.tsx`
+Sampling notes:
 
-- Fetches activities via `listActivities(...)`
-- Uses app-store cache for faster back/forward navigation
-- Filters (auto-apply):
-  - category
-  - min distance (km)
-  - max distance (km)
-- Sortable table via TanStack Table
-- Row click/keyboard navigation to activity detail route
-- Sorting state persisted in UI store
+- `get_activity` returns summary + track (no samples)
+- `get_activity_samples` returns filtered/downsampled sample windows
+- default chart sample cap is `2000`, clamped in Rust (`50..=20000`)
+- settings validation in `main.rs` accepts `100..=20000`
 
-#### `ActivityDetailPage.tsx`
+### Settings persistence (`src-tauri/src/settings.rs`)
 
-Loads one activity via `getActivity(id)` and renders:
+- `load_settings(path)` reads JSON, falling back to defaults when missing.
+- `save_settings(path, settings)` writes formatted JSON.
 
-- header + metadata
-- route map (MapLibre) with maximize/minimize frame
-- right-side metric rail
-- chart section with two modes:
-  - combined normalized overlay chart
-  - split synchronized charts (pace/speed/HR/elevation)
+Default settings (current):
 
-Chart behaviors:
+- `scanRecursive: true`
+- `darkMode: false`
+- `accentTheme: "citrus-orange"`
+- `heatmapFullOpacity: false`
+- `chartMaxSamples: 2000`
+- `heartRateZoneUpperBoundsBpm: [120, 140, 160, 180]`
 
-- drag-to-zoom on distance axis
-- click-to-reset zoom
-- adaptive re-scaling to visible domain
-- series toggles (combined mode)
-- no-data handling for missing samples
-- pure chart/zone helpers are extracted to `src/lib/activityDetail/chartHelpers.ts` to keep rendering/state code in the page leaner
+## 7. Contracts Between Frontend and Rust
 
-Map behaviors:
-
-- route GeoJSON line source/layer in MapLibre
-- fit-to-track bounds
-- reduced-complexity basemap toggle
-- maximized overlay mode with `Esc` to close
-
-#### `HeatmapPage.tsx`
-
-Global route heatmap page built on MapLibre.
-
-Data flow:
-
-1. Build activity filter from persisted heatmap UI state.
-2. Fetch matching activities via `listActivities(...)` (used to populate sport-type options).
-3. Fetch route geometry via `getHeatmapData(...)`.
-4. Render track overlays as GeoJSON line layers.
-
-Filters:
-
-- time span preset (`all`, `30d`, `90d`, `365d`, `custom`)
-- custom start/end date
-- category
-- sport type
-
-Rendering features:
-
-- adaptive line width/opacity based on track count
-- optional full-opacity mode (from app settings)
-- reduced-complexity basemap toggle
-- maximize/minimize frame
-- point count summary (including downsampled count)
-
-#### `AdvancedAnalyticsPage.tsx`
-
-Prototype custom analytics builder page.
-
-Key behaviors:
-
-- Loads/saves analytics definitions from `useAdvancedAnalyticsStore`
-- Runs analytics via `runAdvancedAnalytics(...)` (Tauri command `run_advanced_analytics`)
-- Supports:
-  - base metrics (summary aggregates + sample-time metrics)
-  - formula metrics (`+`, `-`, `/`, `%`)
-  - daily/weekly threshold streaks, including optional multi-metric `AND` requirements (`streak.metricId` + `streak.additionalMetricIds`) where each required metric must pass the same operator/threshold in each period
-  - time-bucketed chart views (`bar`, `line`, `stackedBar`)
-- Multi-series chart previews render a legend; stacked bars use per-segment corner logic so only the top visible segment per stack bucket has rounded top corners (internal joins stay square)
-- Guided builder UI only (no DSL), grouped activity/sample filters (`OR` between groups, `AND` within each group)
-- Metric-builder group editors intentionally use a flatter structure for larger rule sets (fewer nested containers and inline condition counts) to reduce scanning fatigue when many conditions are configured
-- `Sample time` base metrics can set `minimumSampleMatchSeconds` to count only contiguous matching runs above the threshold (useful for suppressing short HR-zone spikes)
-- `Sample time` metric preview cards render activity timeline strips that show tracked intervals and highlight contiguous runs that were included vs filtered out by the minimum-match threshold; cards progressively expand in batches via “Show more” and support one-click full expansion via “Show all”
-- `Sample time` metric preview activity rows are clickable and open `ActivityDetailPage` (`/activities/:id`) while passing return context (`fromPath`/`fromLabel`) so Activity Detail can route back to Advanced Analytics
-- Metric unit display is selected from predefined dropdown options with `Auto` as the default (no free-form unit text input), and backend analytics converts scalar/series values to compatible display units before previews/charts/streaks consume them (including dimensionless ratio -> `%` scaling); chart tooltips render resolved units for `Auto` instead of showing literal `auto`
-- UI separates analytics editing vs preview into Configure/View tabs (View is default and renders an at-a-glance overview); the active tab is persisted in UI state, and metrics include a persisted `showInView` toggle used to filter the View metrics section
-- Preview rendering is decomposed into focused modules under `src/components/analytics/preview/` (`MetricPreview`, `StreakPreview`, `ChartPreview`, and shared helpers), while `src/components/analytics/AnalyticsPreview.tsx` now mainly orchestrates selected/overview mode composition
-- Configure-mode library supports explicit metric reordering (up/down controls) separately for base and formula metric sections, persisted via `useAdvancedAnalyticsStore.metrics` order
-- Each metric/chart definition includes its own persisted card time range config (`all`, `7d`, `30d`, `90d`, `365d`, `custom` + optional dates); streaks always run with all-time range in the current UI
-- Metric/chart time ranges are editable in Configure only for View-card rendering; Configure previews intentionally run with all-time history while View is read-only and displays each card's active range as an indicator
-- View tab metric cards intentionally render scalar values only in a responsive multi-column grid; charts in View are shown only for explicit Chart View definitions
-- View tab streak cards use a compact stat layout with current streak, longest streak, and current value plus progress bars
-- For multi-metric `AND` streaks, streak results include `requiredMetricValues` and the View card displays combined period progress (sum of current required-metric values versus sum of required thresholds) plus a `met/required` metric count
-- `Sample time` activity timeline previews are shown in Configure previews, not in View metric cards
-- Advanced Analytics results are cached in-memory in `useAppStore` by request payload + `settings.lastScanTimestamp`; auto-run reuses cache and only runs missing request variants, while manual `Recompute` forces all current-tab requests
-- `App.tsx` also warms this same analytics cache automatically after startup scan completion, precomputing unique request ranges so Advanced Analytics View/Configure loads are typically immediate on first open
-- While analytics requests are running, `AdvancedAnalyticsPage` tracks per-request completion and renders a loading bar with completed/total and percent (Configure mode shows it directly under the top action toolbar; View mode shows it in the preview section)
-- Uses Settings heart-rate zone cutoffs for HR-zone sample conditions
-- Header actions include `Export JSON` / `Import JSON`, which now open a transfer selection panel:
-  - users choose exact metrics/streaks/charts to transfer
-  - metric dependencies are auto-included (chart metrics, streak metrics, and recursive formula metric dependencies)
-  - dependency-only metric rows are visually marked in the selector with reasons
-  - import merges selected definitions into existing state by matching IDs (selected IDs replace, new IDs append) without replacing the entire library
-  - export prompts for a destination folder and writes a timestamped JSON file there
-  - export payload remains schema-versioned and now uses a more human-readable structure with top-level `summary` and nested `data`
-
-### 5.5 Shared components and utilities
-
-Components:
-
-- `src/components/Sidebar.tsx`
-  - section navigation with last-route memory (except `Activities`, which always goes to `/activities`), including Advanced Analytics
-- `src/components/analytics/*`
-  - advanced analytics library list, builders, and preview UI (library can run in configure or view-only mode)
-- `src/components/analytics/preview/*`
-  - extracted preview composition modules and shared chart/tooltip/notice utilities used by analytics Configure/View preview surfaces
-- `src/components/dashboard/SparkBars.tsx`
-  - reusable interactive/non-interactive compact bar strip used by year/month calendar summaries
-- `src/components/MetricCard.tsx`
-  - reusable metric display card
-- `src/components/ScanStatusCard.tsx`
-  - scan idle/progress/done UI
-- `src/components/MaximizableMapFrame.tsx`
-  - expandable map container overlay with `Esc` support
-- `src/components/MonthCalendar.tsx`
-  - legacy/simple month calendar component (currently not used by `DashboardPage`)
-
-Libraries/helpers:
-
-- `src/lib/format.ts`
-  - UI formatting helpers for distance/time/speed/pace/date values
-- `src/lib/analytics/validation.ts`
-  - frontend validation for definition shape and chart metric-count constraints
-- `src/lib/analytics/formatting.ts`
-  - formatting helpers for advanced analytics values/units and previews
-- `src/lib/analytics/timeRange.ts`
-  - shared advanced-analytics time-range presets/defaults/normalization + request-range resolution
-- `src/lib/analytics/transfer.ts`
-  - advanced analytics transfer payload builder + strict parser/validator
-  - dependency-closure resolver used by selective import/export UI
-  - merge-by-ID helper used by selective import (replace selected IDs, preserve all unselected definitions)
-- `src/lib/dashboard/calendar.ts`
-  - dashboard aggregation helpers (weekly/yearly summaries, streak calculation, calendar bucket generation, metric display formatting)
-- `src/lib/activityDetail/chartHelpers.ts`
-  - Activity Detail chart constants + pure helpers (series defaults, range normalization, heart-rate zone summaries/highlighting, chart tick/tooltip formatters)
-- `src/lib/theme.ts`
-  - accent theme IDs/palettes and CSS variable application
-- `src/lib/mapStyles.ts`
-  - raster MapLibre styles (OSM + reduced-complexity CARTO)
-- `src/lib/useManagedMapLibre.ts`
-  - reusable MapLibre lifecycle hook
-  - preserves viewport across style/reduced-complexity toggles
-  - adds navigation controls and resize observer support
-
-Styling system:
-
-- `src/index.css` defines CSS variables for light/dark themes and accent-driven glow variables
-- `tailwind.config.cjs` maps Tailwind color tokens to those CSS variables (`bg`, `panel`, `muted`, `accent`, `border`, `foreground`)
-
-## 6. API Contracts Between UI and Rust
-
-Mirrored contract files:
+Mirror files:
 
 - Rust: `src-tauri/src/models.rs`
 - TypeScript: `src/types.ts`
 
-When changing a Tauri payload field:
+When changing any command payload or DTO:
 
-1. Update Rust model in `src-tauri/src/models.rs`
-2. Update/implement backend logic (`main.rs`, `db.rs`, etc.)
-3. Update TS interface in `src/types.ts`
-4. Update wrapper in `src/lib/tauri.ts`
-5. Update consuming UI code
+1. Update Rust model(s) in `src-tauri/src/models.rs`.
+2. Update backend behavior (`main.rs`, `db.rs`, `analytics.rs`, etc.).
+3. Update TypeScript interfaces in `src/types.ts`.
+4. Update bridge wrappers in `src/lib/tauri.ts`.
+5. Update UI/store consumers.
 
-Current command/event payloads are camelCase in the frontend and automatically mapped from Rust via serde config.
+Serialization uses camelCase mapping (`serde(rename_all = "camelCase")`).
 
-## 7. Data Storage and Query Shaping
+## 8. Data Storage
 
-App-owned storage:
+App-managed files are created using Tauri path APIs:
 
-- SQLite DB in app data dir: `activities.sqlite`
-- JSON settings in app config dir: `settings.json`
+- DB: app data directory, file `activities.sqlite`
+- settings: app config directory, file `settings.json`
 
-Data shaping choices in current implementation:
+Design choices:
 
-- `activities.track_json` stores a downsampled polyline (map-friendly payload size)
-- `activity_samples` stores per-sample rows for charting (not pre-downsampled at write time)
-- `get_activity(...)` returns a downsampled sample set suitable for UI chart rendering
-- `get_heatmap_data(...)` applies aggregate point downsampling when necessary via `max_points`
+- tracks are stored as JSON in `activities.track_json` (map-friendly payload)
+- detailed samples are stored in `activity_samples`
+- UI-heavy views fetch sampled windows rather than always loading all points
 
-This split keeps detail views responsive while preserving raw-enough samples in SQLite for future windowed queries.
-
-## 8. Scan / Index Lifecycle (End-to-End)
-
-Typical paths:
+## 9. Scan Lifecycle
 
 ### Automatic startup scan
 
 1. App loads settings.
-2. If an import folder exists, `App.tsx` triggers `runScan()` once for that folder path.
-3. App store listens for `scan:progress` and updates UI scan state.
-4. On completion, app store refreshes settings (`lastScanTimestamp`) and clears cached activity lists.
-5. `App.tsx` then computes startup advanced analytics requests (unique per time range + current definitions) and stores results in `advancedAnalyticsCache`.
+2. If import folder exists, `App.tsx` triggers a scan once for that folder path.
+3. UI receives scan progress events.
+4. On completion, caches are invalidated and `lastScanTimestamp` updates.
+5. App optionally pre-warms advanced analytics cache for active definitions.
 
-### Manual rescan (Settings)
+### Manual scan
 
-1. User clicks `Rescan`.
-2. `SettingsPage` calls `runScan(false)` via app store.
-3. Scanner performs incremental scan with stale-file pruning.
-4. Results appear in `ScanStatusCard` and optional error list.
+- Triggered in Settings -> Import -> `Rescan`.
+- Uses incremental behavior.
 
-### Clear Cache + Full Rescan
+### Full rebuild
 
-1. User confirms full rescan in `SettingsPage`.
-2. `runScan(true)` calls `scan_import_folder(full_rescan: true)`.
-3. Backend clears `activities` + `activity_samples` and rebuilds from disk.
+- Triggered in Settings -> Import -> `Clear Cache + Full Rescan`.
+- Clears `activities` + `activity_samples`, then reimports all files.
 
-## 9. Build, Packaging, and Release
+## 10. Build, CI, Release
 
-Local development:
+### Local build flow
 
-- `npm install`
-- `npm run tauri dev`
-- `npm run check` (frontend `tsc --noEmit` + backend `cargo check`)
+- `npm ci`
+- `npm run tauri dev` for development
+- `npm run check` for quality gate
+- `npm run tauri build` for local production bundles
 
-Continuous Integration (`.github/workflows/ci.yml`):
+### CI (`.github/workflows/ci.yml`)
 
-- runs on pull requests and pushes to `main`
-- runs frontend `npm run typecheck` on Ubuntu (Node 22)
-- runs Rust `cargo check` + `cargo fmt --check` on macOS (Rust stable)
+- frontend quality job on Ubuntu:
+  - `npm ci`
+  - `npm run typecheck`
+- rust quality job on macOS:
+  - `cargo check --manifest-path src-tauri/Cargo.toml`
+  - `cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check`
 
-Production build:
+### Release (`.github/workflows/release.yml`)
 
-- `npm run tauri build`
+Triggered by tags matching `v*`.
 
-Tauri config (`src-tauri/tauri.conf.json`) notes:
+Pipeline verifies version alignment across:
 
-- frontend dev server expected at `http://127.0.0.1:1420`
-- bundle targets enabled (`targets: "all"`)
-- macOS minimum system version set to `12.0`
-- icon source is `src-tauri/icons/icon.png`
+- git tag (without `v` prefix)
+- `package.json`
+- `src-tauri/tauri.conf.json`
+- `src-tauri/Cargo.toml`
 
-GitHub release workflow (`.github/workflows/release.yml`):
+Then builds and publishes `.app` + `.dmg` via `tauri-apps/tauri-action` with ad-hoc signing.
 
-- triggers on tag push `v*`
-- verifies version alignment across:
-  - tag
-  - `package.json`
-  - `src-tauri/tauri.conf.json`
-  - `src-tauri/Cargo.toml`
-- builds macOS `.app` and `.dmg`
-- uses ad-hoc signing (`APPLE_SIGNING_IDENTITY="-"`)
-- publishes artifacts to GitHub Releases via `tauri-apps/tauri-action`
-
-## 10. Extension Guide
+## 11. Common Extension Tasks
 
 ### Add a new Tauri command
 
-1. Add/extend models in `src-tauri/src/models.rs`.
-2. Implement logic in `src-tauri/src/db.rs`, `src-tauri/src/parser.rs`, or a new module.
-3. Add `#[tauri::command]` function in `src-tauri/src/main.rs`.
-4. Register it in `tauri::generate_handler![...]`.
-5. Add a typed wrapper in `src/lib/tauri.ts`.
-6. Add/extend TS types in `src/types.ts`.
-7. Consume it from a page/store/component.
+1. Define/extend DTOs in `src-tauri/src/models.rs`.
+2. Implement behavior in backend modules.
+3. Add `#[tauri::command]` in `main.rs` and register it.
+4. Add typed wrapper in `src/lib/tauri.ts`.
+5. Mirror types in `src/types.ts`.
+6. Consume in store/page/component.
 
 ### Add a new persisted setting
 
-1. Add field + default in Rust `Settings` (`src-tauri/src/models.rs`).
-2. Add setter command in `main.rs` (or extend existing command path).
-3. Mirror field in TS `Settings` (`src/types.ts`).
-4. Add UI control in `SettingsPage.tsx` and app store updater in `useAppStore.ts`.
-5. Apply behavior where needed (theme/map/filter/etc.).
+1. Add default + field in Rust `Settings`.
+2. Add setter command in `main.rs`.
+3. Mirror in TypeScript `Settings` interface.
+4. Add UI controls and app-store update action.
+5. Use the setting in rendering/query logic.
 
 ### Add a new activity filter
 
-1. Add field to Rust `ActivityFilters` and TS `ActivityFilters`.
-2. Extend SQL predicates in `db::list_activities(...)`.
-3. Pass it through `src/lib/tauri.ts` wrapper (if shape changed).
-4. Add UI controls in the relevant page (`ActivitiesPage`, `DashboardPage`, `HeatmapPage`, etc.).
-
-### Add a new chart/query optimization path
-
-A likely next extension is reusing the new analytics evaluator infrastructure to add cached/precomputed custom analytics results (instead of recomputing everything on demand per run).
-
-## 11. Known Implementation Notes / Gaps
-
-Current codebase deviations from the original prototype spec in `AGENTS.md`:
-
-- The app now includes an **Advanced Analytics** prototype page and `run_advanced_analytics(request)` command instead of a generic `get_stats()` API.
-- Advanced Analytics is intentionally limited to a guided builder, simple title text matching (no regex), grouped conditions (`OR` between groups, `AND` within each group), and time-series charts only in the current prototype.
-- The app currently supports **FIT** in addition to TCX/TXC (an expansion beyond the original TCX-only spec).
-- `MonthCalendar.tsx` is present but not used by the current dashboard implementation.
-- There is no automated test suite in the repository yet (the `test/` folder contains sample FIT files, not test code).
-
-Operational note:
-
-- The app is local-first and has no backend server, but map basemaps are loaded from external tile providers (OSM/CARTO) when map views are displayed.
+1. Update Rust + TS filter models.
+2. Extend SQL predicates in `db::list_activities` and/or `db::get_heatmap_data`.
+3. Pass through bridge wrapper.
+4. Wire into UI state and page controls.
