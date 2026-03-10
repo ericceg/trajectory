@@ -7,7 +7,7 @@
 ![Frontend](https://img.shields.io/badge/frontend-React%20%2B%20TypeScript-3178c6)
 
 
-> **Lightweight local workout analyzer that keeps your data private**. 
+**Lightweight, powerful local-first workout analyzer that keeps your data private**. 
 A local-first desktop app for exploring `.tcx`/`.fit` activities with dashboard, maps, streaks and custom analytics.
 No cloud sync, no account, no server. Just you and your training data.
 
@@ -28,16 +28,9 @@ You get
 3. Install and launch the app
 
 Notes:
-- Current release builds are ad-hoc signed (not notarized), so macOS may show a security warning on first launch.
+- Current release builds are ad-hoc signed, so macOS may show a security warning on first launch.
 - If prompted, right-click the app, choose **Open**, then confirm.
 
-## What You Can Do
-
-- Import `.tcx` / `.fit` files from any local folder
-- Keep your data fresh with incremental rescans (or full rebuilds when needed)
-- Explore training from multiple angles: dashboard, activity list, and activity detail
-- Visualize routes with per-activity maps and a global GPS heatmap
-- Build your own advanced analytics: custom metrics, streaks, and charts
 
 ## Usage
 
@@ -48,6 +41,22 @@ Notes:
 5. Open **Heatmap** to spot route patterns across all GPS sessions.
 6. Use **Advanced Analytics** to define custom metrics, streaks, and charts.
 7. Open **Settings** to customize appearance, configure heart-rate zones, and run rescans.
+
+
+## Recommended Workflow for Apple Ecosystem Users
+
+Here is the workflow I personally use (and would recommend) for athletes in the Apple ecosystem:
+
+1. Set up the iOS app [RunGap](https://www.rungap.com/). This is a powerful workout data manager that can sync up activities from all the usual fitness platforms (Strava, Garmin Connect, Apple Health, etc.). Set it up to sync your workouts to a local folder on your Mac (e.g. via iCloud Drive or Dropbox).
+
+2. Install Trajectory on your Mac. Point it to the same folder where RunGap is syncing your workouts. Done.
+
+
+
+## App Preview
+
+todo...
+
 
 ## Privacy
 
@@ -92,7 +101,7 @@ Output artifacts are generated under:
 - `src-tauri/target/release/bundle/macos/*.app`
 - `src-tauri/target/release/bundle/dmg/*.dmg`
 
-## Documentation
+### Documentation
 
 - Developer guide: [`docs/DEVELOPER_GUIDE.md`](docs/DEVELOPER_GUIDE.md)
 
