@@ -131,6 +131,7 @@ Current wrappers:
 - `setAccentTheme`
 - `setHeatmapFullOpacity`
 - `setChartMaxSamples`
+- `setChartOutlierRemoval`
 - `setHeartRateZoneUpperBoundsBpm`
 - `scanImportFolder`
 - `listActivities`
@@ -154,7 +155,7 @@ Current wrappers:
 - **Onboarding:** directory picker + recursive toggle.
 - **Settings:** tabs for Import, Appearance, Athlete Metrics.
   - Import actions: incremental rescan and full cache clear + rescan.
-  - Appearance includes chart sample cap slider and heatmap opacity preference.
+  - Appearance includes chart sample cap slider, chart outlier-removal toggle, and heatmap opacity preference.
   - Athlete Metrics manages heart-rate zone cutoffs.
 - **Dashboard:** year/month calendar views with aggregate metrics and drilldowns.
 - **Activities:** filter + sort table, navigation into details.
@@ -187,6 +188,7 @@ Registered Tauri commands:
 | `set_accent_theme` | Update accent palette |
 | `set_heatmap_full_opacity` | Toggle heatmap opacity mode |
 | `set_chart_max_samples` | Persist chart sample cap |
+| `set_chart_outlier_removal` | Toggle robust outlier suppression in Activity Detail charts |
 | `set_heart_rate_zone_upper_bounds_bpm` | Save Z1-Z4 upper bpm limits (Z5 is everything above Z4) |
 | `scan_import_folder` | Run incremental/full scan |
 | `list_activities` | Query activity list |
@@ -263,6 +265,7 @@ Default settings (current):
 - `accentTheme: "citrus-orange"`
 - `heatmapFullOpacity: false`
 - `chartMaxSamples: 2000`
+- `chartOutlierRemoval: true`
 - `heartRateZoneUpperBoundsBpm: [120, 140, 160, 180]`
 
 ## 7. Contracts Between Frontend and Rust

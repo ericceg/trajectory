@@ -11,6 +11,7 @@ pub struct Settings {
     pub accent_theme: String,
     pub heatmap_full_opacity: bool,
     pub chart_max_samples: usize,
+    pub chart_outlier_removal: bool,
     pub heart_rate_zone_upper_bounds_bpm: Vec<u16>,
 }
 
@@ -24,6 +25,7 @@ impl Default for Settings {
             accent_theme: "citrus-orange".to_string(),
             heatmap_full_opacity: false,
             chart_max_samples: 2000,
+            chart_outlier_removal: true,
             heart_rate_zone_upper_bounds_bpm: vec![120, 140, 160, 180],
         }
     }

@@ -187,6 +187,17 @@ async fn set_chart_max_samples(
 }
 
 #[tauri::command]
+async fn set_chart_outlier_removal(
+    chart_outlier_removal: bool,
+    state: State<'_, AppState>,
+) -> Result<Settings, String> {
+    update_app_settings(state.inner(), move |settings| {
+        settings.chart_outlier_removal = chart_outlier_removal;
+        Ok(())
+    })
+}
+
+#[tauri::command]
 async fn set_heart_rate_zone_upper_bounds_bpm(
     upper_bounds_bpm: Vec<u16>,
     state: State<'_, AppState>,
@@ -340,6 +351,7 @@ fn main() {
             set_accent_theme,
             set_heatmap_full_opacity,
             set_chart_max_samples,
+            set_chart_outlier_removal,
             set_heart_rate_zone_upper_bounds_bpm,
             scan_import_folder,
             list_activities,

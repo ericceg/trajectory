@@ -72,6 +72,7 @@ import {
   metricRangeForVisibleDomain,
   normalizeHeartRateZoneUpperBounds,
   normalizeToBand,
+  removeCombinedChartOutliers,
   readHoveredRouteCoordinate,
   routeHoverCoordinatesEqual
 } from '@/lib/activityDetail/chartHelpers';
@@ -907,6 +908,7 @@ export function ActivityDetailPage() {
   const routeMapRef = useRef<ActivityRouteMapHandle | null>(null);
   const accentTheme = useAppStore((state) => state.settings?.accentTheme);
   const chartMaxSamples = useAppStore((state) => state.settings?.chartMaxSamples ?? 2000);
+  const chartOutlierRemoval = useAppStore((state) => state.settings?.chartOutlierRemoval ?? true);
   const heartRateZoneUpperBoundsBpm = useAppStore((state) =>
     normalizeHeartRateZoneUpperBounds(state.settings?.heartRateZoneUpperBoundsBpm)
   );
@@ -1008,12 +1010,14 @@ export function ActivityDetailPage() {
         };
       });
 
-    const paceRange = metricRange(basePoints.map((point) => point.paceSecondsPerKm));
-    const speedRange = metricRange(basePoints.map((point) => point.speedKmh));
-    const heartRateRange = metricRange(basePoints.map((point) => point.heartRate));
-    const cadenceRange = metricRange(basePoints.map((point) => point.cadence));
-    const powerRange = metricRange(basePoints.map((point) => point.powerWatts));
-    const elevationRange = metricRange(basePoints.map((point) => point.elevationM));
+    const filteredBasePoints = chartOutlierRemoval ? removeCombinedChartOutliers(basePoints) : basePoints;
+
+    const paceRange = metricRange(filteredBasePoints.map((point) => point.paceSecondsPerKm));
+    const speedRange = metricRange(filteredBasePoints.map((point) => point.speedKmh));
+    const heartRateRange = metricRange(filteredBasePoints.map((point) => point.heartRate));
+    const cadenceRange = metricRange(filteredBasePoints.map((point) => point.cadence));
+    const powerRange = metricRange(filteredBasePoints.map((point) => point.powerWatts));
+    const elevationRange = metricRange(filteredBasePoints.map((point) => point.elevationM));
     const has = {
       pace: paceRange != null,
       speed: speedRange != null,
@@ -1027,7 +1031,7 @@ export function ActivityDetailPage() {
     );
     const bands = buildCombinedChartBands(visibleSeries);
 
-    const data: CombinedChartPoint[] = basePoints.map((point) => ({
+    const data: CombinedChartPoint[] = filteredBasePoints.map((point) => ({
       ...point,
       pacePlot: normalizeToBand(point.paceSecondsPerKm, paceRange, bands.pace, true),
       speedPlot: normalizeToBand(point.speedKmh, speedRange, bands.speed),
@@ -1052,7 +1056,7 @@ export function ActivityDetailPage() {
       maxDistanceKm,
       maxElapsedSeconds
     };
-  }, [chartSamples, detail, chartSeriesVisibility]);
+  }, [chartOutlierRemoval, chartSamples, detail, chartSeriesVisibility]);
 
   const fullChartXAxisDomain = useMemo<ChartZoomDomain>(() => {
     if (chartXAxisMode === 'time') {

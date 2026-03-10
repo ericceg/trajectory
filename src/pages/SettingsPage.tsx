@@ -17,6 +17,7 @@ export function SettingsPage() {
   const updateAccentTheme = useAppStore((state) => state.updateAccentTheme);
   const updateHeatmapFullOpacity = useAppStore((state) => state.updateHeatmapFullOpacity);
   const updateChartMaxSamples = useAppStore((state) => state.updateChartMaxSamples);
+  const updateChartOutlierRemoval = useAppStore((state) => state.updateChartOutlierRemoval);
   const updateHeartRateZoneUpperBoundsBpm = useAppStore(
     (state) => state.updateHeartRateZoneUpperBoundsBpm
   );
@@ -357,6 +358,21 @@ export function SettingsPage() {
                 detail before zooming.
               </p>
             </div>
+            <label className="mt-4 flex items-start gap-2 text-sm text-muted">
+              <input
+                type="checkbox"
+                checked={settings?.chartOutlierRemoval ?? true}
+                onChange={(event) => void updateChartOutlierRemoval(event.target.checked)}
+                className="mt-0.5 h-4 w-4 rounded border-border bg-bg"
+              />
+              <span>
+                Remove chart outliers
+                <span className="mt-1 block text-xs text-muted">
+                  Uses a robust local filter to hide suspicious spikes from pace, speed, heart
+                  rate, cadence, power, and elevation plots.
+                </span>
+              </span>
+            </label>
           </div>
 
           <div className="mt-6 border-t border-border pt-5">

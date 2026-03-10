@@ -5,6 +5,7 @@ import {
   scanImportFolder,
   setAccentTheme,
   setChartMaxSamples,
+  setChartOutlierRemoval,
   setDarkMode,
   setHeatmapFullOpacity,
   setHeartRateZoneUpperBoundsBpm,
@@ -35,6 +36,7 @@ interface AppState {
   updateAccentTheme: (accentTheme: AccentThemeId) => Promise<void>;
   updateHeatmapFullOpacity: (heatmapFullOpacity: boolean) => Promise<void>;
   updateChartMaxSamples: (chartMaxSamples: number) => Promise<void>;
+  updateChartOutlierRemoval: (chartOutlierRemoval: boolean) => Promise<void>;
   updateHeartRateZoneUpperBoundsBpm: (upperBoundsBpm: number[]) => Promise<void>;
   runScan: (fullRescan?: boolean) => Promise<void>;
   getCachedActivities: (cacheKey: string) => ActivitySummary[] | null;
@@ -94,6 +96,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   updateChartMaxSamples: async (chartMaxSamples) => {
     const settings = await setChartMaxSamples(chartMaxSamples);
+    set({ settings });
+  },
+  updateChartOutlierRemoval: async (chartOutlierRemoval) => {
+    const settings = await setChartOutlierRemoval(chartOutlierRemoval);
     set({ settings });
   },
   updateHeartRateZoneUpperBoundsBpm: async (upperBoundsBpm) => {

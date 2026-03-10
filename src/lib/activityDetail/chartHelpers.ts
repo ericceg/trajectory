@@ -73,11 +73,139 @@ export interface CombinedChartPoint {
   elevationPlot: number | null;
 }
 
+export type CombinedChartBasePoint = Omit<
+  CombinedChartPoint,
+  'pacePlot' | 'speedPlot' | 'heartRatePlot' | 'cadencePlot' | 'powerPlot' | 'elevationPlot'
+>;
+
 export interface CombinedChartModel {
   data: CombinedChartPoint[];
   has: Record<ChartSeriesKey, boolean>;
   maxDistanceKm: number;
   maxElapsedSeconds: number;
+}
+
+type OutlierBounds = {
+  min?: number;
+  max?: number;
+};
+
+const OUTLIER_BOUNDS_BY_KEY: Record<SplitMetricKey, OutlierBounds> = {
+  paceSecondsPerKm: { min: 90, max: 3600 },
+  speedKmh: { min: 0, max: 130 },
+  heartRate: { min: 40, max: 240 },
+  elevationM: {},
+  cadence: { min: 20, max: 260 },
+  powerWatts: { min: 0, max: 2500 }
+};
+
+const OUTLIER_WINDOW_RADIUS = 5;
+const OUTLIER_MIN_WINDOW_SAMPLES = 7;
+const OUTLIER_Z_THRESHOLD = 3.5;
+const OUTLIER_MAD_EPSILON = 1e-6;
+
+function median(values: number[]): number {
+  if (values.length === 0) {
+    return NaN;
+  }
+
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 0) {
+    return (sorted[middle - 1] + sorted[middle]) / 2;
+  }
+  return sorted[middle];
+}
+
+function filterSeriesOutliers(values: Array<number | null>, bounds: OutlierBounds): Array<number | null> {
+  const filtered: Array<number | null> = new Array(values.length).fill(null);
+
+  for (let index = 0; index < values.length; index += 1) {
+    const value = values[index];
+    if (value == null || !Number.isFinite(value)) {
+      filtered[index] = null;
+      continue;
+    }
+
+    if ((bounds.min != null && value < bounds.min) || (bounds.max != null && value > bounds.max)) {
+      filtered[index] = null;
+      continue;
+    }
+
+    const neighborhood: number[] = [];
+    const start = Math.max(0, index - OUTLIER_WINDOW_RADIUS);
+    const end = Math.min(values.length - 1, index + OUTLIER_WINDOW_RADIUS);
+    for (let neighborIndex = start; neighborIndex <= end; neighborIndex += 1) {
+      const neighborValue = values[neighborIndex];
+      if (neighborValue != null && Number.isFinite(neighborValue)) {
+        neighborhood.push(neighborValue);
+      }
+    }
+
+    if (neighborhood.length < OUTLIER_MIN_WINDOW_SAMPLES) {
+      filtered[index] = value;
+      continue;
+    }
+
+    const center = median(neighborhood);
+    if (!Number.isFinite(center)) {
+      filtered[index] = value;
+      continue;
+    }
+
+    const absoluteDeviations = neighborhood.map((entry) => Math.abs(entry - center));
+    const mad = median(absoluteDeviations);
+    if (!Number.isFinite(mad) || mad < OUTLIER_MAD_EPSILON) {
+      filtered[index] = value;
+      continue;
+    }
+
+    const robustZScore = Math.abs(value - center) / (1.4826 * mad);
+    filtered[index] = robustZScore > OUTLIER_Z_THRESHOLD ? null : value;
+  }
+
+  return filtered;
+}
+
+export function removeCombinedChartOutliers(points: CombinedChartBasePoint[]): CombinedChartBasePoint[] {
+  if (points.length === 0) {
+    return points;
+  }
+
+  const paceValues = filterSeriesOutliers(
+    points.map((point) => point.paceSecondsPerKm),
+    OUTLIER_BOUNDS_BY_KEY.paceSecondsPerKm
+  );
+  const speedValues = filterSeriesOutliers(
+    points.map((point) => point.speedKmh),
+    OUTLIER_BOUNDS_BY_KEY.speedKmh
+  );
+  const heartRateValues = filterSeriesOutliers(
+    points.map((point) => point.heartRate),
+    OUTLIER_BOUNDS_BY_KEY.heartRate
+  );
+  const cadenceValues = filterSeriesOutliers(
+    points.map((point) => point.cadence),
+    OUTLIER_BOUNDS_BY_KEY.cadence
+  );
+  const powerValues = filterSeriesOutliers(
+    points.map((point) => point.powerWatts),
+    OUTLIER_BOUNDS_BY_KEY.powerWatts
+  );
+  const elevationValues = filterSeriesOutliers(
+    points.map((point) => point.elevationM),
+    OUTLIER_BOUNDS_BY_KEY.elevationM
+  );
+
+  return points.map((point, index) => ({
+    ...point,
+    paceSecondsPerKm: paceValues[index],
+    speedKmh: speedValues[index],
+    heartRate: heartRateValues[index],
+    cadence: cadenceValues[index],
+    powerWatts: powerValues[index],
+    elevationM: elevationValues[index]
+  }));
 }
 
 export function defaultChartSeriesVisibility(sportType?: string): ChartSeriesVisibility {
