@@ -1,5 +1,9 @@
 import { formatDuration } from '@/lib/format';
-import type { AdvancedAnalyticsMetricDefinition, AdvancedAnalyticsMetricResult } from '@/types';
+import type {
+  AdvancedAnalyticsBaseMeasure,
+  AdvancedAnalyticsMetricDefinition,
+  AdvancedAnalyticsMetricResult
+} from '@/types';
 
 export function formatAnalyticsValue(value: number | null | undefined, unit?: string | null): string {
   if (value == null || !Number.isFinite(value)) {
@@ -34,9 +38,52 @@ export function metricResultUnit(
   metric: AdvancedAnalyticsMetricDefinition | undefined,
   result: AdvancedAnalyticsMetricResult | undefined
 ) {
-  return result?.unit ?? metric?.base?.displayUnit ?? metric?.formula?.displayUnit ?? null;
+  const resolvedResultUnit = normalizedResolvedUnit(result?.unit);
+  if (resolvedResultUnit) {
+    return resolvedResultUnit;
+  }
+
+  const configuredDisplayUnit = normalizedResolvedUnit(metric?.base?.displayUnit ?? metric?.formula?.displayUnit);
+  if (configuredDisplayUnit) {
+    return configuredDisplayUnit;
+  }
+
+  if (metric?.kind === 'base') {
+    return defaultUnitForBaseMeasure(metric.base?.measure);
+  }
+
+  return null;
 }
 
 function formatSeconds(seconds: number): string {
   return formatDuration(seconds);
+}
+
+function normalizedResolvedUnit(unit?: string | null): string | null {
+  const trimmed = (unit ?? '').trim();
+  if (!trimmed || trimmed.toLowerCase() === 'auto') {
+    return null;
+  }
+  return trimmed;
+}
+
+function defaultUnitForBaseMeasure(measure?: AdvancedAnalyticsBaseMeasure): string | null {
+  if (!measure) {
+    return null;
+  }
+
+  switch (measure) {
+    case 'activitiesCount':
+    case 'activeDaysCount':
+      return 'count';
+    case 'distanceSum':
+    case 'elevationGainSum':
+      return 'm';
+    case 'durationSum':
+    case 'movingTimeSum':
+    case 'sampleTime':
+      return 's';
+    default:
+      return null;
+  }
 }
