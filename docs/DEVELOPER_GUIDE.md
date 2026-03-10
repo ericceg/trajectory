@@ -31,7 +31,8 @@ Top-level:
 - `src/`: React frontend
 - `src-tauri/`: Tauri shell + Rust backend
 - `docs/DEVELOPER_GUIDE.md`: this guide
-- `README.md`: user-facing usage/build/release notes
+- `README.md`: user-facing overview, download instructions, and developer quick start
+- `LICENSE`: MIT license for repository usage and distribution
 - `.github/workflows/ci.yml`: PR/push quality gate workflow (frontend typecheck + Rust check/fmt)
 - `.github/workflows/release.yml`: tag-based macOS release build/publish workflow
 - `import_example/`: sample import folder contents
