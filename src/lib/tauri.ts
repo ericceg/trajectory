@@ -34,6 +34,9 @@ export const setHeatmapFullOpacity = (heatmapFullOpacity: boolean) =>
 export const setChartMaxSamples = (chartMaxSamples: number) =>
   invoke<Settings>('set_chart_max_samples', { chartMaxSamples });
 
+export const setChartOutlierRemoval = (chartOutlierRemoval: boolean) =>
+  invoke<Settings>('set_chart_outlier_removal', { chartOutlierRemoval });
+
 export const setHeartRateZoneUpperBoundsBpm = (upperBoundsBpm: number[]) =>
   invoke<Settings>('set_heart_rate_zone_upper_bounds_bpm', { upperBoundsBpm });
 
