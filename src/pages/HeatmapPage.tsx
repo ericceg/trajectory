@@ -121,19 +121,23 @@ function resolveHeatmapStyle(
     return { baseOpacity: 1, topOpacity: 1, weight: 2.5 };
   }
 
+  if (trackCount <= 1) {
+    return { baseOpacity: 0.72, topOpacity: 0.92, weight: 5 };
+  }
+
   if (trackCount <= 20) {
-    return { baseOpacity: 0.2, topOpacity: 0.32, weight: 5 };
+    return { baseOpacity: 0.4, topOpacity: 0.58, weight: 5 };
   }
 
   if (trackCount <= 80) {
-    return { baseOpacity: 0.13, topOpacity: 0.2, weight: 4 };
+    return { baseOpacity: 0.3, topOpacity: 0.45, weight: 4 };
   }
 
   if (trackCount <= 250) {
-    return { baseOpacity: 0.08, topOpacity: 0.12, weight: 3 };
+    return { baseOpacity: 0.2, topOpacity: 0.32, weight: 3 };
   }
 
-  return { baseOpacity: 0.045, topOpacity: 0.085, weight: 2.5 };
+  return { baseOpacity: 0.12, topOpacity: 0.22, weight: 2.5 };
 }
 
 function toHeatmapFeatureCollection(tracks: TrackPoint[][]): FeatureCollection<LineString> {
