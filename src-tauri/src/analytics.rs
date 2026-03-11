@@ -1208,7 +1208,7 @@ fn compute_matching_sample_time(
     samples: &[ActivitySample],
     condition_groups: &[Vec<AdvancedAnalyticsSampleCondition>],
     hr_zone_upper_bounds: &[u16],
-    minimum_contiguous_match_seconds: f64,
+    minimum_continuous_match_seconds: f64,
 ) -> SampleTimeComputation {
     if samples.len() < 2 {
         return SampleTimeComputation {
@@ -1252,7 +1252,7 @@ fn compute_matching_sample_time(
                 return;
             }
 
-            if *current_run_seconds >= minimum_contiguous_match_seconds {
+            if *current_run_seconds >= minimum_continuous_match_seconds {
                 *included_seconds += *current_run_seconds;
                 segments.push(AdvancedAnalyticsSampleTimeSegment {
                     start_elapsed_seconds: start,
@@ -1880,7 +1880,7 @@ mod tests {
     }
 
     #[test]
-    fn sample_time_minimum_contiguous_duration_ignores_short_spikes() {
+    fn sample_time_minimum_continuous_duration_ignores_short_spikes() {
         let samples = vec![
             ActivitySample {
                 elapsed_seconds: 0.0,

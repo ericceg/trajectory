@@ -200,8 +200,8 @@ function SampleTimeActivityPreview({
         <p className="text-sm text-muted">
           Considered activities: {preview.consideredActivityCount}. Showing {preview.sampledActivityCount}
           {preview.minimumContinuousMatchSeconds > 0
-            ? ` with minimum contiguous match ${formatDuration(preview.minimumContinuousMatchSeconds)}.`
-            : ' (no minimum contiguous match threshold).'}
+            ? ` with minimum continuous match ${formatDuration(preview.minimumContinuousMatchSeconds)}.`
+            : ' (no minimum continuous match threshold).'}
         </p>
       </div>
 

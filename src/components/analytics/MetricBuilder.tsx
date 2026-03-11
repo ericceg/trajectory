@@ -736,7 +736,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                   className={groupControlClassName}
                 />
                 <p className="text-xs text-muted">
-                  Ignore short spikes. Only contiguous matching intervals that last at least this
+                  Ignore short spikes. Only continuous matching intervals that last at least this
                   long are counted.
                 </p>
               </label>
