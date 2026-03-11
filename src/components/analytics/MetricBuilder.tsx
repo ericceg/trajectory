@@ -222,6 +222,11 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
   const formulaDisplayUnitOptions = unitDisplayOptionsForValue(formula.displayUnit);
   const activityConditionGroups = normalizeActivityConditionGroups(base);
   const sampleConditionGroups = normalizeSampleConditionGroups(base);
+  const topGridClassName = 'grid gap-3 md:grid-cols-2';
+  const topBaseGridClassName = 'grid gap-x-3 gap-y-3 md:grid-cols-2 xl:grid-cols-3';
+  const topFieldRowClassName = 'grid min-h-7 grid-cols-[max-content_minmax(0,1fr)] items-center gap-2';
+  const topFieldLabelClassName = 'text-sm text-muted whitespace-nowrap';
+  const topControlClassName = 'h-7 w-full rounded-md border border-border bg-bg px-2 text-sm';
 
   const updateBase = (patch: Partial<AdvancedAnalyticsBaseMetricDefinition>) => {
     onChange({
@@ -304,103 +309,101 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
         </button>
       </div>
 
-      <div className="grid gap-3 md:grid-cols-2">
-        <label className="space-y-1 text-sm">
-          <span className="text-muted">Name</span>
-          <input
-            value={metric.name}
-            onChange={(event) => onChange({ ...metric, name: event.target.value })}
-            className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm"
-          />
-        </label>
-        <label className="space-y-1 text-sm">
-          <span className="text-muted">Type</span>
-          <select
-            value={metric.kind}
-            onChange={(event) => {
-              const kind = event.target.value as 'base' | 'formula';
-              onChange(
-                kind === 'base'
-                  ? {
-                      ...metric,
-                      kind,
-                      base,
-                      formula: undefined
-                    }
-                  : {
-                      ...metric,
-                      kind,
-                      formula,
-                      base: undefined
-                    }
-              );
-            }}
-            className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm"
-          >
-            <option value="base">Base metric</option>
-            <option value="formula">Formula metric</option>
-          </select>
-        </label>
-      </div>
-
-      <label className="flex items-center gap-2 rounded-md border border-border bg-bg/30 px-3 py-2 text-sm text-foreground">
-        <input
-          type="checkbox"
-          checked={metric.showInView !== false}
-          onChange={(event) => onChange({ ...metric, showInView: event.target.checked })}
-        />
-        Show in View tab
-      </label>
-
-      <div className="space-y-2 rounded-lg border border-border bg-bg/30 p-3">
-        <p className="text-sm font-medium text-foreground">Card time range (View tab)</p>
-        <TimeRangeControl
-          value={metric.timeRange}
-          onChange={(timeRange) => onChange({ ...metric, timeRange })}
-        />
-      </div>
-
       {metric.kind === 'base' ? (
-        <div className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-3">
-            <label className="space-y-1 text-sm md:col-span-2">
-              <span className="text-muted">Measure</span>
-              <select
-                value={base.measure}
-                onChange={(event) =>
-                  updateBase({
-                    measure: event.target.value as AdvancedAnalyticsBaseMeasure
-                  })
-                }
-                className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm"
-              >
-                {BASE_MEASURE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-muted">Preview granularity</span>
-              <select
-                value={base.defaultChartGranularity ?? 'week'}
-                onChange={(event) =>
-                  updateBase({
-                    defaultChartGranularity: event.target.value as 'day' | 'week' | 'month'
-                  })
-                }
-                className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm"
-              >
-                <option value="day">Day</option>
-                <option value="week">Week</option>
-                <option value="month">Month</option>
-              </select>
-            </label>
-          </div>
+        <div className={topBaseGridClassName}>
+          <label className={`${topFieldRowClassName} xl:col-start-1 xl:row-start-1`}>
+            <span className={topFieldLabelClassName}>Name</span>
+            <input
+              value={metric.name}
+              onChange={(event) => onChange({ ...metric, name: event.target.value })}
+              className={topControlClassName}
+            />
+          </label>
+          <label className={`${topFieldRowClassName} xl:col-start-1 xl:row-start-2`}>
+            <span className={topFieldLabelClassName}>Type</span>
+            <select
+              value={metric.kind}
+              onChange={(event) => {
+                const kind = event.target.value as 'base' | 'formula';
+                onChange(
+                  kind === 'base'
+                    ? {
+                        ...metric,
+                        kind,
+                        base,
+                        formula: undefined
+                      }
+                    : {
+                        ...metric,
+                        kind,
+                        formula,
+                        base: undefined
+                  }
+                );
+              }}
+              className={topControlClassName}
+            >
+              <option value="base">Base metric</option>
+              <option value="formula">Formula metric</option>
+            </select>
+          </label>
 
-          <label className="space-y-1 text-sm">
-            <span className="text-muted">Unit display (optional override)</span>
+          <div className="xl:col-start-2 xl:row-start-1">
+            <TimeRangeControl
+              value={metric.timeRange}
+              onChange={(timeRange) => onChange({ ...metric, timeRange })}
+              label="Card time range (View tab)"
+              inlineLabel
+              labelWidthClassName={topFieldLabelClassName}
+              controlClassName={topControlClassName}
+            />
+          </div>
+          <label className={`${topFieldRowClassName} xl:col-start-2 xl:row-start-2`}>
+            <span className={topFieldLabelClassName}>Show in View tab</span>
+            <input
+              type="checkbox"
+              checked={metric.showInView !== false}
+              onChange={(event) => onChange({ ...metric, showInView: event.target.checked })}
+              className="justify-self-start"
+            />
+          </label>
+
+          <label className={`${topFieldRowClassName} xl:col-start-3 xl:row-start-1`}>
+            <span className={topFieldLabelClassName}>Measure</span>
+            <select
+              value={base.measure}
+              onChange={(event) =>
+                updateBase({
+                  measure: event.target.value as AdvancedAnalyticsBaseMeasure
+                })
+              }
+              className={topControlClassName}
+            >
+              {BASE_MEASURE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className={`${topFieldRowClassName} xl:col-start-3 xl:row-start-2`}>
+            <span className={topFieldLabelClassName}>Preview granularity</span>
+            <select
+              value={base.defaultChartGranularity ?? 'week'}
+              onChange={(event) =>
+                updateBase({
+                  defaultChartGranularity: event.target.value as 'day' | 'week' | 'month'
+                })
+              }
+              className={topControlClassName}
+            >
+              <option value="day">Day</option>
+              <option value="week">Week</option>
+              <option value="month">Month</option>
+            </select>
+          </label>
+          <label className={`${topFieldRowClassName} xl:col-start-3 xl:row-start-3`}>
+            <span className={topFieldLabelClassName}>Unit display (optional override)</span>
             <select
               value={normalizeUnitDisplaySelection(base.displayUnit)}
               onChange={(event) =>
@@ -408,7 +411,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                   displayUnit: event.target.value
                 })
               }
-              className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm"
+              className={topControlClassName}
             >
               {baseDisplayUnitOptions.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -417,7 +420,72 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
               ))}
             </select>
           </label>
+        </div>
+      ) : (
+        <div className={topGridClassName}>
+          <div className="space-y-3">
+            <label className={topFieldRowClassName}>
+              <span className={topFieldLabelClassName}>Name</span>
+              <input
+                value={metric.name}
+                onChange={(event) => onChange({ ...metric, name: event.target.value })}
+                className={topControlClassName}
+              />
+            </label>
+            <label className={topFieldRowClassName}>
+              <span className={topFieldLabelClassName}>Type</span>
+              <select
+                value={metric.kind}
+                onChange={(event) => {
+                  const kind = event.target.value as 'base' | 'formula';
+                  onChange(
+                    kind === 'base'
+                      ? {
+                          ...metric,
+                          kind,
+                          base,
+                          formula: undefined
+                        }
+                      : {
+                          ...metric,
+                          kind,
+                          formula,
+                          base: undefined
+                    }
+                  );
+                }}
+                className={topControlClassName}
+              >
+                <option value="base">Base metric</option>
+                <option value="formula">Formula metric</option>
+              </select>
+            </label>
+          </div>
 
+          <div className="space-y-3">
+            <TimeRangeControl
+              value={metric.timeRange}
+              onChange={(timeRange) => onChange({ ...metric, timeRange })}
+              label="Card time range (View tab)"
+              inlineLabel
+              labelWidthClassName={topFieldLabelClassName}
+              controlClassName={topControlClassName}
+            />
+            <label className={topFieldRowClassName}>
+              <span className={topFieldLabelClassName}>Show in View tab</span>
+              <input
+                type="checkbox"
+                checked={metric.showInView !== false}
+                onChange={(event) => onChange({ ...metric, showInView: event.target.checked })}
+                className="justify-self-start"
+              />
+            </label>
+          </div>
+        </div>
+      )}
+
+      {metric.kind === 'base' ? (
+        <div className="space-y-4">
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <div className="space-y-1">
@@ -535,7 +603,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                                       : undefined
                                 }));
                               }}
-                              className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-3"
+                              className="rounded-md border border-border bg-bg px-2 py-1.5 text-sm md:col-span-3"
                             >
                               {ACTIVITY_FIELD_OPTIONS.map((option) => (
                                 <option key={option.value} value={option.value}>
@@ -553,7 +621,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                                       .value as AdvancedAnalyticsActivityConditionOperator
                                 }))
                               }
-                              className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-3"
+                              className="rounded-md border border-border bg-bg px-2 py-1.5 text-sm md:col-span-3"
                             >
                               {operators.map((operator) => (
                                 <option key={operator} value={operator}>
@@ -576,7 +644,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                                     ? 'comma-separated'
                                     : 'value'
                                 }
-                                className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-5"
+                                className="rounded-md border border-border bg-bg px-2 py-1.5 text-sm md:col-span-5"
                               />
                             ) : kind === 'bool' ? (
                               <select
@@ -588,7 +656,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                                     value: event.target.value
                                   }))
                                 }
-                                className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-5"
+                                className="rounded-md border border-border bg-bg px-2 py-1.5 text-sm md:col-span-5"
                               >
                                 <option value="true">True</option>
                                 <option value="false">False</option>
@@ -603,7 +671,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                                     numberValue: Number(event.target.value)
                                   }))
                                 }
-                                className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-5"
+                                className="rounded-md border border-border bg-bg px-2 py-1.5 text-sm md:col-span-5"
                               />
                             )}
                             <button
@@ -660,7 +728,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                         Number.isFinite(parsed) && parsed > 0 ? parsed : 0
                     });
                   }}
-                  className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm"
+                  className="w-full rounded-md border border-border bg-bg px-2.5 py-1.5 text-sm"
                 />
                 <p className="text-xs text-muted">
                   Ignore short spikes. Only contiguous matching intervals that last at least this
@@ -776,7 +844,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                                         : current.numberValue ?? 0
                                   }));
                                 }}
-                                className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-4"
+                                className="rounded-md border border-border bg-bg px-2 py-1.5 text-sm md:col-span-4"
                               >
                                 {SAMPLE_FIELD_OPTIONS.map((option) => (
                                   <option key={option.value} value={option.value}>
@@ -794,7 +862,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                                         .value as AdvancedAnalyticsSampleConditionOperator
                                   }))
                                 }
-                                className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-3"
+                                className="rounded-md border border-border bg-bg px-2 py-1.5 text-sm md:col-span-3"
                               >
                                 {operators.map((operator) => (
                                   <option key={operator} value={operator}>
@@ -811,7 +879,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                                       zone: Number(event.target.value)
                                     }))
                                   }
-                                  className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-4"
+                                  className="rounded-md border border-border bg-bg px-2 py-1.5 text-sm md:col-span-4"
                                 >
                                   {[1, 2, 3, 4, 5].map((zone) => (
                                     <option key={zone} value={zone}>
@@ -829,7 +897,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                                       numberValue: Number(event.target.value)
                                     }))
                                   }
-                                  className="rounded-md border border-border bg-bg px-2 py-2 text-sm md:col-span-4"
+                                  className="rounded-md border border-border bg-bg px-2 py-1.5 text-sm md:col-span-4"
                                 />
                               )}
                               <button
@@ -865,8 +933,8 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
         </div>
       ) : (
         <div className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-4">
-            <label className="space-y-1 text-sm md:col-span-2">
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+            <label className="space-y-1 text-sm xl:col-span-2">
               <span className="text-muted">Metric A</span>
               <select
                 value={formula.leftMetricId}
@@ -877,7 +945,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                     formula: { ...formula, leftMetricId: event.target.value }
                   })
                 }
-                className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm"
+                className="w-full rounded-md border border-border bg-bg px-2.5 py-1.5 text-sm"
               >
                 <option value="">Select metric</option>
                 {allMetrics
@@ -903,7 +971,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                     }
                   })
                 }
-                className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm"
+                className="w-full rounded-md border border-border bg-bg px-2.5 py-1.5 text-sm"
               >
                 <option value="add">+</option>
                 <option value="subtract">-</option>
@@ -911,7 +979,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                 <option value="percent">%</option>
               </select>
             </label>
-            <label className="space-y-1 text-sm">
+            <label className="space-y-1 text-sm xl:col-span-2">
               <span className="text-muted">Metric B</span>
               <select
                 value={formula.rightMetricId}
@@ -922,7 +990,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                     formula: { ...formula, rightMetricId: event.target.value }
                   })
                 }
-                className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm"
+                className="w-full rounded-md border border-border bg-bg px-2.5 py-1.5 text-sm"
               >
                 <option value="">Select metric</option>
                 {allMetrics
@@ -934,28 +1002,27 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                   ))}
               </select>
             </label>
+            <label className="space-y-1 text-sm">
+              <span className="text-muted">Unit display</span>
+              <select
+                value={normalizeUnitDisplaySelection(formula.displayUnit)}
+                onChange={(event) =>
+                  onChange({
+                    ...metric,
+                    kind: 'formula',
+                    formula: { ...formula, displayUnit: event.target.value }
+                  })
+                }
+                className="w-full rounded-md border border-border bg-bg px-2.5 py-1.5 text-sm"
+              >
+                {formulaDisplayUnitOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
-
-          <label className="space-y-1 text-sm">
-            <span className="text-muted">Unit display</span>
-            <select
-              value={normalizeUnitDisplaySelection(formula.displayUnit)}
-              onChange={(event) =>
-                onChange({
-                  ...metric,
-                  kind: 'formula',
-                  formula: { ...formula, displayUnit: event.target.value }
-                })
-              }
-              className="w-full rounded-md border border-border bg-bg px-3 py-2 text-sm"
-            >
-              {formulaDisplayUnitOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
         </div>
       )}
     </section>
