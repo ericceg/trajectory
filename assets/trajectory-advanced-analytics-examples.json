@@ -1,0 +1,284 @@
+{
+  "format": "trajectory-advanced-analytics",
+  "schemaVersion": 1,
+  "exportedAt": "2026-03-11T13:42:13.143Z",
+  "summary": {
+    "metrics": 6,
+    "streaks": 3,
+    "charts": 3
+  },
+  "data": {
+    "metrics": [
+      {
+        "id": "metric_bbc88560",
+        "name": "pull",
+        "kind": "base",
+        "showInView": false,
+        "timeRange": {
+          "preset": "all",
+          "customStartDate": "2026-02-02",
+          "customEndDate": "2026-03-04"
+        },
+        "base": {
+          "measure": "activitiesCount",
+          "activityConditions": [],
+          "sampleConditions": [],
+          "activityConditionGroups": [
+            {
+              "id": "ag_acb95cdb",
+              "conditions": [
+                {
+                  "id": "ac_3657e343",
+                  "field": "title",
+                  "operator": "contains",
+                  "value": "pull"
+                }
+              ]
+            }
+          ],
+          "sampleConditionGroups": [],
+          "activityConditionJoin": "and",
+          "sampleConditionJoin": "and",
+          "minimumSampleMatchSeconds": 0,
+          "defaultChartGranularity": "day",
+          "displayUnit": "auto"
+        }
+      },
+      {
+        "id": "metric_8153a99b",
+        "name": "push",
+        "kind": "base",
+        "showInView": false,
+        "timeRange": {
+          "preset": "all",
+          "customStartDate": "2026-02-02",
+          "customEndDate": "2026-03-04"
+        },
+        "base": {
+          "measure": "activitiesCount",
+          "activityConditions": [],
+          "sampleConditions": [],
+          "activityConditionGroups": [
+            {
+              "id": "ag_80c59a77",
+              "conditions": [
+                {
+                  "id": "ac_97d3fa3a",
+                  "field": "title",
+                  "operator": "contains",
+                  "value": "push"
+                }
+              ]
+            }
+          ],
+          "sampleConditionGroups": [],
+          "activityConditionJoin": "and",
+          "sampleConditionJoin": "and",
+          "minimumSampleMatchSeconds": 0,
+          "defaultChartGranularity": "week",
+          "displayUnit": "auto"
+        }
+      },
+      {
+        "id": "metric_8c96a905",
+        "name": "aerobic time",
+        "kind": "base",
+        "showInView": true,
+        "timeRange": {
+          "preset": "thisWeek",
+          "customStartDate": "2026-02-02",
+          "customEndDate": "2026-03-04"
+        },
+        "base": {
+          "measure": "sampleTime",
+          "activityConditions": [],
+          "sampleConditions": [],
+          "activityConditionGroups": [],
+          "sampleConditionGroups": [
+            {
+              "id": "sg_82f93808",
+              "conditions": [
+                {
+                  "id": "sc_f1cac6e8",
+                  "field": "heartRateZone",
+                  "operator": "is",
+                  "zone": 2
+                }
+              ]
+            },
+            {
+              "id": "sg_c46394ee",
+              "conditions": [
+                {
+                  "id": "sc_9f5e73ed",
+                  "field": "heartRateZone",
+                  "operator": "is",
+                  "zone": 3
+                }
+              ]
+            }
+          ],
+          "activityConditionJoin": "and",
+          "sampleConditionJoin": "and",
+          "minimumSampleMatchSeconds": 300,
+          "defaultChartGranularity": "day",
+          "displayUnit": ""
+        }
+      },
+      {
+        "id": "metric_5a1c6cf7",
+        "name": "aerobic time fraction",
+        "kind": "formula",
+        "showInView": true,
+        "timeRange": {
+          "preset": "thisWeek",
+          "customStartDate": "2026-02-02",
+          "customEndDate": "2026-03-04"
+        },
+        "formula": {
+          "leftMetricId": "metric_8c96a905",
+          "operator": "divide",
+          "rightMetricId": "metric_193ea5c7",
+          "displayUnit": "%"
+        }
+      },
+      {
+        "id": "metric_193ea5c7",
+        "name": "time",
+        "kind": "base",
+        "showInView": false,
+        "timeRange": {
+          "preset": "all",
+          "customStartDate": "2026-02-07",
+          "customEndDate": "2026-03-09"
+        },
+        "base": {
+          "measure": "durationSum",
+          "activityConditions": [],
+          "sampleConditions": [],
+          "activityConditionGroups": [],
+          "sampleConditionGroups": [],
+          "activityConditionJoin": "and",
+          "sampleConditionJoin": "and",
+          "minimumSampleMatchSeconds": 0,
+          "defaultChartGranularity": "day",
+          "displayUnit": "auto"
+        }
+      },
+      {
+        "id": "metric_078901f2",
+        "name": "active day",
+        "kind": "base",
+        "showInView": false,
+        "timeRange": {
+          "preset": "all",
+          "customStartDate": "2026-02-02",
+          "customEndDate": "2026-03-04"
+        },
+        "base": {
+          "measure": "activitiesCount",
+          "activityConditions": [],
+          "sampleConditions": [],
+          "activityConditionGroups": [],
+          "sampleConditionGroups": [],
+          "activityConditionJoin": "and",
+          "sampleConditionJoin": "and",
+          "minimumSampleMatchSeconds": 0,
+          "defaultChartGranularity": "day",
+          "displayUnit": "auto"
+        }
+      }
+    ],
+    "streaks": [
+      {
+        "id": "streak_c1e168e1",
+        "name": "weekly pull/push streak",
+        "timeRange": {
+          "preset": "all",
+          "customStartDate": "2026-02-02",
+          "customEndDate": "2026-03-04"
+        },
+        "metricId": "metric_bbc88560",
+        "additionalMetricIds": [
+          "metric_8153a99b"
+        ],
+        "period": "week",
+        "thresholdOperator": "greaterThanOrEqual",
+        "thresholdValue": 1
+      },
+      {
+        "id": "streak_afc11345",
+        "name": "weekly aerobic time streak",
+        "timeRange": {
+          "preset": "90d",
+          "customStartDate": "2026-02-02",
+          "customEndDate": "2026-03-04"
+        },
+        "metricId": "metric_8c96a905",
+        "additionalMetricIds": [],
+        "period": "week",
+        "thresholdOperator": "greaterThanOrEqual",
+        "thresholdValue": 1800
+      },
+      {
+        "id": "streak_a9e13c69",
+        "name": "weekly activity streak",
+        "timeRange": {
+          "preset": "all",
+          "customStartDate": "2026-02-02",
+          "customEndDate": "2026-03-04"
+        },
+        "metricId": "metric_078901f2",
+        "additionalMetricIds": [],
+        "period": "week",
+        "thresholdOperator": "greaterThanOrEqual",
+        "thresholdValue": 1
+      }
+    ],
+    "charts": [
+      {
+        "id": "chart_e7c9d771",
+        "name": "aerobic time fraction",
+        "timeRange": {
+          "preset": "365d",
+          "customStartDate": "2026-02-02",
+          "customEndDate": "2026-03-04"
+        },
+        "chartType": "line",
+        "metricIds": [
+          "metric_5a1c6cf7"
+        ],
+        "granularity": "week"
+      },
+      {
+        "id": "chart_229787aa",
+        "name": "aerobic time",
+        "timeRange": {
+          "preset": "365d",
+          "customStartDate": "2026-02-08",
+          "customEndDate": "2026-03-10"
+        },
+        "chartType": "bar",
+        "metricIds": [
+          "metric_8c96a905"
+        ],
+        "granularity": "week"
+      },
+      {
+        "id": "chart_a33234a9",
+        "name": "push vs. pull days",
+        "timeRange": {
+          "preset": "all",
+          "customStartDate": "2026-02-02",
+          "customEndDate": "2026-03-04"
+        },
+        "chartType": "stackedBar",
+        "metricIds": [
+          "metric_8153a99b",
+          "metric_bbc88560"
+        ],
+        "granularity": "month"
+      }
+    ]
+  }
+}

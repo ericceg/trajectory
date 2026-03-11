@@ -8,7 +8,7 @@
 [![Version](https://img.shields.io/badge/version-v0.1.2-green)](https://github.com/ericceg/trajectory/releases/latest)
 
 
-**Lightweight, powerful local-first workout analyzer that keeps your data private.**
+**Powerful local-first workout analyzer that keeps your data private.**
 A local-first desktop app for exploring `.tcx`/`.fit` activities with dashboard, maps, streaks and custom analytics.
 No cloud sync, no account, no server. Just you and your training data.
 
@@ -56,30 +56,139 @@ Here is the workflow I personally use (and would recommend) for athletes in the 
 
 
 
-## App Preview
-
-todo...
-
-
-
 
 
 ## Advanced Analytics
 
-Trajectory includes a configurable analytics workspace to build training insights beyond the default dashboard.
+Trajectory allows you to get the most out of your data by providing a simple
+yet powerful tool to define custom metrics. 
 
-### Features
+To get started, navigate to the **Advanced Analytics** section in the sidebar and switch
+to the **Configure** mode.
+There are three fundamental building blocks to create your custom analytics:
 
-- Define **base metrics** from activity data (distance, duration, elevation, pace/speed, heart-rate, cadence, power, etc.).
-- Create **formula metrics** that combine existing metrics (e.g. sum, difference, ratio).
-- Configure **time ranges** per metric/chart.
-- Build **streak definitions** with activity and metric conditions.
-- Create multi-series **custom charts** for trend analysis.
-- **Import/export analytics definitions** as JSON so setups can be shared or backed up.
+- **Metrics**, which can be subdivided into
+    - base metrics and
+    - formula metrics
+- **Streaks** 
+- **Charts**
+
+
+Each type is explained below.
+
+
+<details>
+<summary>
+<b>Metrics</b>
+</summary>
+
+**Metrics** are the core building block of the analytics system. They represent individual data points that can be calculated from your workout data. There are two types of metrics:
+
+- **Base Metrics**: These are directly calculated from the raw workout data.
+- **Formula Metrics**: These are defined as formulas that can reference other metrics (both base and formula). This allows you to create complex derived metrics based on simpler ones.
+
+A **base metric** allows to measure:
+
+- activities count
+- active days count
+- distance sum
+- duration sum
+- moving time sum
+- elevation gain sum
+- sample time 
+
+After deciding on a base metric, one can also empose conditions such as
+title, category, distance, duration and many more. 
+Multiple conditions can be combined using AND/OR logic, allowing for highly customized metrics. 
+Then the metric is calculated for all activities that satisfy the conditions.
+It can be directly displayed (one aggregated value) or it can be used as a building block for more complex metrics, streaks and charts.
+
+The base metric *sample time* works a bit differently from the others. 
+It allows for more granular time-based calculations within activities.
+One can measure the time spent doing an activity while satisfying certain conditions.
+Using AND/OR logic, one can combine conditions of the following types:
+
+- heart rate zone
+- heart rate
+- power
+- cadence
+- speed
+
+On top of that, one can empose a *minimum continuous match time*,
+which allows to only count time intervals where the conditions are continuously 
+satisfied for at least the specified time.
+At the bottom of the configuration page, there is a visual representation of 
+which sample times where filtered out (before and after applying the minimum 
+continuous match time condition), which can be very useful 
+to make sure the metric is configured as intended.
+
+
+A **formula metric** allows to define a metric as a formula that can reference other metrics (both base and formula).
+This allows to create complex derived metrics based on simpler ones.
+</details>
+
+
+<details>
+<summary>
+<b>Streaks</b>
+</summary>
+
+A **streak** tracks consecutive periods where your metrics hit a goal.
+You can configure:
+
+- **Period**: day or week
+- **Threshold operator**: `>`, `>=`, `<`, `<=`, `=`
+- **Threshold value**: numeric target to compare against
+- **Required metrics**: one or more metrics that must all pass the threshold (AND logic)
+
+Trajectory then computes:
+
+- **Current streak** (how many consecutive periods up to now satisfy the rule)
+- **Longest streak** in your available history
+- **Status** (`active`, `pending`, `broken`)
+- **Current period value** (with progress toward the configured threshold)
+
+</details>
+
+
+<details>
+<summary>
+<b>Charts</b>
+</summary>
+
+A **chart view** turns saved metrics into time-bucketed visualizations.
+You can configure:
+
+- **Chart type**:
+  - **Bar** (exactly 1 metric)
+  - **Line** (exactly 1 metric)
+  - **Stacked Bar** (2 to 5 metrics)
+- **Granularity**: day, week, or month
+- **Time range**: all time, rolling windows, or custom dates
+
+Each chart supports interactive zoom on the x-axis and includes a dedicated
+preview. Note that the preview shows all data points, while the chart in view mode 
+respects the selected time range.
+
+</details>
+
+
+
+
 
 ### Some Examples
 
-todo...
+All the following examples can be imported using the file
+file [`assets/trajectory-advanced-analytics-examples.json`](assets/trajectory-advanced-analytics-examples.json).
+
+1. Let's start with my favorite metric **aerobic time fraction**. 
+It measures the fraction of time spent in aerobic heart rate zones during workouts.
+It crucially relies on the base metric *sample time* with heart rate zone conditions
+and with a minimum continuous match time of 5 minutes (to filter out short intervals that don't really count as aerobic efforts, e.g. during weight training).
+
+2. Another useful metric is the **weekly push/pull streak**. 
+I like to do push/pull splits and indicate them in the workout title (e.g. "Push day", "Pull day").
+This streak tracks consecutive weeks where I do at least one push day and one pull day, which helps me maintain a balanced routine.
 
 
 ## Privacy
