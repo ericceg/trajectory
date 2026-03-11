@@ -5,6 +5,7 @@
 [![Framework](https://img.shields.io/badge/framework-Tauri%20v2-yellow)](https://tauri.app/)
 [![Backend](https://img.shields.io/badge/backend-Rust-orange)](https://www.rust-lang.org/)
 [![Frontend](https://img.shields.io/badge/frontend-React%20%2B%20TypeScript-3178c6)](https://reactjs.org/)
+[![Version](https://img.shields.io/badge/version-v0.1.2-green)](https://github.com/ericceg/trajectory/releases/latest)
 
 
 **Lightweight, powerful local-first workout analyzer that keeps your data private.**
@@ -19,11 +20,11 @@ There is no single reason for why I built Trajectory, but rather a combination o
 - I wanted a local-first solution to analyze my workout data without relying on cloud platforms or accounts.
 - I wanted to get the most out of my workout data. Having collected so many data points over the years, I wanted a way to explore and analyze it in more depth, beyond what the usual fitness platforms offer (and more tailored to my needs). See [Advanced Analytics](#advanced-analytics) for more details and some useful examples.
 - I wanted to learn about Tauri and Rust by building a real-world app.
-- Last but not least, I was inspired by the "you can just build it" philosophy by [Peter Steinberger](https://github.com/steipete).
+- Last but not least, I was inspired by the "you can just do things" philosophy expressed by [Peter Steinberger](https://github.com/steipete) and many others.
 
 
 
-## Download
+## Installation
 
 1. Open the [latest release](https://github.com/ericceg/trajectory/releases/latest)
 2. Download the `.dmg` asset
@@ -133,6 +134,14 @@ Output artifacts are generated under:
 - Tauri v2 + Rust
 - React + TypeScript + Vite + Tailwind CSS
 - SQLite (local app storage)
+
+
+## Roadmap
+
+- Route planner.
+- Windows and Linux support.
+
+
 
 ## License
 
