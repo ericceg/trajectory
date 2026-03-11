@@ -668,12 +668,6 @@ export function AdvancedAnalyticsPage() {
               loading={false}
               loadingProgress={loadingProgress}
               error={runError}
-              onMetricTimeRangeChange={(metricId, timeRange) =>
-                updateMetric(metricId, (metric) => ({ ...metric, timeRange }))
-              }
-              onChartTimeRangeChange={(chartId, timeRange) =>
-                updateChart(chartId, (chart) => ({ ...chart, timeRange }))
-              }
             />
           </div>
         </div>
