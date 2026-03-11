@@ -76,6 +76,36 @@ Important behavior:
 | `.github/workflows/ci.yml` | Typecheck + Rust quality gate |
 | `.github/workflows/release.yml` | Tag-based macOS release pipeline |
 
+### Project Structure
+
+```text
+.
+├── src/
+│   ├── components/      # shared UI building blocks
+│   ├── lib/             # Tauri bridge wrappers and frontend utilities
+│   ├── pages/           # route-level page components
+│   ├── store/           # Zustand app/UI/analytics state
+│   ├── types.ts         # frontend contract mirror for Rust DTOs
+│   └── App.tsx          # app bootstrap, routing, startup scan flow
+├── src-tauri/
+│   ├── src/
+│   │   ├── main.rs      # Tauri command registration and app wiring
+│   │   ├── models.rs    # Rust DTOs shared across commands/modules
+│   │   ├── scanner.rs   # file discovery + incremental/full scan logic
+│   │   ├── parser.rs    # TCX/FIT parsing into normalized activities
+│   │   ├── db.rs        # SQLite schema, migrations, and query layer
+│   │   ├── analytics.rs # advanced analytics computation
+│   │   └── settings.rs  # settings load/save and defaults
+│   ├── Cargo.toml
+│   └── tauri.conf.json
+├── docs/
+│   └── DEVELOPER_GUIDE.md
+└── .github/
+    └── workflows/
+        ├── ci.yml
+        └── release.yml
+```
+
 ## 4. Architecture At A Glance
 
 ```mermaid
