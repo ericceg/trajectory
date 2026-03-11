@@ -227,6 +227,11 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
   const topFieldRowClassName = 'grid min-h-7 grid-cols-[max-content_minmax(0,1fr)] items-center gap-2';
   const topFieldLabelClassName = 'text-sm text-muted whitespace-nowrap';
   const topControlClassName = 'h-7 w-full rounded-md border border-border bg-bg px-2 text-sm';
+  const groupControlClassName = 'h-7 w-full rounded-md border border-border bg-bg px-2 text-sm';
+  const groupActionButtonClassName =
+    'h-7 rounded-md border border-border px-2 text-xs hover:bg-bg/60';
+  const groupSecondaryButtonClassName =
+    'h-7 rounded-md border border-border px-2 text-xs text-muted hover:text-foreground';
 
   const updateBase = (patch: Partial<AdvancedAnalyticsBaseMetricDefinition>) => {
     onChange({
@@ -352,7 +357,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
             <TimeRangeControl
               value={metric.timeRange}
               onChange={(timeRange) => onChange({ ...metric, timeRange })}
-              label="Card time range (View tab)"
+              label="Time range"
               inlineLabel
               labelWidthClassName={topFieldLabelClassName}
               controlClassName={topControlClassName}
@@ -403,7 +408,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
             </select>
           </label>
           <label className={`${topFieldRowClassName} xl:col-start-3 xl:row-start-3`}>
-            <span className={topFieldLabelClassName}>Unit display (optional override)</span>
+            <span className={topFieldLabelClassName}>Unit display</span>
             <select
               value={normalizeUnitDisplaySelection(base.displayUnit)}
               onChange={(event) =>
@@ -466,7 +471,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
             <TimeRangeControl
               value={metric.timeRange}
               onChange={(timeRange) => onChange({ ...metric, timeRange })}
-              label="Card time range (View tab)"
+              label="Time range"
               inlineLabel
               labelWidthClassName={topFieldLabelClassName}
               controlClassName={topControlClassName}
@@ -503,7 +508,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                     createBlankActivityConditionGroup()
                   ])
                 }
-                className="rounded-md border border-border px-2.5 py-1.5 text-xs font-medium hover:bg-bg/60"
+                className={`${groupActionButtonClassName} px-2.5 font-medium`}
               >
                 + Group
               </button>
@@ -543,7 +548,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                               )
                             )
                           }
-                          className="rounded-md border border-border px-2 py-1 text-xs hover:bg-bg/60"
+                          className={groupActionButtonClassName}
                         >
                           + Condition
                         </button>
@@ -556,7 +561,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                               )
                             )
                           }
-                          className="rounded-md border border-border px-2 py-1 text-xs text-muted hover:text-foreground"
+                          className={groupSecondaryButtonClassName}
                         >
                           Remove Group
                         </button>
@@ -603,7 +608,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                                       : undefined
                                 }));
                               }}
-                              className="rounded-md border border-border bg-bg px-2 py-1.5 text-sm md:col-span-3"
+                              className={`${groupControlClassName} md:col-span-3`}
                             >
                               {ACTIVITY_FIELD_OPTIONS.map((option) => (
                                 <option key={option.value} value={option.value}>
@@ -621,7 +626,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                                       .value as AdvancedAnalyticsActivityConditionOperator
                                 }))
                               }
-                              className="rounded-md border border-border bg-bg px-2 py-1.5 text-sm md:col-span-3"
+                              className={`${groupControlClassName} md:col-span-3`}
                             >
                               {operators.map((operator) => (
                                 <option key={operator} value={operator}>
@@ -644,7 +649,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                                     ? 'comma-separated'
                                     : 'value'
                                 }
-                                className="rounded-md border border-border bg-bg px-2 py-1.5 text-sm md:col-span-5"
+                                className={`${groupControlClassName} md:col-span-5`}
                               />
                             ) : kind === 'bool' ? (
                               <select
@@ -656,7 +661,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                                     value: event.target.value
                                   }))
                                 }
-                                className="rounded-md border border-border bg-bg px-2 py-1.5 text-sm md:col-span-5"
+                                className={`${groupControlClassName} md:col-span-5`}
                               >
                                 <option value="true">True</option>
                                 <option value="false">False</option>
@@ -671,7 +676,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                                     numberValue: Number(event.target.value)
                                   }))
                                 }
-                                className="rounded-md border border-border bg-bg px-2 py-1.5 text-sm md:col-span-5"
+                                className={`${groupControlClassName} md:col-span-5`}
                               />
                             )}
                             <button
@@ -690,7 +695,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                                   )
                                 )
                               }
-                              className="rounded-md border border-border px-2 py-2 text-xs text-muted hover:text-foreground md:col-span-1"
+                              className={`${groupSecondaryButtonClassName} md:col-span-1`}
                             >
                               Remove
                             </button>
@@ -728,7 +733,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                         Number.isFinite(parsed) && parsed > 0 ? parsed : 0
                     });
                   }}
-                  className="w-full rounded-md border border-border bg-bg px-2.5 py-1.5 text-sm"
+                  className={groupControlClassName}
                 />
                 <p className="text-xs text-muted">
                   Ignore short spikes. Only contiguous matching intervals that last at least this
@@ -751,7 +756,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                       createBlankSampleConditionGroup()
                     ])
                   }
-                  className="rounded-md border border-border px-2.5 py-1.5 text-xs font-medium hover:bg-bg/60"
+                  className={`${groupActionButtonClassName} px-2.5 font-medium`}
                 >
                   + Group
                 </button>
@@ -793,7 +798,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                                 )
                               )
                             }
-                            className="rounded-md border border-border px-2 py-1 text-xs hover:bg-bg/60"
+                            className={groupActionButtonClassName}
                           >
                             + Condition
                           </button>
@@ -806,7 +811,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                                 )
                               )
                             }
-                            className="rounded-md border border-border px-2 py-1 text-xs text-muted hover:text-foreground"
+                            className={groupSecondaryButtonClassName}
                           >
                             Remove Group
                           </button>
@@ -844,7 +849,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                                         : current.numberValue ?? 0
                                   }));
                                 }}
-                                className="rounded-md border border-border bg-bg px-2 py-1.5 text-sm md:col-span-4"
+                                className={`${groupControlClassName} md:col-span-4`}
                               >
                                 {SAMPLE_FIELD_OPTIONS.map((option) => (
                                   <option key={option.value} value={option.value}>
@@ -862,7 +867,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                                         .value as AdvancedAnalyticsSampleConditionOperator
                                   }))
                                 }
-                                className="rounded-md border border-border bg-bg px-2 py-1.5 text-sm md:col-span-3"
+                                className={`${groupControlClassName} md:col-span-3`}
                               >
                                 {operators.map((operator) => (
                                   <option key={operator} value={operator}>
@@ -879,7 +884,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                                       zone: Number(event.target.value)
                                     }))
                                   }
-                                  className="rounded-md border border-border bg-bg px-2 py-1.5 text-sm md:col-span-4"
+                                  className={`${groupControlClassName} md:col-span-4`}
                                 >
                                   {[1, 2, 3, 4, 5].map((zone) => (
                                     <option key={zone} value={zone}>
@@ -897,7 +902,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                                       numberValue: Number(event.target.value)
                                     }))
                                   }
-                                  className="rounded-md border border-border bg-bg px-2 py-1.5 text-sm md:col-span-4"
+                                  className={`${groupControlClassName} md:col-span-4`}
                                 />
                               )}
                               <button
@@ -916,7 +921,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                                     )
                                   )
                                 }
-                                className="rounded-md border border-border px-2 py-2 text-xs text-muted hover:text-foreground md:col-span-1"
+                                className={`${groupSecondaryButtonClassName} md:col-span-1`}
                               >
                                 Remove
                               </button>
@@ -933,9 +938,9 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
         </div>
       ) : (
         <div className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-            <label className="space-y-1 text-sm xl:col-span-2">
-              <span className="text-muted">Metric A</span>
+          <div className={topGridClassName}>
+            <label className={topFieldRowClassName}>
+              <span className={topFieldLabelClassName}>Metric A</span>
               <select
                 value={formula.leftMetricId}
                 onChange={(event) =>
@@ -945,7 +950,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                     formula: { ...formula, leftMetricId: event.target.value }
                   })
                 }
-                className="w-full rounded-md border border-border bg-bg px-2.5 py-1.5 text-sm"
+                className={topControlClassName}
               >
                 <option value="">Select metric</option>
                 {allMetrics
@@ -957,8 +962,8 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                   ))}
               </select>
             </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-muted">Operator</span>
+            <label className={topFieldRowClassName}>
+              <span className={topFieldLabelClassName}>Operator</span>
               <select
                 value={formula.operator}
                 onChange={(event) =>
@@ -971,7 +976,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                     }
                   })
                 }
-                className="w-full rounded-md border border-border bg-bg px-2.5 py-1.5 text-sm"
+                className={topControlClassName}
               >
                 <option value="add">+</option>
                 <option value="subtract">-</option>
@@ -979,8 +984,8 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                 <option value="percent">%</option>
               </select>
             </label>
-            <label className="space-y-1 text-sm xl:col-span-2">
-              <span className="text-muted">Metric B</span>
+            <label className={topFieldRowClassName}>
+              <span className={topFieldLabelClassName}>Metric B</span>
               <select
                 value={formula.rightMetricId}
                 onChange={(event) =>
@@ -990,7 +995,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                     formula: { ...formula, rightMetricId: event.target.value }
                   })
                 }
-                className="w-full rounded-md border border-border bg-bg px-2.5 py-1.5 text-sm"
+                className={topControlClassName}
               >
                 <option value="">Select metric</option>
                 {allMetrics
@@ -1002,8 +1007,8 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                   ))}
               </select>
             </label>
-            <label className="space-y-1 text-sm">
-              <span className="text-muted">Unit display</span>
+            <label className={topFieldRowClassName}>
+              <span className={topFieldLabelClassName}>Unit display</span>
               <select
                 value={normalizeUnitDisplaySelection(formula.displayUnit)}
                 onChange={(event) =>
@@ -1013,7 +1018,7 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                     formula: { ...formula, displayUnit: event.target.value }
                   })
                 }
-                className="w-full rounded-md border border-border bg-bg px-2.5 py-1.5 text-sm"
+                className={topControlClassName}
               >
                 {formulaDisplayUnitOptions.map((option) => (
                   <option key={option.value} value={option.value}>
