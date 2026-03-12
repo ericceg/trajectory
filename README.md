@@ -32,7 +32,8 @@ There is no single reason for why I built Trajectory, but rather a combination o
 
 Notes:
 - Current release builds are ad-hoc signed, so macOS may show a security warning on first launch.
-- If prompted, right-click the app, choose **Open**, then confirm.
+- If you cannot open the app, follow the instructions on [Apple's support site](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unknown-developer-mh40616/mac).
+
 
 
 ## Usage
