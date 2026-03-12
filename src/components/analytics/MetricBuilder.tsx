@@ -66,7 +66,8 @@ const SAMPLE_FIELD_OPTIONS: Array<{ value: AdvancedAnalyticsSampleConditionField
   { value: 'heartRate', label: 'Heart Rate' },
   { value: 'powerWatts', label: 'Power (W)' },
   { value: 'cadence', label: 'Cadence' },
-  { value: 'speedMps', label: 'Speed (m/s)' }
+  { value: 'speedMps', label: 'Speed (km/h)' },
+  { value: 'paceMinPerKm', label: 'Pace (min/km)' }
 ];
 
 const TEXT_OPERATORS: AdvancedAnalyticsActivityConditionOperator[] = [
@@ -122,6 +123,39 @@ function displayOperator(label: string) {
   return label
     .replace(/[A-Z]/g, (ch) => ` ${ch.toLowerCase()}`)
     .replace(/^./, (ch) => ch.toUpperCase());
+}
+
+const MPS_TO_KMH = 3.6;
+
+function parseOptionalNumberInput(raw: string): number | undefined {
+  if (raw.trim() === '') {
+    return undefined;
+  }
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function sampleConditionInputValue(condition: AdvancedAnalyticsSampleCondition): number | '' {
+  if (condition.numberValue == null) {
+    return '';
+  }
+  if (condition.field !== 'speedMps') {
+    return condition.numberValue;
+  }
+  return condition.numberValue * MPS_TO_KMH;
+}
+
+function sampleConditionStoredValue(
+  condition: AdvancedAnalyticsSampleCondition,
+  inputValue: number | undefined
+): number | undefined {
+  if (inputValue == null) {
+    return undefined;
+  }
+  if (condition.field !== 'speedMps') {
+    return inputValue;
+  }
+  return inputValue / MPS_TO_KMH;
 }
 
 function unitDisplayOptionsForValue(value?: string | null): Array<{ value: string; label: string }> {
@@ -669,11 +703,11 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                             ) : (
                               <input
                                 type="number"
-                                value={condition.numberValue ?? 0}
+                                value={condition.numberValue ?? ''}
                                 onChange={(event) =>
                                   updateActivityCondition(group.id, condition.id, (current) => ({
                                     ...current,
-                                    numberValue: Number(event.target.value)
+                                    numberValue: parseOptionalNumberInput(event.target.value)
                                   }))
                                 }
                                 className={`${groupControlClassName} md:col-span-5`}
@@ -895,11 +929,14 @@ export function MetricBuilder({ metric, allMetrics, onChange, onDelete }: Metric
                               ) : (
                                 <input
                                   type="number"
-                                  value={condition.numberValue ?? 0}
+                                  value={sampleConditionInputValue(condition)}
                                   onChange={(event) =>
                                     updateSampleCondition(group.id, condition.id, (current) => ({
                                       ...current,
-                                      numberValue: Number(event.target.value)
+                                      numberValue: sampleConditionStoredValue(
+                                        current,
+                                        parseOptionalNumberInput(event.target.value)
+                                      )
                                     }))
                                   }
                                   className={`${groupControlClassName} md:col-span-4`}

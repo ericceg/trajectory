@@ -396,6 +396,7 @@ pub enum AdvancedAnalyticsSampleConditionField {
     PowerWatts,
     Cadence,
     SpeedMps,
+    PaceMinPerKm,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

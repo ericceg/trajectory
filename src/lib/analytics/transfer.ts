@@ -96,7 +96,8 @@ const SAMPLE_FIELDS: AdvancedAnalyticsSampleConditionField[] = [
   'heartRateZone',
   'powerWatts',
   'cadence',
-  'speedMps'
+  'speedMps',
+  'paceMinPerKm'
 ];
 const SAMPLE_OPERATORS: AdvancedAnalyticsSampleConditionOperator[] = [
   'greaterThan',

@@ -1378,6 +1378,11 @@ fn sample_matches_condition(
             condition.operator,
             condition.number_value,
         ),
+        AdvancedAnalyticsSampleConditionField::PaceMinPerKm => sample_numeric_condition_matches(
+            sample_pace_min_per_km(sample.speed_mps),
+            condition.operator,
+            condition.number_value,
+        ),
         AdvancedAnalyticsSampleConditionField::HeartRateZone => {
             if condition.operator != AdvancedAnalyticsSampleConditionOperator::Is {
                 return false;
@@ -1411,6 +1416,14 @@ fn sample_numeric_condition_matches(
         | AdvancedAnalyticsSampleConditionOperator::Is => (actual - expected).abs() < 1e-9,
         AdvancedAnalyticsSampleConditionOperator::NotEquals => (actual - expected).abs() >= 1e-9,
     }
+}
+
+fn sample_pace_min_per_km(speed_mps: Option<f64>) -> Option<f64> {
+    let speed_mps = speed_mps?;
+    if speed_mps <= 0.0 {
+        return None;
+    }
+    Some(1000.0 / speed_mps / 60.0)
 }
 
 fn heart_rate_zone_index(hr: f64, upper_bounds: &[u16]) -> u8 {
@@ -2132,6 +2145,61 @@ mod tests {
 
         assert_eq!(and_seconds.included_seconds, 0.0);
         assert_eq!(or_seconds.included_seconds, 20.0);
+    }
+
+    #[test]
+    fn sample_time_pace_condition_matches_from_speed_samples() {
+        let samples = vec![
+            ActivitySample {
+                elapsed_seconds: 0.0,
+                distance_m: None,
+                speed_mps: Some(3.2), // 5.21 min/km
+                heart_rate: None,
+                cadence: None,
+                power_watts: None,
+                altitude_m: None,
+                lat: None,
+                lon: None,
+                timestamp: None,
+            },
+            ActivitySample {
+                elapsed_seconds: 10.0,
+                distance_m: None,
+                speed_mps: Some(4.0), // 4.17 min/km
+                heart_rate: None,
+                cadence: None,
+                power_watts: None,
+                altitude_m: None,
+                lat: None,
+                lon: None,
+                timestamp: None,
+            },
+            ActivitySample {
+                elapsed_seconds: 20.0,
+                distance_m: None,
+                speed_mps: Some(3.1), // 5.38 min/km
+                heart_rate: None,
+                cadence: None,
+                power_watts: None,
+                altitude_m: None,
+                lat: None,
+                lon: None,
+                timestamp: None,
+            },
+        ];
+
+        let condition_groups = vec![vec![AdvancedAnalyticsSampleCondition {
+            id: "pace".into(),
+            field: AdvancedAnalyticsSampleConditionField::PaceMinPerKm,
+            operator: AdvancedAnalyticsSampleConditionOperator::LessThanOrEqual,
+            number_value: Some(5.0),
+            zone: None,
+        }]];
+
+        let result =
+            compute_matching_sample_time(&samples, &condition_groups, &[120, 140, 160, 180], 0.0);
+
+        assert_eq!(result.included_seconds, 10.0);
     }
 
     #[test]

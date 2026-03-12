@@ -178,7 +178,8 @@ export type AdvancedAnalyticsSampleConditionField =
   | 'heartRateZone'
   | 'powerWatts'
   | 'cadence'
-  | 'speedMps';
+  | 'speedMps'
+  | 'paceMinPerKm';
 
 export type AdvancedAnalyticsSampleConditionOperator =
   | 'greaterThan'
