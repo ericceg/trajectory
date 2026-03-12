@@ -5,7 +5,7 @@
 [![Framework](https://img.shields.io/badge/framework-Tauri%20v2-yellow)](https://tauri.app/)
 [![Backend](https://img.shields.io/badge/backend-Rust-orange)](https://www.rust-lang.org/)
 [![Frontend](https://img.shields.io/badge/frontend-React%20%2B%20TypeScript-3178c6)](https://reactjs.org/)
-[![Version](https://img.shields.io/badge/version-v0.1.2-green)](https://github.com/ericceg/trajectory/releases/latest)
+[![Version](https://img.shields.io/badge/version-v0.1.3-green)](https://github.com/ericceg/trajectory/releases/latest)
 
 
 **Powerful local-first workout analyzer that keeps your data private.**
