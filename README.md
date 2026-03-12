@@ -42,7 +42,7 @@ Notes:
 3. Start in **Dashboard** for a quick overview of training load and history.
 4. Use **Activities** to filter, sort, and inspect individual workouts.
 5. Open **Heatmap** to spot route patterns across all GPS sessions.
-6. Use **Advanced Analytics** to define custom metrics, streaks, and charts.
+6. Use **Advanced Analytics** to define custom metrics, streaks, and charts. See [Advanced Analytics](#advanced-analytics) for more details and examples.
 7. Open **Settings** to customize appearance, configure heart-rate zones, and run rescans.
 
 
@@ -113,6 +113,7 @@ Using AND/OR logic, one can combine conditions of the following types:
 - power
 - cadence
 - speed
+- pace
 
 On top of that, one can empose a *minimum continuous match time*,
 which allows to only count time intervals where the conditions are continuously 
@@ -189,6 +190,11 @@ and with a minimum continuous match time of 5 minutes (to filter out short inter
 2. Another useful metric is the **weekly push/pull streak**. 
 I like to do push/pull splits and indicate them in the workout title (e.g. "Push day", "Pull day").
 This streak tracks consecutive weeks where I do at least one push day and one pull day, which helps me maintain a balanced routine.
+
+3. Another interesting metric is called **risky ride**. 
+It measures the time spent riding faster than 50 km/h, which 
+can be useful to convince your loved ones that your hobby is not that dangerous after all.
+
 
 
 ## Privacy

@@ -1,9 +1,9 @@
 {
   "format": "trajectory-advanced-analytics",
   "schemaVersion": 1,
-  "exportedAt": "2026-03-11T13:42:13.143Z",
+  "exportedAt": "2026-03-11T15:24:17.653Z",
   "summary": {
-    "metrics": 6,
+    "metrics": 7,
     "streaks": 3,
     "charts": 3
   },
@@ -126,23 +126,6 @@
         }
       },
       {
-        "id": "metric_5a1c6cf7",
-        "name": "aerobic time fraction",
-        "kind": "formula",
-        "showInView": true,
-        "timeRange": {
-          "preset": "thisWeek",
-          "customStartDate": "2026-02-02",
-          "customEndDate": "2026-03-04"
-        },
-        "formula": {
-          "leftMetricId": "metric_8c96a905",
-          "operator": "divide",
-          "rightMetricId": "metric_193ea5c7",
-          "displayUnit": "%"
-        }
-      },
-      {
         "id": "metric_193ea5c7",
         "name": "time",
         "kind": "base",
@@ -166,6 +149,23 @@
         }
       },
       {
+        "id": "metric_5a1c6cf7",
+        "name": "aerobic time fraction",
+        "kind": "formula",
+        "showInView": true,
+        "timeRange": {
+          "preset": "thisWeek",
+          "customStartDate": "2026-02-02",
+          "customEndDate": "2026-03-04"
+        },
+        "formula": {
+          "leftMetricId": "metric_8c96a905",
+          "operator": "divide",
+          "rightMetricId": "metric_193ea5c7",
+          "displayUnit": "%"
+        }
+      },
+      {
         "id": "metric_078901f2",
         "name": "active day",
         "kind": "base",
@@ -185,6 +185,41 @@
           "sampleConditionJoin": "and",
           "minimumSampleMatchSeconds": 0,
           "defaultChartGranularity": "day",
+          "displayUnit": "auto"
+        }
+      },
+      {
+        "id": "metric_4b937eec",
+        "name": "risky ride",
+        "kind": "base",
+        "showInView": true,
+        "timeRange": {
+          "preset": "all",
+          "customStartDate": "2026-02-09",
+          "customEndDate": "2026-03-11"
+        },
+        "base": {
+          "measure": "sampleTime",
+          "activityConditions": [],
+          "sampleConditions": [],
+          "activityConditionGroups": [],
+          "sampleConditionGroups": [
+            {
+              "id": "sg_bdc4ad62",
+              "conditions": [
+                {
+                  "id": "sc_477c6111",
+                  "field": "speedMps",
+                  "operator": "greaterThanOrEqual",
+                  "numberValue": 13.88888888888889
+                }
+              ]
+            }
+          ],
+          "activityConditionJoin": "and",
+          "sampleConditionJoin": "and",
+          "minimumSampleMatchSeconds": 0,
+          "defaultChartGranularity": "week",
           "displayUnit": "auto"
         }
       }
