@@ -5,13 +5,15 @@ use rusqlite::{params, params_from_iter, types::Value, Connection, OptionalExten
 
 use crate::models::{
     ActivityDetail, ActivityFilters, ActivitySample, ActivitySampleQuery, ActivitySamplesResponse,
-    ActivitySummary, HeatmapData, HeatmapFilters, ParsedActivity, SourceFileMeta, TrackPoint,
+    ActivitySummary, HeatmapData, HeatmapFilters, ParsedActivity, PauseSegment, SourceFileMeta,
+    TrackPoint,
 };
 
 const DEFAULT_CHART_MAX_SAMPLES: usize = 2000;
 const MIN_CHART_MAX_SAMPLES: usize = 50;
 const MAX_CHART_MAX_SAMPLES: usize = 20_000;
-const DB_SCHEMA_VERSION: i64 = 2;
+const DB_SCHEMA_VERSION: i64 = 3;
+pub const ACTIVITY_PARSER_VERSION: i64 = 3;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UpsertResult {
@@ -65,6 +67,8 @@ pub fn init_db(db_path: &Path) -> Result<()> {
       max_hr REAL,
       has_gps INTEGER NOT NULL,
       track_json TEXT NOT NULL,
+      pause_segments_json TEXT NOT NULL DEFAULT '[]',
+      parser_version INTEGER NOT NULL DEFAULT 1,
       original_sample_count INTEGER NOT NULL,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -112,6 +116,12 @@ fn apply_legacy_migrations(conn: &Connection) -> Result<()> {
     if user_version < 2 {
         ensure_activity_sample_cadence_column(conn)?;
         ensure_activity_sample_power_column(conn)?;
+        conn.execute_batch("PRAGMA user_version = 2;")?;
+    }
+
+    if user_version < 3 {
+        ensure_activity_pause_segments_column(conn)?;
+        ensure_activity_parser_version_column(conn)?;
         conn.execute_batch(&format!("PRAGMA user_version = {DB_SCHEMA_VERSION};"))?;
     }
 
@@ -288,8 +298,54 @@ fn ensure_activity_sample_power_column(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+fn ensure_activity_pause_segments_column(conn: &Connection) -> Result<()> {
+    let has_pause_segments = conn
+        .query_row(
+            "SELECT 1 FROM pragma_table_info('activities') WHERE name = 'pause_segments_json' LIMIT 1",
+            [],
+            |_| Ok(()),
+        )
+        .optional()?
+        .is_some();
+
+    if !has_pause_segments {
+        conn.execute(
+            "ALTER TABLE activities ADD COLUMN pause_segments_json TEXT NOT NULL DEFAULT '[]'",
+            [],
+        )?;
+    }
+
+    conn.execute(
+        "UPDATE activities SET pause_segments_json = '[]' WHERE trim(COALESCE(pause_segments_json, '')) = ''",
+        [],
+    )?;
+
+    Ok(())
+}
+
+fn ensure_activity_parser_version_column(conn: &Connection) -> Result<()> {
+    let has_parser_version = conn
+        .query_row(
+            "SELECT 1 FROM pragma_table_info('activities') WHERE name = 'parser_version' LIMIT 1",
+            [],
+            |_| Ok(()),
+        )
+        .optional()?
+        .is_some();
+
+    if !has_parser_version {
+        conn.execute(
+            "ALTER TABLE activities ADD COLUMN parser_version INTEGER NOT NULL DEFAULT 1",
+            [],
+        )?;
+    }
+
+    Ok(())
+}
+
 pub fn source_file_meta_map(conn: &Connection) -> Result<HashMap<String, SourceFileMeta>> {
-    let mut stmt = conn.prepare("SELECT source_path, source_mtime, source_size FROM activities")?;
+    let mut stmt = conn
+        .prepare("SELECT source_path, source_mtime, source_size, parser_version FROM activities")?;
 
     let mut map = HashMap::new();
     let rows = stmt.query_map([], |row| {
@@ -298,6 +354,7 @@ pub fn source_file_meta_map(conn: &Connection) -> Result<HashMap<String, SourceF
             SourceFileMeta {
                 source_mtime: row.get(1)?,
                 source_size: row.get(2)?,
+                parser_version: row.get(3)?,
             },
         ))
     })?;
@@ -342,6 +399,7 @@ pub fn upsert_activity(
         .optional()?;
 
     let track_json = serde_json::to_string(&parsed.track)?;
+    let pause_segments_json = serde_json::to_string(&parsed.pause_segments)?;
 
     conn.execute(
         r#"
@@ -364,9 +422,11 @@ pub fn upsert_activity(
       max_hr,
       has_gps,
       track_json,
+      pause_segments_json,
+      parser_version,
       original_sample_count,
       updated_at
-    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, CURRENT_TIMESTAMP)
+    ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, CURRENT_TIMESTAMP)
     ON CONFLICT(source_path) DO UPDATE SET
       source_mtime = excluded.source_mtime,
       source_size = excluded.source_size,
@@ -385,6 +445,8 @@ pub fn upsert_activity(
       max_hr = excluded.max_hr,
       has_gps = excluded.has_gps,
       track_json = excluded.track_json,
+      pause_segments_json = excluded.pause_segments_json,
+      parser_version = excluded.parser_version,
       original_sample_count = excluded.original_sample_count,
       updated_at = CURRENT_TIMESTAMP
     "#,
@@ -407,6 +469,8 @@ pub fn upsert_activity(
             parsed.max_hr,
             if parsed.has_gps { 1 } else { 0 },
             track_json,
+            pause_segments_json,
+            ACTIVITY_PARSER_VERSION,
             parsed.original_sample_count as i64,
         ],
     )?;
@@ -548,6 +612,53 @@ fn clamp_chart_max_samples(value: Option<usize>) -> usize {
     value
         .unwrap_or(DEFAULT_CHART_MAX_SAMPLES)
         .clamp(MIN_CHART_MAX_SAMPLES, MAX_CHART_MAX_SAMPLES)
+}
+
+fn parse_pause_segments_json(value: &str) -> Vec<PauseSegment> {
+    serde_json::from_str(value).unwrap_or_default()
+}
+
+fn apply_pause_visibility(
+    samples: &[ActivitySample],
+    pause_segments: &[PauseSegment],
+    hide_pauses: bool,
+) -> Vec<ActivitySample> {
+    if !hide_pauses || pause_segments.is_empty() {
+        return samples.to_vec();
+    }
+
+    let mut visible = Vec::with_capacity(samples.len());
+    let mut pause_index = 0_usize;
+    let mut paused_seconds_before = 0.0;
+
+    for sample in samples {
+        while let Some(segment) = pause_segments.get(pause_index) {
+            if sample.elapsed_seconds >= segment.end_elapsed_seconds {
+                paused_seconds_before += segment.duration_seconds.max(0.0);
+                pause_index += 1;
+            } else {
+                break;
+            }
+        }
+
+        let in_pause = pause_segments
+            .get(pause_index)
+            .map(|segment| {
+                sample.elapsed_seconds >= segment.start_elapsed_seconds
+                    && sample.elapsed_seconds < segment.end_elapsed_seconds
+            })
+            .unwrap_or(false);
+
+        if in_pause {
+            continue;
+        }
+
+        let mut adjusted = sample.clone();
+        adjusted.elapsed_seconds = (sample.elapsed_seconds - paused_seconds_before).max(0.0);
+        visible.push(adjusted);
+    }
+
+    visible
 }
 
 pub fn list_activities(
@@ -779,6 +890,7 @@ fn sample_matches_distance_window(
 fn sample_activity_window(
     all_samples: &[ActivitySample],
     summary: &ActivitySummary,
+    pause_segments: &[PauseSegment],
     query: &ActivitySampleQuery,
 ) -> (Vec<ActivitySample>, usize) {
     let min_distance_m = query.distance_min_km.map(|value| value.max(0.0) * 1000.0);
@@ -806,8 +918,13 @@ fn sample_activity_window(
         filtered
     };
 
-    let matching_sample_count = filtered.len();
-    let sampled = downsample_cloned(&filtered, max_samples);
+    let visible = apply_pause_visibility(
+        &filtered,
+        pause_segments,
+        query.hide_pauses.unwrap_or(false),
+    );
+    let matching_sample_count = visible.len();
+    let sampled = downsample_cloned(&visible, max_samples);
     (sampled, matching_sample_count)
 }
 
@@ -832,13 +949,19 @@ pub fn get_activity(conn: &Connection, id: i64) -> Result<ActivityDetail> {
       max_hr,
       has_gps,
       track_json,
+      pause_segments_json,
       original_sample_count
     FROM activities
     WHERE id = ?1
     "#,
     )?;
 
-    let (summary, track_json, original_sample_count): (ActivitySummary, String, i64) = stmt
+    let (summary, track_json, pause_segments_json, original_sample_count): (
+        ActivitySummary,
+        String,
+        String,
+        i64,
+    ) = stmt
         .query_row(params![id], |row| {
             Ok((
                 ActivitySummary {
@@ -861,16 +984,19 @@ pub fn get_activity(conn: &Connection, id: i64) -> Result<ActivityDetail> {
                 },
                 row.get(16)?,
                 row.get(17)?,
+                row.get(18)?,
             ))
         })
         .optional()?
         .ok_or_else(|| anyhow!("activity {} not found", id))?;
 
     let track: Vec<TrackPoint> = serde_json::from_str(&track_json).unwrap_or_default();
+    let pause_segments = parse_pause_segments_json(&pause_segments_json);
 
     Ok(ActivityDetail {
         summary,
         track,
+        pause_segments,
         original_sample_count: original_sample_count as usize,
     })
 }
@@ -909,6 +1035,16 @@ pub fn get_activity_samples(
         .optional()?
         .ok_or_else(|| anyhow!("activity {} not found", id))?;
 
+    let pause_segments_json: String = conn
+        .query_row(
+            "SELECT pause_segments_json FROM activities WHERE id = ?1",
+            params![id],
+            |row| row.get(0),
+        )
+        .optional()?
+        .ok_or_else(|| anyhow!("activity {} not found", id))?;
+    let pause_segments = parse_pause_segments_json(&pause_segments_json);
+
     let original_sample_count: i64 = conn
         .query_row(
             "SELECT original_sample_count FROM activities WHERE id = ?1",
@@ -919,7 +1055,8 @@ pub fn get_activity_samples(
         .ok_or_else(|| anyhow!("activity {} not found", id))?;
 
     let all_samples = fetch_activity_samples(conn, id)?;
-    let (samples, matching_sample_count) = sample_activity_window(&all_samples, &summary, query);
+    let (samples, matching_sample_count) =
+        sample_activity_window(&all_samples, &summary, &pause_segments, query);
 
     Ok(ActivitySamplesResponse {
         returned_sample_count: samples.len(),
@@ -927,4 +1064,66 @@ pub fn get_activity_samples(
         original_sample_count: original_sample_count as usize,
         matching_sample_count,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::models::{ActivitySample, PauseSegment};
+
+    use super::apply_pause_visibility;
+
+    #[test]
+    fn hiding_pauses_compresses_elapsed_time_and_drops_paused_samples() {
+        let samples = vec![
+            ActivitySample {
+                elapsed_seconds: 10.0,
+                distance_m: Some(100.0),
+                speed_mps: Some(1.0),
+                heart_rate: None,
+                cadence: None,
+                power_watts: None,
+                altitude_m: None,
+                lat: None,
+                lon: None,
+                timestamp: None,
+            },
+            ActivitySample {
+                elapsed_seconds: 12.0,
+                distance_m: Some(100.0),
+                speed_mps: Some(0.0),
+                heart_rate: None,
+                cadence: None,
+                power_watts: None,
+                altitude_m: None,
+                lat: None,
+                lon: None,
+                timestamp: None,
+            },
+            ActivitySample {
+                elapsed_seconds: 20.0,
+                distance_m: Some(120.0),
+                speed_mps: Some(1.0),
+                heart_rate: None,
+                cadence: None,
+                power_watts: None,
+                altitude_m: None,
+                lat: None,
+                lon: None,
+                timestamp: None,
+            },
+        ];
+        let pause_segments = vec![PauseSegment {
+            start_elapsed_seconds: 11.0,
+            end_elapsed_seconds: 18.0,
+            duration_seconds: 7.0,
+            start_timestamp: None,
+            end_timestamp: None,
+        }];
+
+        let visible = apply_pause_visibility(&samples, &pause_segments, true);
+
+        assert_eq!(visible.len(), 2);
+        assert_eq!(visible[0].elapsed_seconds, 10.0);
+        assert_eq!(visible[1].elapsed_seconds, 13.0);
+    }
 }

@@ -153,7 +153,11 @@ pub fn scan_import_folder(
 
         let unchanged = known_files
             .get(&source_path)
-            .map(|known| known.source_size == source_size && known.source_mtime == source_mtime)
+            .map(|known| {
+                known.source_size == source_size
+                    && known.source_mtime == source_mtime
+                    && known.parser_version == db::ACTIVITY_PARSER_VERSION
+            })
             .unwrap_or(false);
 
         if unchanged && !full_rescan {

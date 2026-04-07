@@ -167,6 +167,76 @@ function ChartModeToggle({
   );
 }
 
+function XAxisModeToggle({
+  mode,
+  showDistance,
+  onChange
+}: {
+  mode: ChartXAxisMode;
+  showDistance: boolean;
+  onChange: (mode: ChartXAxisMode) => void;
+}) {
+  return (
+    <div className="inline-flex rounded-lg border border-border bg-bg/40 p-1">
+      {showDistance ? (
+        <button
+          type="button"
+          onClick={() => onChange('distance')}
+          aria-pressed={mode === 'distance'}
+          className={`rounded-md px-2.5 py-1 text-xs transition-colors ${
+            mode === 'distance' ? 'bg-panel text-foreground shadow-sm' : 'text-muted hover:text-foreground'
+          }`}
+        >
+          Distance
+        </button>
+      ) : null}
+      <button
+        type="button"
+        onClick={() => onChange('time')}
+        aria-pressed={mode === 'time'}
+        className={`rounded-md px-2.5 py-1 text-xs transition-colors ${
+          mode === 'time' ? 'bg-panel text-foreground shadow-sm' : 'text-muted hover:text-foreground'
+        }`}
+      >
+        Time
+      </button>
+    </div>
+  );
+}
+
+function PauseVisibilityToggle({
+  hidePauses,
+  onChange
+}: {
+  hidePauses: boolean;
+  onChange: (hidePauses: boolean) => void;
+}) {
+  return (
+    <div className="inline-flex rounded-lg border border-border bg-bg/40 p-1">
+      <button
+        type="button"
+        onClick={() => onChange(true)}
+        aria-pressed={hidePauses}
+        className={`rounded-md px-2.5 py-1 text-xs transition-colors ${
+          hidePauses ? 'bg-panel text-foreground shadow-sm' : 'text-muted hover:text-foreground'
+        }`}
+      >
+        Moving only
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange(false)}
+        aria-pressed={!hidePauses}
+        className={`rounded-md px-2.5 py-1 text-xs transition-colors ${
+          !hidePauses ? 'bg-panel text-foreground shadow-sm' : 'text-muted hover:text-foreground'
+        }`}
+      >
+        Include pause
+      </button>
+    </div>
+  );
+}
+
 function CombinedChartTooltip({
   active,
   payload,
@@ -269,6 +339,7 @@ function SplitMetricChart({
   xAxisMode,
   syncId,
   selectionDomain,
+  pauseHighlightSegments,
   zoneHighlightSegments,
   onChartMouseDown,
   onChartMouseMove,
@@ -289,6 +360,7 @@ function SplitMetricChart({
   xAxisMode: ChartXAxisMode;
   syncId: string;
   selectionDomain?: ChartZoomDomain | null;
+  pauseHighlightSegments?: ZoneHighlightSegment[];
   zoneHighlightSegments?: ZoneHighlightSegment[];
   onChartMouseDown?: (event: unknown) => void;
   onChartMouseMove?: (event: unknown) => void;
@@ -373,6 +445,16 @@ function SplitMetricChart({
                   ifOverflow="extendDomain"
                 />
               ) : null}
+              {pauseHighlightSegments?.map((segment, index) => (
+                <ReferenceArea
+                  key={`pause-highlight-${segment.start}-${segment.end}-${index}`}
+                  x1={segment.start}
+                  x2={segment.end}
+                  fill="rgba(148, 163, 184, 0.18)"
+                  stroke="rgba(148, 163, 184, 0.28)"
+                  ifOverflow="extendDomain"
+                />
+              ))}
               {zoneHighlightSegments?.map((segment, index) => (
                 <ReferenceArea
                   key={`zone-highlight-${segment.start}-${segment.end}-${index}`}
@@ -435,7 +517,7 @@ function HeartRateZonesCard({
         <div>
           <h3 className="text-lg font-semibold text-foreground">Heart Rate Zones</h3>
           <p className="mt-1 text-xs text-muted">
-            Time in zone based on recorded heart-rate sample intervals.
+            Time in zone based on recorded heart-rate sample intervals, excluding paused time.
           </p>
         </div>
         <p className="text-sm text-muted">
@@ -899,6 +981,8 @@ export function ActivityDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [reducedMapComplexity, setReducedMapComplexity] = useState(false);
   const [chartMode, setChartMode] = useState<ChartMode>('combined');
+  const [selectedChartXAxisMode, setSelectedChartXAxisMode] = useState<ChartXAxisMode>('time');
+  const [hidePausedTime, setHidePausedTime] = useState(false);
   const [chartSeriesVisibility, setChartSeriesVisibility] = useState<ChartSeriesVisibility>(() =>
     defaultChartSeriesVisibility()
   );
@@ -914,7 +998,8 @@ export function ActivityDetailPage() {
   );
   const accentPalette = useMemo(() => getAccentThemePalette(accentTheme), [accentTheme]);
   const hasGpsTrack = Boolean(detail?.summary.hasGps && detail.track.length > 0);
-  const chartXAxisMode: ChartXAxisMode = hasGpsTrack ? 'distance' : 'time';
+  const chartXAxisMode: ChartXAxisMode = hasGpsTrack ? selectedChartXAxisMode : 'time';
+  const hasPauseSegments = Boolean(detail && detail.pauseSegments.length > 0);
 
   useEffect(() => {
     if (!id) {
@@ -950,6 +1035,15 @@ export function ActivityDetailPage() {
     setChartSeriesVisibility(defaultChartSeriesVisibility(detail.summary.sportType));
     routeMapRef.current?.clearHoverTarget();
   }, [detail?.summary.id, detail?.summary.sportType]);
+
+  useEffect(() => {
+    if (!detail) {
+      return;
+    }
+
+    setSelectedChartXAxisMode(detail.summary.hasGps && detail.track.length > 0 ? 'distance' : 'time');
+    setHidePausedTime(false);
+  }, [detail]);
 
   const combinedChart = useMemo<CombinedChartModel>(() => {
     if (!detail) {
@@ -1060,13 +1154,18 @@ export function ActivityDetailPage() {
 
   const fullChartXAxisDomain = useMemo<ChartZoomDomain>(() => {
     if (chartXAxisMode === 'time') {
-      const summaryDurationSeconds = detail ? Math.max(0, detail.summary.durationSeconds) : 0;
+      const summaryDurationSeconds = detail
+        ? Math.max(
+            0,
+            hidePausedTime ? detail.summary.movingDurationSeconds : detail.summary.durationSeconds
+          )
+        : 0;
       return [0, Math.max(60, summaryDurationSeconds, combinedChart.maxElapsedSeconds)];
     }
 
     const summaryDistanceKm = detail ? Math.max(0, detail.summary.distanceM) / 1000 : 0;
     return [0, Math.max(0.1, summaryDistanceKm, combinedChart.maxDistanceKm)];
-  }, [chartXAxisMode, combinedChart.maxDistanceKm, combinedChart.maxElapsedSeconds, detail]);
+  }, [chartXAxisMode, combinedChart.maxDistanceKm, combinedChart.maxElapsedSeconds, detail, hidePausedTime]);
   const minChartZoomSpan = chartXAxisMode === 'distance' ? CHART_MIN_ZOOM_SPAN_KM : CHART_MIN_ZOOM_SPAN_SECONDS;
   const chartXAxisValues = useMemo(
     () =>
@@ -1110,7 +1209,7 @@ export function ActivityDetailPage() {
 
     setChartZoomDomain(null);
     chartZoom.clearSelection();
-  }, [chartXAxisMode, chartZoom.clearSelection, detail?.summary.id, setChartZoomDomain]);
+  }, [chartXAxisMode, chartZoom.clearSelection, detail?.summary.id, hidePausedTime, setChartZoomDomain]);
 
   useEffect(() => {
     if (!detail) {
@@ -1120,7 +1219,8 @@ export function ActivityDetailPage() {
     const query = {
       distanceMinKm: chartSampleDistanceZoomDomain?.[0],
       distanceMaxKm: chartSampleDistanceZoomDomain?.[1],
-      maxSamples: chartMaxSamples
+      maxSamples: chartMaxSamples,
+      hidePauses: hidePausedTime
     };
     const requestId = chartSamplesRequestRef.current + 1;
     chartSamplesRequestRef.current = requestId;
@@ -1142,7 +1242,7 @@ export function ActivityDetailPage() {
     };
 
     void loadSamples();
-  }, [chartMaxSamples, chartSampleDistanceZoomDomain, detail?.summary.id]);
+  }, [chartMaxSamples, chartSampleDistanceZoomDomain, detail?.summary.id, hidePausedTime]);
 
   useEffect(() => {
     if (!detail) {
@@ -1161,7 +1261,7 @@ export function ActivityDetailPage() {
 
     const loadZoneSamples = async () => {
       try {
-        const response = await getActivitySamples(detail.summary.id);
+        const response = await getActivitySamples(detail.summary.id, { hidePauses: true });
         if (heartRateZoneSamplesRequestRef.current !== requestId) {
           return;
         }
@@ -1197,6 +1297,18 @@ export function ActivityDetailPage() {
       heartRateZoneUpperBoundsBpm,
       hoveredHeartRateZoneIndex
     ]
+  );
+  const pauseHighlightSegments = useMemo<ZoneHighlightSegment[]>(
+    () =>
+      chartXAxisMode === 'time' && !hidePausedTime && detail
+        ? detail.pauseSegments
+            .map((segment) => ({
+              start: Math.max(segment.startElapsedSeconds, activeChartXAxisDomain[0]),
+              end: Math.min(segment.endElapsedSeconds, activeChartXAxisDomain[1])
+            }))
+            .filter((segment) => segment.end > segment.start)
+        : [],
+    [activeChartXAxisDomain, chartXAxisMode, detail, hidePausedTime]
   );
 
   const combinedChartDisplayData = useMemo<CombinedChartPoint[]>(() => {
@@ -1287,6 +1399,23 @@ export function ActivityDetailPage() {
   const showAvgSpeedPace = detail.summary.avgSpeedMps != null && detail.summary.avgSpeedMps > 0;
   const hasAnyHeartRate =
     detail.summary.avgHr != null || detail.summary.minHr != null || detail.summary.maxHr != null;
+  const pausedDurationSeconds = Math.max(
+    0,
+    detail.summary.durationSeconds - detail.summary.movingDurationSeconds
+  );
+  const showPausedTime = hasPauseSegments && pausedDurationSeconds > 0.5;
+  const chartTitle =
+    chartXAxisMode === 'distance'
+      ? 'Performance vs Distance'
+      : hidePausedTime
+        ? 'Performance vs Moving Time'
+        : 'Performance vs Elapsed Time';
+  const chartXAxisDescription =
+    chartXAxisMode === 'distance'
+      ? 'X-axis uses kilometers.'
+      : hidePausedTime
+        ? 'X-axis uses moving time with paused segments collapsed.'
+        : 'X-axis uses elapsed time with paused segments visible.';
 
   let heartRateValue: string | null = null;
   let heartRateSubLabel: string | undefined;
@@ -1363,17 +1492,27 @@ export function ActivityDetailPage() {
           <section className="select-none rounded-xl border border-border bg-panel p-4">
             <div className="space-y-3">
               <div className="min-w-0">
-                <h3 className="text-lg font-semibold text-foreground">
-                  {chartXAxisMode === 'distance' ? 'Performance vs Distance' : 'Performance vs Time'}
-                </h3>
+                <h3 className="text-lg font-semibold text-foreground">{chartTitle}</h3>
                 <p className="mt-1 text-xs text-muted">
-                  {chartXAxisMode === 'distance'
-                    ? 'X-axis uses kilometers.'
-                    : 'X-axis uses elapsed time.'}{' '}
+                  {chartXAxisDescription}{' '}
                   Drag across a region to zoom. Y-scales auto-resize to the visible range. Click once on a chart to reset the zoom.
                 </p>
               </div>
               <div className="flex flex-wrap items-start justify-end gap-2">
+                {hasGpsTrack ? (
+                  <div className="shrink-0">
+                    <XAxisModeToggle
+                      mode={chartXAxisMode}
+                      showDistance={hasGpsTrack}
+                      onChange={setSelectedChartXAxisMode}
+                    />
+                  </div>
+                ) : null}
+                {hasPauseSegments ? (
+                  <div className="shrink-0">
+                    <PauseVisibilityToggle hidePauses={hidePausedTime} onChange={setHidePausedTime} />
+                  </div>
+                ) : null}
                 {chartMode === 'combined' ? (
                   <div className="flex flex-wrap items-center justify-end gap-2">
                     <SeriesToggle
@@ -1480,6 +1619,16 @@ export function ActivityDetailPage() {
                             ifOverflow="extendDomain"
                           />
                         ) : null}
+                        {pauseHighlightSegments.map((segment, index) => (
+                          <ReferenceArea
+                            key={`combined-pause-${segment.start}-${segment.end}-${index}`}
+                            x1={segment.start}
+                            x2={segment.end}
+                            fill="rgba(148, 163, 184, 0.18)"
+                            stroke="rgba(148, 163, 184, 0.28)"
+                            ifOverflow="extendDomain"
+                          />
+                        ))}
                         {heartRateZoneHighlightSegments.map((segment, index) => (
                           <ReferenceArea
                             key={`combined-zone-${segment.start}-${segment.end}-${index}`}
@@ -1596,6 +1745,7 @@ export function ActivityDetailPage() {
                     xAxisMode={chartXAxisMode}
                     syncId={`activity-${chartXAxisMode}-split-charts`}
                     selectionDomain={chartSelectionDomain}
+                    pauseHighlightSegments={pauseHighlightSegments}
                     zoneHighlightSegments={heartRateZoneHighlightSegments}
                     onChartMouseDown={handleChartMouseDown}
                     onChartMouseMove={handleChartMouseMove}
@@ -1620,6 +1770,7 @@ export function ActivityDetailPage() {
                     xAxisMode={chartXAxisMode}
                     syncId={`activity-${chartXAxisMode}-split-charts`}
                     selectionDomain={chartSelectionDomain}
+                    pauseHighlightSegments={pauseHighlightSegments}
                     zoneHighlightSegments={heartRateZoneHighlightSegments}
                     onChartMouseDown={handleChartMouseDown}
                     onChartMouseMove={handleChartMouseMove}
@@ -1642,6 +1793,7 @@ export function ActivityDetailPage() {
                     xAxisMode={chartXAxisMode}
                     syncId={`activity-${chartXAxisMode}-split-charts`}
                     selectionDomain={chartSelectionDomain}
+                    pauseHighlightSegments={pauseHighlightSegments}
                     zoneHighlightSegments={heartRateZoneHighlightSegments}
                     onChartMouseDown={handleChartMouseDown}
                     onChartMouseMove={handleChartMouseMove}
@@ -1664,6 +1816,7 @@ export function ActivityDetailPage() {
                     xAxisMode={chartXAxisMode}
                     syncId={`activity-${chartXAxisMode}-split-charts`}
                     selectionDomain={chartSelectionDomain}
+                    pauseHighlightSegments={pauseHighlightSegments}
                     zoneHighlightSegments={heartRateZoneHighlightSegments}
                     onChartMouseDown={handleChartMouseDown}
                     onChartMouseMove={handleChartMouseMove}
@@ -1686,6 +1839,7 @@ export function ActivityDetailPage() {
                     xAxisMode={chartXAxisMode}
                     syncId={`activity-${chartXAxisMode}-split-charts`}
                     selectionDomain={chartSelectionDomain}
+                    pauseHighlightSegments={pauseHighlightSegments}
                     zoneHighlightSegments={heartRateZoneHighlightSegments}
                     onChartMouseDown={handleChartMouseDown}
                     onChartMouseMove={handleChartMouseMove}
@@ -1708,6 +1862,7 @@ export function ActivityDetailPage() {
                     xAxisMode={chartXAxisMode}
                     syncId={`activity-${chartXAxisMode}-split-charts`}
                     selectionDomain={chartSelectionDomain}
+                    pauseHighlightSegments={pauseHighlightSegments}
                     zoneHighlightSegments={heartRateZoneHighlightSegments}
                     onChartMouseDown={handleChartMouseDown}
                     onChartMouseMove={handleChartMouseMove}
@@ -1748,6 +1903,17 @@ export function ActivityDetailPage() {
                 label="Moving Time"
                 value={formatDuration(detail.summary.movingDurationSeconds)}
               />
+              {showPausedTime ? (
+                <MetricCard
+                  label="Paused Time"
+                  value={formatDuration(pausedDurationSeconds)}
+                  subLabel={
+                    detail.pauseSegments.length === 1
+                      ? '1 manual pause'
+                      : `${detail.pauseSegments.length} manual pauses`
+                  }
+                />
+              ) : null}
               {showDistance ? (
                 <MetricCard label="Distance" value={formatDistanceKm(detail.summary.distanceM)} />
               ) : null}

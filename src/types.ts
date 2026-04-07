@@ -53,6 +53,14 @@ export interface TrackPoint {
   lon: number;
 }
 
+export interface PauseSegment {
+  startElapsedSeconds: number;
+  endElapsedSeconds: number;
+  durationSeconds: number;
+  startTimestamp: string | null;
+  endTimestamp: string | null;
+}
+
 export interface ActivitySample {
   elapsedSeconds: number;
   distanceM: number | null;
@@ -69,6 +77,7 @@ export interface ActivitySample {
 export interface ActivityDetail {
   summary: ActivitySummary;
   track: TrackPoint[];
+  pauseSegments: PauseSegment[];
   originalSampleCount: number;
 }
 
@@ -76,6 +85,7 @@ export interface ActivitySampleQuery {
   distanceMinKm?: number;
   distanceMaxKm?: number;
   maxSamples?: number;
+  hidePauses?: boolean;
 }
 
 export interface ActivitySamplesResponse {

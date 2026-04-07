@@ -1,6 +1,6 @@
 # Trajectory Developer Guide
 
-> Last verified against the codebase: **March 10, 2026**
+> Last verified against the codebase: **April 7, 2026**
 
 This guide is for contributors working on Trajectory's desktop app codebase.
 It is intentionally practical: what exists today, how it fits together, and how to extend it safely.
@@ -192,7 +192,8 @@ Current wrappers:
 - **Activity Detail:**
   - fetches summary/track via `getActivity`
   - fetches chart samples via `getActivitySamples`
-  - re-queries samples when zoom window or `chartMaxSamples` changes
+  - re-queries samples when zoom window, pause visibility, or `chartMaxSamples` changes
+  - GPS activities can switch between distance and time charts; time charts can collapse explicit paused segments into moving time
 - **Heatmap:** map overlay rendering with date/category/sport filters.
 - **Advanced Analytics:** custom metrics/streaks/charts builder + preview, selective JSON import/export.
 
@@ -207,6 +208,12 @@ Responsibilities:
 - ensure default settings file exists
 - register Tauri command handlers
 - validate input settings (accent theme, chart sample limits, HR zones)
+
+### Storage and rescan behavior
+
+- `activities.sqlite` stores normalized activity summaries plus per-sample data.
+- Activity rows also track a parser version and serialized pause segments.
+- Incremental scans reparse unchanged source files automatically when the parser version changes, so importer fixes can roll forward without requiring a manual full rescan.
 
 Registered Tauri commands:
 

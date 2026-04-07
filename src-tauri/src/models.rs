@@ -87,6 +87,16 @@ pub struct TrackPoint {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct PauseSegment {
+    pub start_elapsed_seconds: f64,
+    pub end_elapsed_seconds: f64,
+    pub duration_seconds: f64,
+    pub start_timestamp: Option<String>,
+    pub end_timestamp: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ActivitySample {
     pub elapsed_seconds: f64,
     pub distance_m: Option<f64>,
@@ -105,6 +115,7 @@ pub struct ActivitySample {
 pub struct ActivityDetail {
     pub summary: ActivitySummary,
     pub track: Vec<TrackPoint>,
+    pub pause_segments: Vec<PauseSegment>,
     pub original_sample_count: usize,
 }
 
@@ -114,6 +125,7 @@ pub struct ActivitySampleQuery {
     pub distance_min_km: Option<f64>,
     pub distance_max_km: Option<f64>,
     pub max_samples: Option<usize>,
+    pub hide_pauses: Option<bool>,
 }
 
 impl Default for ActivitySampleQuery {
@@ -122,6 +134,7 @@ impl Default for ActivitySampleQuery {
             distance_min_km: None,
             distance_max_km: None,
             max_samples: None,
+            hide_pauses: None,
         }
     }
 }
@@ -202,6 +215,7 @@ pub struct ParsedActivity {
     pub max_hr: Option<f64>,
     pub has_gps: bool,
     pub track: Vec<TrackPoint>,
+    pub pause_segments: Vec<PauseSegment>,
     pub samples: Vec<ActivitySample>,
     pub original_sample_count: usize,
 }
@@ -210,6 +224,7 @@ pub struct ParsedActivity {
 pub struct SourceFileMeta {
     pub source_mtime: i64,
     pub source_size: i64,
+    pub parser_version: i64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

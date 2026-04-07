@@ -6,12 +6,13 @@ use fitparser::{self, Value};
 use quick_xml::{events::Event, Reader};
 use thiserror::Error;
 
-use crate::models::{ActivitySample, ParsedActivity, TrackPoint};
+use crate::models::{ActivitySample, ParsedActivity, PauseSegment, TrackPoint};
 
 const MAX_UI_POINTS: usize = 2000;
 const FIT_SEMICIRCLES_TO_DEGREES: f64 = 180.0 / 2_147_483_648.0;
 const MOVING_SPEED_THRESHOLD_MPS: f64 = 0.5;
 const MOVING_MAX_SAMPLE_GAP_SECONDS: f64 = 300.0;
+const DISTANCE_TOTAL_RECONCILIATION_THRESHOLD_RATIO: f64 = 0.05;
 
 #[derive(Debug, Error)]
 enum ParseActivityError {
@@ -51,6 +52,12 @@ struct SummaryMetrics {
     max_hr: Option<f64>,
 }
 
+#[derive(Debug, Clone)]
+struct RawPauseSpan {
+    start_time: DateTime<Utc>,
+    end_time: DateTime<Utc>,
+}
+
 fn normalize_tag(bytes: &[u8]) -> String {
     let tag = String::from_utf8_lossy(bytes).to_string();
     tag.rsplit(':').next().unwrap_or(&tag).to_string()
@@ -84,7 +91,10 @@ fn derive_activity_category(sport_type: &str, notes: Option<&str>) -> String {
         ],
     ) {
         "Biking".to_string()
-    } else if contains_any(&combined, &["hike", "trail"]) {
+    } else if contains_any(
+        &combined,
+        &["hike", "hiking", "trail", "mountaineering", "trek"],
+    ) {
         "Hiking".to_string()
     } else if contains_any(&combined, &["walk"]) {
         "Walking".to_string()
@@ -346,6 +356,111 @@ fn estimate_moving_duration_seconds(samples: &[ActivitySample]) -> f64 {
     moving_seconds.max(0.0)
 }
 
+fn build_distance_series(points: &[RawTrackPoint]) -> Vec<Option<f64>> {
+    let first_reported_distance = points.iter().find_map(|point| point.distance);
+
+    if let Some(first_distance) = first_reported_distance {
+        let mut last_distance_m: f64 = 0.0;
+        return points
+            .iter()
+            .map(|point| {
+                if let Some(distance) = point.distance {
+                    last_distance_m = last_distance_m.max((distance - first_distance).max(0.0));
+                }
+                Some(last_distance_m)
+            })
+            .collect();
+    }
+
+    let mut gps_distance_m = 0.0;
+    let mut previous_gps: Option<(f64, f64)> = None;
+    let mut has_seen_gps = false;
+
+    points
+        .iter()
+        .map(|point| match (point.lat, point.lon) {
+            (Some(lat), Some(lon)) => {
+                if let Some((prev_lat, prev_lon)) = previous_gps {
+                    gps_distance_m += haversine_m(prev_lat, prev_lon, lat, lon);
+                }
+                previous_gps = Some((lat, lon));
+                has_seen_gps = true;
+                Some(gps_distance_m)
+            }
+            _ if has_seen_gps => Some(gps_distance_m),
+            _ => None,
+        })
+        .collect()
+}
+
+fn normalize_pause_segments(
+    start_time: DateTime<Utc>,
+    total_duration_seconds: f64,
+    pause_spans: Vec<RawPauseSpan>,
+) -> Vec<PauseSegment> {
+    if pause_spans.is_empty() {
+        return Vec::new();
+    }
+
+    let mut normalized: Vec<(f64, f64, Option<String>, Option<String>)> = pause_spans
+        .into_iter()
+        .filter_map(|span| {
+            if span.end_time <= span.start_time {
+                return None;
+            }
+
+            let start_elapsed = (span.start_time - start_time).num_milliseconds() as f64 / 1000.0;
+            let end_elapsed = (span.end_time - start_time).num_milliseconds() as f64 / 1000.0;
+
+            let mut start_elapsed = start_elapsed.max(0.0);
+            let mut end_elapsed = end_elapsed.max(start_elapsed);
+            if total_duration_seconds > 0.0 {
+                start_elapsed = start_elapsed.min(total_duration_seconds);
+                end_elapsed = end_elapsed.min(total_duration_seconds);
+            }
+
+            if end_elapsed <= start_elapsed {
+                return None;
+            }
+
+            Some((
+                start_elapsed,
+                end_elapsed,
+                Some(span.start_time.to_rfc3339()),
+                Some(span.end_time.to_rfc3339()),
+            ))
+        })
+        .collect();
+
+    normalized.sort_by(|left, right| left.0.total_cmp(&right.0));
+
+    let mut merged: Vec<PauseSegment> = Vec::new();
+    for (start_elapsed, end_elapsed, start_timestamp, end_timestamp) in normalized {
+        if let Some(previous) = merged.last_mut() {
+            if start_elapsed <= previous.end_elapsed_seconds {
+                previous.end_elapsed_seconds = previous.end_elapsed_seconds.max(end_elapsed);
+                previous.duration_seconds =
+                    (previous.end_elapsed_seconds - previous.start_elapsed_seconds).max(0.0);
+                if previous.start_timestamp.is_none() {
+                    previous.start_timestamp = start_timestamp;
+                }
+                previous.end_timestamp = end_timestamp;
+                continue;
+            }
+        }
+
+        merged.push(PauseSegment {
+            start_elapsed_seconds: start_elapsed,
+            end_elapsed_seconds: end_elapsed,
+            duration_seconds: (end_elapsed - start_elapsed).max(0.0),
+            start_timestamp,
+            end_timestamp,
+        });
+    }
+
+    merged
+}
+
 fn build_parsed_activity(
     path: &Path,
     points: Vec<RawTrackPoint>,
@@ -353,6 +468,7 @@ fn build_parsed_activity(
     explicit_title: Option<String>,
     notes: Option<String>,
     activity_start: Option<DateTime<Utc>>,
+    pause_spans: Vec<RawPauseSpan>,
     fallback_distance_m: f64,
     fallback_elapsed_duration_seconds: Option<f64>,
     fallback_moving_duration_seconds: Option<f64>,
@@ -382,12 +498,29 @@ fn build_parsed_activity(
             .max(0.0),
     };
 
-    let mut gps_distance_accum = 0.0;
-    let mut previous_gps: Option<(f64, f64)> = None;
+    let raw_distance_series = build_distance_series(&points);
+    let raw_selected_distance_m = raw_distance_series
+        .iter()
+        .rev()
+        .find_map(|distance| *distance)
+        .unwrap_or(0.0)
+        .max(0.0);
+    let fallback_distance_m = fallback_distance_m.max(0.0);
+    let should_reconcile_distance_total = fallback_distance_m > 0.0
+        && raw_selected_distance_m > 0.0
+        && ((fallback_distance_m - raw_selected_distance_m).abs()
+            / fallback_distance_m.max(raw_selected_distance_m))
+            > DISTANCE_TOTAL_RECONCILIATION_THRESHOLD_RATIO;
+    let distance_scale = if should_reconcile_distance_total {
+        fallback_distance_m / raw_selected_distance_m
+    } else {
+        1.0
+    };
+    let distance_series: Vec<Option<f64>> = raw_distance_series
+        .iter()
+        .map(|distance| distance.map(|value| value * distance_scale))
+        .collect();
     let mut has_gps = false;
-
-    let mut first_reported_distance: Option<f64> = None;
-    let mut last_reported_distance: Option<f64> = None;
 
     let mut elevation_gain = 0.0;
     let mut previous_altitude: Option<f64> = None;
@@ -401,23 +534,10 @@ fn build_parsed_activity(
     let mut raw_samples: Vec<ActivitySample> = Vec::with_capacity(points.len());
     let mut raw_track: Vec<TrackPoint> = Vec::with_capacity(points.len());
 
-    for point in &points {
+    for (index, point) in points.iter().enumerate() {
         if let (Some(lat), Some(lon)) = (point.lat, point.lon) {
             has_gps = true;
-
-            if let Some((prev_lat, prev_lon)) = previous_gps {
-                gps_distance_accum += haversine_m(prev_lat, prev_lon, lat, lon);
-            }
-            previous_gps = Some((lat, lon));
             raw_track.push(TrackPoint { lat, lon });
-        }
-
-        if let Some(distance) = point.distance {
-            if first_reported_distance.is_none() {
-                first_reported_distance = Some(distance);
-            }
-            let relative = distance - first_reported_distance.unwrap_or(distance);
-            last_reported_distance = Some(relative.max(0.0));
         }
 
         if let (Some(prev_alt), Some(current_alt)) = (previous_altitude, point.altitude) {
@@ -442,16 +562,7 @@ fn build_parsed_activity(
             .unwrap_or(0.0)
             .max(0.0);
 
-        let distance_m = point
-            .distance
-            .and_then(|distance| first_reported_distance.map(|first| (distance - first).max(0.0)))
-            .or_else(|| {
-                if has_gps {
-                    Some(gps_distance_accum)
-                } else {
-                    None
-                }
-            });
+        let distance_m = distance_series[index];
 
         let derived_speed = if let Some(speed) = point.speed {
             Some(speed)
@@ -489,15 +600,21 @@ fn build_parsed_activity(
         previous_distance = distance_m;
     }
 
-    let distance_m = last_reported_distance
-        .or_else(|| {
-            if gps_distance_accum > 0.0 {
-                Some(gps_distance_accum)
-            } else {
-                None
-            }
-        })
-        .unwrap_or(fallback_distance_m.max(0.0));
+    let selected_distance_m = distance_series
+        .iter()
+        .rev()
+        .find_map(|distance| *distance)
+        .unwrap_or(0.0)
+        .max(0.0);
+    let distance_m = if fallback_distance_m > 0.0
+        && (selected_distance_m <= 0.0 || should_reconcile_distance_total)
+    {
+        fallback_distance_m
+    } else if selected_distance_m > 0.0 {
+        selected_distance_m
+    } else {
+        fallback_distance_m
+    };
 
     let max_speed_mps = speed_values.iter().copied().reduce(f64::max);
 
@@ -554,6 +671,8 @@ fn build_parsed_activity(
         explicit_title.as_deref(),
         notes.as_deref(),
     );
+    let pause_segments =
+        normalize_pause_segments(start_time, duration_seconds.max(0.0), pause_spans);
 
     Ok(ParsedActivity {
         start_time: start_time.to_rfc3339(),
@@ -571,6 +690,7 @@ fn build_parsed_activity(
         max_hr,
         has_gps,
         track: sampled_track,
+        pause_segments,
         samples: raw_samples,
         original_sample_count: points.len(),
     })
@@ -582,6 +702,7 @@ fn build_summary_only_activity(
     explicit_title: Option<String>,
     notes: Option<String>,
     activity_start: Option<DateTime<Utc>>,
+    pause_spans: Vec<RawPauseSpan>,
     summary: SummaryMetrics,
 ) -> Result<ParsedActivity> {
     let start_time = activity_start
@@ -620,6 +741,7 @@ fn build_summary_only_activity(
             None
         }
     });
+    let pause_segments = normalize_pause_segments(start_time, duration_seconds, pause_spans);
 
     Ok(ParsedActivity {
         start_time: start_time.to_rfc3339(),
@@ -637,6 +759,7 @@ fn build_summary_only_activity(
         max_hr: summary.max_hr,
         has_gps: false,
         track: Vec::new(),
+        pause_segments,
         samples: Vec::new(),
         original_sample_count: 0,
     })
@@ -807,6 +930,7 @@ pub fn parse_tcx_file(path: &Path) -> Result<ParsedActivity> {
         explicit_title,
         notes,
         activity_start,
+        Vec::new(),
         lap_distance_total,
         Some(lap_duration_total),
         None,
@@ -828,6 +952,8 @@ pub fn parse_fit_file(path: &Path) -> Result<ParsedActivity> {
     let mut activity_start: Option<DateTime<Utc>> = None;
     let mut summary = SummaryMetrics::default();
     let mut points: Vec<RawTrackPoint> = Vec::new();
+    let mut pause_spans: Vec<RawPauseSpan> = Vec::new();
+    let mut current_pause_start: Option<DateTime<Utc>> = None;
 
     for record in records {
         let kind = format!("{:?}", record.kind()).to_ascii_lowercase();
@@ -898,6 +1024,55 @@ pub fn parse_fit_file(path: &Path) -> Result<ParsedActivity> {
                 || point.altitude.is_some()
             {
                 points.push(point);
+            }
+
+            continue;
+        }
+
+        if kind == "event" {
+            let mut event_name: Option<String> = None;
+            let mut event_type: Option<String> = None;
+            let mut timestamp: Option<DateTime<Utc>> = None;
+
+            for field in record.fields() {
+                let name = field.name();
+                let value = field.value();
+
+                match name {
+                    "event" => {
+                        event_name =
+                            fit_value_as_string(value).map(|entry| entry.to_ascii_lowercase());
+                    }
+                    "event_type" => {
+                        event_type =
+                            fit_value_as_string(value).map(|entry| entry.to_ascii_lowercase());
+                    }
+                    "timestamp" => {
+                        timestamp = fit_value_as_time(value);
+                    }
+                    _ => {}
+                }
+            }
+
+            if event_name.as_deref() == Some("timer") {
+                match (event_type.as_deref(), timestamp) {
+                    (Some("start"), Some(timestamp)) => {
+                        if let Some(pause_start) = current_pause_start.take() {
+                            if timestamp > pause_start {
+                                pause_spans.push(RawPauseSpan {
+                                    start_time: pause_start,
+                                    end_time: timestamp,
+                                });
+                            }
+                        }
+                    }
+                    (Some("stop"), Some(timestamp))
+                    | (Some("stop_all"), Some(timestamp))
+                    | (Some("stop_disable_all"), Some(timestamp)) => {
+                        current_pause_start.get_or_insert(timestamp);
+                    }
+                    _ => {}
+                }
             }
 
             continue;
@@ -1019,6 +1194,7 @@ pub fn parse_fit_file(path: &Path) -> Result<ParsedActivity> {
             explicit_title,
             notes,
             activity_start,
+            pause_spans,
             summary,
         );
     }
@@ -1030,9 +1206,116 @@ pub fn parse_fit_file(path: &Path) -> Result<ParsedActivity> {
         explicit_title,
         notes,
         activity_start,
+        pause_spans,
         summary.distance_m,
         summary.elapsed_duration_seconds,
         summary.timer_duration_seconds,
         summary.elevation_gain_m,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::TimeZone;
+
+    use super::{build_parsed_activity, derive_activity_category, RawPauseSpan, RawTrackPoint};
+
+    #[test]
+    fn hiking_generic_maps_to_hiking_category() {
+        assert_eq!(derive_activity_category("hiking generic", None), "Hiking");
+    }
+
+    #[test]
+    fn reported_distance_stays_consistent_when_tail_samples_drop_distance() {
+        let start_time = chrono::Utc.with_ymd_and_hms(2026, 4, 7, 8, 0, 0).unwrap();
+        let points = vec![
+            RawTrackPoint {
+                time: Some(start_time),
+                distance: Some(10.0),
+                lat: Some(46.0),
+                lon: Some(8.0),
+                ..Default::default()
+            },
+            RawTrackPoint {
+                time: Some(start_time + chrono::Duration::seconds(10)),
+                distance: Some(20.0),
+                lat: Some(46.0001),
+                lon: Some(8.0001),
+                ..Default::default()
+            },
+            RawTrackPoint {
+                time: Some(start_time + chrono::Duration::seconds(20)),
+                lat: Some(46.005),
+                lon: Some(8.005),
+                ..Default::default()
+            },
+        ];
+
+        let parsed = build_parsed_activity(
+            std::path::Path::new("sample.fit"),
+            points,
+            "Hiking".to_string(),
+            None,
+            None,
+            Some(start_time),
+            vec![RawPauseSpan {
+                start_time: start_time + chrono::Duration::seconds(12),
+                end_time: start_time + chrono::Duration::seconds(18),
+            }],
+            0.0,
+            Some(20.0),
+            Some(14.0),
+            None,
+        )
+        .expect("activity should parse");
+
+        assert_eq!(parsed.distance_m, 10.0);
+        assert_eq!(parsed.samples.len(), 3);
+        assert_eq!(parsed.samples[1].distance_m, Some(10.0));
+        assert_eq!(parsed.samples[2].distance_m, Some(10.0));
+        assert_eq!(parsed.pause_segments.len(), 1);
+        assert_eq!(parsed.pause_segments[0].start_elapsed_seconds, 12.0);
+        assert_eq!(parsed.pause_segments[0].end_elapsed_seconds, 18.0);
+    }
+
+    #[test]
+    fn summary_distance_reconciles_sample_distance_when_totals_disagree() {
+        let start_time = chrono::Utc.with_ymd_and_hms(2026, 4, 7, 8, 0, 0).unwrap();
+        let points = vec![
+            RawTrackPoint {
+                time: Some(start_time),
+                distance: Some(0.0),
+                ..Default::default()
+            },
+            RawTrackPoint {
+                time: Some(start_time + chrono::Duration::seconds(10)),
+                distance: Some(50.0),
+                ..Default::default()
+            },
+            RawTrackPoint {
+                time: Some(start_time + chrono::Duration::seconds(20)),
+                distance: Some(100.0),
+                ..Default::default()
+            },
+        ];
+
+        let parsed = build_parsed_activity(
+            std::path::Path::new("sample.fit"),
+            points,
+            "Hiking".to_string(),
+            None,
+            None,
+            Some(start_time),
+            Vec::new(),
+            200.0,
+            Some(20.0),
+            Some(20.0),
+            None,
+        )
+        .expect("activity should parse");
+
+        assert_eq!(parsed.distance_m, 200.0);
+        assert_eq!(parsed.samples[1].distance_m, Some(100.0));
+        assert_eq!(parsed.samples[2].distance_m, Some(200.0));
+    }
 }
