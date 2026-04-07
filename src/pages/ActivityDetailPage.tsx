@@ -1552,7 +1552,7 @@ export function ActivityDetailPage() {
                   </div>
                 ) : null}
                 <div className="flex flex-wrap items-start justify-end gap-2">
-                  {hasPauseSegments ? (
+                  {hasPauseSegments && chartXAxisMode === 'time' ? (
                     <div className="shrink-0">
                       <PauseVisibilityToggle hidePauses={hidePausedTime} onChange={setHidePausedTime} />
                     </div>
