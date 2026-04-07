@@ -1498,23 +1498,9 @@ export function ActivityDetailPage() {
                   Drag across a region to zoom. Y-scales auto-resize to the visible range. Click once on a chart to reset the zoom.
                 </p>
               </div>
-              <div className="flex flex-wrap items-start justify-end gap-2">
-                {hasGpsTrack ? (
-                  <div className="shrink-0">
-                    <XAxisModeToggle
-                      mode={chartXAxisMode}
-                      showDistance={hasGpsTrack}
-                      onChange={setSelectedChartXAxisMode}
-                    />
-                  </div>
-                ) : null}
-                {hasPauseSegments ? (
-                  <div className="shrink-0">
-                    <PauseVisibilityToggle hidePauses={hidePausedTime} onChange={setHidePausedTime} />
-                  </div>
-                ) : null}
+              <div className="flex flex-col items-end gap-2">
                 {chartMode === 'combined' ? (
-                  <div className="flex flex-wrap items-center justify-end gap-2">
+                  <div className="flex max-w-full min-w-0 flex-wrap items-center justify-end gap-2">
                     <SeriesToggle
                       label="Power"
                       color={CHART_LINE_COLORS.power}
@@ -1565,8 +1551,24 @@ export function ActivityDetailPage() {
                     />
                   </div>
                 ) : null}
-                <div className="shrink-0">
-                  <ChartModeToggle mode={chartMode} onChange={setChartMode} />
+                <div className="flex flex-wrap items-start justify-end gap-2">
+                  {hasPauseSegments ? (
+                    <div className="shrink-0">
+                      <PauseVisibilityToggle hidePauses={hidePausedTime} onChange={setHidePausedTime} />
+                    </div>
+                  ) : null}
+                  {hasGpsTrack ? (
+                    <div className="shrink-0">
+                      <XAxisModeToggle
+                        mode={chartXAxisMode}
+                        showDistance={hasGpsTrack}
+                        onChange={setSelectedChartXAxisMode}
+                      />
+                    </div>
+                  ) : null}
+                  <div className="shrink-0">
+                    <ChartModeToggle mode={chartMode} onChange={setChartMode} />
+                  </div>
                 </div>
               </div>
             </div>
