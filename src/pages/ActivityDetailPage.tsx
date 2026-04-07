@@ -999,6 +999,7 @@ export function ActivityDetailPage() {
   const accentPalette = useMemo(() => getAccentThemePalette(accentTheme), [accentTheme]);
   const hasGpsTrack = Boolean(detail?.summary.hasGps && detail.track.length > 0);
   const chartXAxisMode: ChartXAxisMode = hasGpsTrack ? selectedChartXAxisMode : 'time';
+  const shouldHidePausedTime = chartXAxisMode === 'time' && hidePausedTime;
   const hasPauseSegments = Boolean(detail && detail.pauseSegments.length > 0);
 
   useEffect(() => {
@@ -1056,7 +1057,10 @@ export function ActivityDetailPage() {
     }
 
     const totalDistanceM = Math.max(detail.summary.distanceM, 0);
-    const totalDurationSeconds = Math.max(detail.summary.durationSeconds, 1);
+    const totalDurationSeconds = Math.max(
+      shouldHidePausedTime ? detail.summary.movingDurationSeconds : detail.summary.durationSeconds,
+      1
+    );
     let lastDistanceM = 0;
     let previousElevationPoint: { distanceM: number; elevationM: number } | null = null;
 
@@ -1150,14 +1154,14 @@ export function ActivityDetailPage() {
       maxDistanceKm,
       maxElapsedSeconds
     };
-  }, [chartOutlierRemoval, chartSamples, detail, chartSeriesVisibility]);
+  }, [chartOutlierRemoval, chartSamples, detail, chartSeriesVisibility, shouldHidePausedTime]);
 
   const fullChartXAxisDomain = useMemo<ChartZoomDomain>(() => {
     if (chartXAxisMode === 'time') {
       const summaryDurationSeconds = detail
         ? Math.max(
             0,
-            hidePausedTime ? detail.summary.movingDurationSeconds : detail.summary.durationSeconds
+            shouldHidePausedTime ? detail.summary.movingDurationSeconds : detail.summary.durationSeconds
           )
         : 0;
       return [0, Math.max(60, summaryDurationSeconds, combinedChart.maxElapsedSeconds)];
@@ -1165,7 +1169,7 @@ export function ActivityDetailPage() {
 
     const summaryDistanceKm = detail ? Math.max(0, detail.summary.distanceM) / 1000 : 0;
     return [0, Math.max(0.1, summaryDistanceKm, combinedChart.maxDistanceKm)];
-  }, [chartXAxisMode, combinedChart.maxDistanceKm, combinedChart.maxElapsedSeconds, detail, hidePausedTime]);
+  }, [chartXAxisMode, combinedChart.maxDistanceKm, combinedChart.maxElapsedSeconds, detail, shouldHidePausedTime]);
   const minChartZoomSpan = chartXAxisMode === 'distance' ? CHART_MIN_ZOOM_SPAN_KM : CHART_MIN_ZOOM_SPAN_SECONDS;
   const chartXAxisValues = useMemo(
     () =>
@@ -1209,7 +1213,7 @@ export function ActivityDetailPage() {
 
     setChartZoomDomain(null);
     chartZoom.clearSelection();
-  }, [chartXAxisMode, chartZoom.clearSelection, detail?.summary.id, hidePausedTime, setChartZoomDomain]);
+  }, [chartXAxisMode, chartZoom.clearSelection, detail?.summary.id, setChartZoomDomain, shouldHidePausedTime]);
 
   useEffect(() => {
     if (!detail) {
@@ -1220,7 +1224,7 @@ export function ActivityDetailPage() {
       distanceMinKm: chartSampleDistanceZoomDomain?.[0],
       distanceMaxKm: chartSampleDistanceZoomDomain?.[1],
       maxSamples: chartMaxSamples,
-      hidePauses: hidePausedTime
+      hidePauses: shouldHidePausedTime
     };
     const requestId = chartSamplesRequestRef.current + 1;
     chartSamplesRequestRef.current = requestId;
@@ -1242,7 +1246,7 @@ export function ActivityDetailPage() {
     };
 
     void loadSamples();
-  }, [chartMaxSamples, chartSampleDistanceZoomDomain, detail?.summary.id, hidePausedTime]);
+  }, [chartMaxSamples, chartSampleDistanceZoomDomain, detail?.summary.id, shouldHidePausedTime]);
 
   useEffect(() => {
     if (!detail) {
@@ -1300,7 +1304,7 @@ export function ActivityDetailPage() {
   );
   const pauseHighlightSegments = useMemo<ZoneHighlightSegment[]>(
     () =>
-      chartXAxisMode === 'time' && !hidePausedTime && detail
+      chartXAxisMode === 'time' && !shouldHidePausedTime && detail
         ? detail.pauseSegments
             .map((segment) => ({
               start: Math.max(segment.startElapsedSeconds, activeChartXAxisDomain[0]),
@@ -1308,7 +1312,7 @@ export function ActivityDetailPage() {
             }))
             .filter((segment) => segment.end > segment.start)
         : [],
-    [activeChartXAxisDomain, chartXAxisMode, detail, hidePausedTime]
+    [activeChartXAxisDomain, chartXAxisMode, detail, shouldHidePausedTime]
   );
 
   const combinedChartDisplayData = useMemo<CombinedChartPoint[]>(() => {
@@ -1407,13 +1411,13 @@ export function ActivityDetailPage() {
   const chartTitle =
     chartXAxisMode === 'distance'
       ? 'Performance vs Distance'
-      : hidePausedTime
+      : shouldHidePausedTime
         ? 'Performance vs Moving Time'
         : 'Performance vs Elapsed Time';
   const chartXAxisDescription =
     chartXAxisMode === 'distance'
       ? 'X-axis uses kilometers.'
-      : hidePausedTime
+      : shouldHidePausedTime
         ? 'X-axis uses moving time with paused segments collapsed.'
         : 'X-axis uses elapsed time with paused segments visible.';
 
