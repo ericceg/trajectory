@@ -1,6 +1,6 @@
 # Trajectory Developer Guide
 
-> Last verified against the codebase: **April 7, 2026**
+> Last verified against the codebase: **April 8, 2026**
 
 This guide is for contributors working on Trajectory's desktop app codebase.
 It is intentionally practical: what exists today, how it fits together, and how to extend it safely.
@@ -11,7 +11,8 @@ It is intentionally practical: what exists today, how it fits together, and how 
 
 - Node.js 22+
 - Rust stable toolchain
-- macOS (primary supported platform for local dev and release)
+- macOS (primary supported platform for local dev)
+- GitHub Actions for preview/release builds on macOS, Windows, and Linux
 
 ### Install and run
 
@@ -41,6 +42,10 @@ Artifacts are created under:
 
 - `src-tauri/target/release/bundle/macos/*.app`
 - `src-tauri/target/release/bundle/dmg/*.dmg`
+- `src-tauri/target/release/bundle/nsis/*.exe`
+- `src-tauri/target/release/bundle/msi/*.msi`
+- `src-tauri/target/release/bundle/deb/*.deb`
+- `src-tauri/target/release/bundle/appimage/*.AppImage`
 
 ## 2. Product Scope (Current)
 
@@ -74,7 +79,8 @@ Important behavior:
 | `src-tauri/` | Tauri shell + Rust backend |
 | `docs/DEVELOPER_GUIDE.md` | This document |
 | `.github/workflows/ci.yml` | Typecheck + Rust quality gate |
-| `.github/workflows/release.yml` | Tag-based macOS release pipeline |
+| `.github/workflows/preview-bundles.yml` | Manual preview bundle pipeline for artifact testing |
+| `.github/workflows/release.yml` | Tag-based macOS/Windows/Linux release pipeline |
 
 ### Project Structure
 
@@ -103,6 +109,7 @@ Important behavior:
 └── .github/
     └── workflows/
         ├── ci.yml
+        ├── preview-bundles.yml
         └── release.yml
 ```
 
@@ -369,9 +376,22 @@ Design choices:
 - frontend quality job on Ubuntu:
   - `npm ci`
   - `npm run typecheck`
-- rust quality job on macOS:
+- rust quality job on Ubuntu, macOS, and Windows:
+  - Linux runner installs Tauri system dependencies (`libwebkit2gtk-4.1-dev`, `libappindicator3-dev`, `librsvg2-dev`, `patchelf`)
   - `cargo check --manifest-path src-tauri/Cargo.toml`
   - `cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check`
+
+### Preview bundles (`.github/workflows/preview-bundles.yml`)
+
+Triggered manually from GitHub Actions.
+
+Builds downloadable artifacts without creating a GitHub release:
+
+- macOS: `.app` + `.dmg` (optional)
+- Windows: `.exe` (NSIS) + `.msi`
+- Linux: `.deb` + `.AppImage`
+
+Use this workflow to validate that a branch is release-ready and hand the generated bundles to testers before tagging a real release.
 
 ### Release (`.github/workflows/release.yml`)
 
@@ -384,7 +404,11 @@ Pipeline verifies version alignment across:
 - `src-tauri/tauri.conf.json`
 - `src-tauri/Cargo.toml`
 
-Then builds and publishes `.app` + `.dmg` via `tauri-apps/tauri-action` with ad-hoc signing.
+Then builds and publishes platform bundles via `tauri-apps/tauri-action`:
+
+- macOS: `.app` + `.dmg` with ad-hoc signing
+- Windows: `.exe` (NSIS) + `.msi`
+- Linux: `.deb` + `.AppImage`
 
 ## 11. Common Extension Tasks
 

@@ -6,14 +6,32 @@ on:
       - 'v*'
 
 jobs:
-  build-macos:
-    runs-on: macos-latest
+  build-release:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            os: macos
+            bundles: app,dmg
+          - platform: windows-latest
+            os: windows
+            bundles: nsis,msi
+          - platform: ubuntu-22.04
+            os: linux
+            bundles: deb,appimage
+
+    runs-on: ${{ matrix.platform }}
     permissions:
       contents: write
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Install Linux system deps
+        if: matrix.os == 'linux'
+        run: bash scripts/install-tauri-linux-deps.sh
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -24,21 +42,20 @@ jobs:
       - name: Setup Rust (stable)
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ./src-tauri -> target
+
       - name: Install frontend deps
         run: npm ci
 
       - name: Verify tag/version alignment
-        run: |
-          TAG_VERSION="${GITHUB_REF_NAME#v}"
-          APP_VERSION=$(node -p "require('./package.json').version")
-          TAURI_VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version")
-          CARGO_VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' src-tauri/Cargo.toml | head -n 1)
-          if [ "$TAG_VERSION" != "$APP_VERSION" ] || [ "$TAG_VERSION" != "$TAURI_VERSION" ] || [ "$TAG_VERSION" != "$CARGO_VERSION" ]; then
-            echo "Tag ($TAG_VERSION), package.json ($APP_VERSION), tauri.conf.json ($TAURI_VERSION), and Cargo.toml ($CARGO_VERSION) must match"
-            exit 1
-          fi
+        shell: bash
+        run: bash scripts/verify-version-alignment.sh "${GITHUB_REF_NAME#v}"
 
       - name: Configure macOS ad-hoc signing (no notarization)
+        if: matrix.os == 'macos'
         run: |
           echo "Building macOS release artifacts with ad-hoc signing (APPLE_SIGNING_IDENTITY='-')."
           echo "Apple Developer ID signing and notarization are intentionally disabled for CI prototype builds."
@@ -55,23 +72,4 @@ jobs:
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: false
-          args: --bundles app,dmg
-
-      - name: Verify bundled artifacts exist
-        run: |
-          shopt -s nullglob
-          app_bundles=(src-tauri/target/release/bundle/macos/*.app)
-          dmg_bundles=(src-tauri/target/release/bundle/dmg/*.dmg)
-
-          if [ ${#app_bundles[@]} -eq 0 ]; then
-            echo "No .app bundle was generated."
-            exit 1
-          fi
-
-          if [ ${#dmg_bundles[@]} -eq 0 ]; then
-            echo "No .dmg installer was generated."
-            exit 1
-          fi
-
-          echo "App bundle: ${app_bundles[0]}"
-          echo "DMG installer: ${dmg_bundles[0]}"
+          args: --bundles ${{ matrix.bundles }}

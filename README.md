@@ -1,7 +1,7 @@
 # Trajectory
 
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
-![Platform](https://img.shields.io/badge/platform-macOS-lightgrey)
+![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey)
 [![Framework](https://img.shields.io/badge/framework-Tauri%20v2-yellow)](https://tauri.app/)
 [![Backend](https://img.shields.io/badge/backend-Rust-orange)](https://www.rust-lang.org/)
 [![Frontend](https://img.shields.io/badge/frontend-React%20%2B%20TypeScript-3178c6)](https://reactjs.org/)
@@ -33,6 +33,7 @@ There is no single reason for why I built Trajectory, but rather a combination o
 Notes:
 - Current release builds are ad-hoc signed, so macOS may show a security warning on first launch.
 - If you cannot open the app, follow the instructions on [Apple's support site](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unknown-developer-mh40616/mac).
+- Windows and Linux bundles can be built as preview artifacts from the `Preview Bundles` GitHub Actions workflow before publishing an official release.
 
 
 
@@ -206,7 +207,9 @@ can be useful to convince your loved ones that your hobby is not that dangerous 
 
 ## Platform Support
 
-- macOS
+- macOS release artifacts
+- Windows preview bundles via GitHub Actions
+- Linux preview bundles via GitHub Actions
 
 ## Developer Setup (Build From Source)
 
@@ -240,6 +243,10 @@ Output artifacts are generated under:
 
 - `src-tauri/target/release/bundle/macos/*.app`
 - `src-tauri/target/release/bundle/dmg/*.dmg`
+- `src-tauri/target/release/bundle/nsis/*.exe`
+- `src-tauri/target/release/bundle/msi/*.msi`
+- `src-tauri/target/release/bundle/deb/*.deb`
+- `src-tauri/target/release/bundle/appimage/*.AppImage`
 
 ### Documentation
 
@@ -255,7 +262,7 @@ Output artifacts are generated under:
 ## Roadmap
 
 - Route planner.
-- Windows and Linux support.
+- Code signing / hardening for Windows and Linux releases.
 
 
 

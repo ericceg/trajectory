@@ -27,11 +27,23 @@ jobs:
         run: npm run typecheck
 
   rust-quality:
-    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - ubuntu-22.04
+          - macos-latest
+          - windows-latest
+
+    runs-on: ${{ matrix.platform }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Install Linux system deps
+        if: matrix.platform == 'ubuntu-22.04'
+        run: bash scripts/install-tauri-linux-deps.sh
 
       - name: Setup Rust (stable + rustfmt)
         uses: dtolnay/rust-toolchain@stable
