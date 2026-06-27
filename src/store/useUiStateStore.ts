@@ -2,6 +2,8 @@ import { format, subDays } from 'date-fns';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+import type { HeatmapViewMode } from '@/types';
+
 type SettingsTab = 'import' | 'appearance' | 'athlete';
 type DashboardMode = 'year' | 'month';
 type DashboardBarMetric = 'durationHours' | 'distanceKm' | 'activities';
@@ -26,6 +28,7 @@ interface UiState {
   heatmapCategory: string;
   heatmapSportType: string;
   heatmapReducedMapComplexity: boolean;
+  heatmapViewMode: HeatmapViewMode;
   analyticsActiveTab: AnalyticsTab;
   setSettingsActiveTab: (tab: SettingsTab) => void;
   setDashboardMode: (mode: DashboardMode) => void;
@@ -43,6 +46,7 @@ interface UiState {
   setHeatmapCategory: (category: string) => void;
   setHeatmapSportType: (sportType: string) => void;
   setHeatmapReducedMapComplexity: (checked: boolean) => void;
+  setHeatmapViewMode: (mode: HeatmapViewMode) => void;
   setAnalyticsActiveTab: (tab: AnalyticsTab) => void;
 }
 
@@ -73,6 +77,7 @@ export const useUiStateStore = create<UiState>()(
       heatmapCategory: '',
       heatmapSportType: '',
       heatmapReducedMapComplexity: false,
+      heatmapViewMode: 'routes',
       analyticsActiveTab: 'view',
       setSettingsActiveTab: (tab) => set({ settingsActiveTab: tab }),
       setDashboardMode: (mode) => set({ dashboardMode: mode }),
@@ -97,6 +102,7 @@ export const useUiStateStore = create<UiState>()(
       setHeatmapCategory: (category) => set({ heatmapCategory: category }),
       setHeatmapSportType: (sportType) => set({ heatmapSportType: sportType }),
       setHeatmapReducedMapComplexity: (checked) => set({ heatmapReducedMapComplexity: checked }),
+      setHeatmapViewMode: (mode) => set({ heatmapViewMode: mode }),
       setAnalyticsActiveTab: (tab) => set({ analyticsActiveTab: tab })
     }),
     {
@@ -118,6 +124,7 @@ export const useUiStateStore = create<UiState>()(
         heatmapCategory: state.heatmapCategory,
         heatmapSportType: state.heatmapSportType,
         heatmapReducedMapComplexity: state.heatmapReducedMapComplexity,
+        heatmapViewMode: state.heatmapViewMode,
         analyticsActiveTab: state.analyticsActiveTab
       })
     }

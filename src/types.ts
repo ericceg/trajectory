@@ -102,6 +102,30 @@ export interface HeatmapData {
   returnedPointCount: number;
 }
 
+export type HeatmapViewMode = 'routes' | 'countries' | 'time';
+
+export interface CountryActivitySummary {
+  countryCode: string;
+  numericCode: number;
+  name: string;
+  durationSeconds: number;
+  activityCount: number;
+}
+
+export interface CountryActivityBounds {
+  minLat: number;
+  minLon: number;
+  maxLat: number;
+  maxLon: number;
+}
+
+export interface CountryActivityData {
+  countries: CountryActivitySummary[];
+  activityCount: number;
+  locatedPointCount: number;
+  bounds: CountryActivityBounds | null;
+}
+
 export interface ScanProgressEvent {
   parsed: number;
   total: number;

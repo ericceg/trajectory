@@ -1,6 +1,6 @@
 # Trajectory Developer Guide
 
-> Last verified against the codebase: **April 8, 2026**
+> Last verified against the codebase: **June 27, 2026**
 
 This guide is for contributors working on Trajectory's desktop app codebase.
 It is intentionally practical: what exists today, how it fits together, and how to extend it safely.
@@ -101,6 +101,7 @@ Important behavior:
 │   │   ├── parser.rs    # TCX/FIT parsing into normalized activities
 │   │   ├── db.rs        # SQLite schema, migrations, and query layer
 │   │   ├── analytics.rs # advanced analytics computation
+│   │   ├── countries.rs # offline country lookup and activity aggregation
 │   │   └── settings.rs  # settings load/save and defaults
 │   ├── Cargo.toml
 │   └── tauri.conf.json
@@ -123,6 +124,7 @@ flowchart LR
   Main --> Scanner[scanner.rs]
   Main --> DB[db.rs]
   Main --> Analytics[analytics.rs]
+  Main --> Countries[countries.rs]
   Main --> Settings[settings.rs]
   Scanner --> Parser[parser.rs]
   Scanner --> DB
@@ -175,6 +177,7 @@ Current wrappers:
 - `getActivity`
 - `getActivitySamples`
 - `getHeatmapData`
+- `getCountryActivityData`
 - `runAdvancedAnalytics`
 - `exportAnalyticsJson`
 - `onScanProgress`
@@ -201,7 +204,10 @@ Current wrappers:
   - fetches chart samples via `getActivitySamples`
   - re-queries samples when zoom window, pause visibility, or `chartMaxSamples` changes
   - GPS activities can switch between distance and time charts; time charts can collapse explicit paused segments into moving time
-- **Heatmap:** map overlay rendering with date/category/sport filters.
+- **Heatmap:** map rendering with date/category/sport filters.
+  - Routes renders the GPS-track overlay.
+  - Countries highlights every country containing matching GPS samples.
+  - Time spent shades those countries using elapsed time between consecutive activity samples.
 - **Advanced Analytics:** custom metrics/streaks/charts builder + preview, selective JSON import/export.
 
 ## 6. Backend Overview
@@ -239,6 +245,7 @@ Registered Tauri commands:
 | `get_activity` | Get activity summary + route track |
 | `get_activity_samples` | Query/downsample chart samples |
 | `get_heatmap_data` | Return heatmap tracks |
+| `get_country_activity_data` | Aggregate GPS samples into country activity counts and elapsed time |
 | `run_advanced_analytics` | Compute analytics payload |
 | `export_analytics_json` | Write exported analytics JSON file |
 

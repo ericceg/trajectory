@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod analytics;
+mod countries;
 mod db;
 mod models;
 mod parser;
@@ -12,8 +13,8 @@ use std::{fs, path::PathBuf};
 use anyhow::{Context, Result};
 use models::{
     ActivityDetail, ActivityFilters, ActivitySampleQuery, ActivitySamplesResponse, ActivitySummary,
-    AdvancedAnalyticsRunRequest, AdvancedAnalyticsRunResponse, HeatmapData, HeatmapFilters,
-    ScanDoneEvent, Settings,
+    AdvancedAnalyticsRunRequest, AdvancedAnalyticsRunResponse, CountryActivityData, HeatmapData,
+    HeatmapFilters, ScanDoneEvent, Settings,
 };
 use tauri::{AppHandle, Manager, State};
 
@@ -289,6 +290,22 @@ async fn get_heatmap_data(
 }
 
 #[tauri::command]
+async fn get_country_activity_data(
+    filters: Option<HeatmapFilters>,
+    state: State<'_, AppState>,
+) -> Result<CountryActivityData, String> {
+    let db_path = state.db_path.clone();
+    let filters = filters.unwrap_or_default();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let conn = db::open_connection(&db_path).map_err(|err| err.to_string())?;
+        countries::get_country_activity_data(&conn, &filters).map_err(|err| err.to_string())
+    })
+    .await
+    .map_err(|err| err.to_string())?
+}
+
+#[tauri::command]
 async fn run_advanced_analytics(
     request: AdvancedAnalyticsRunRequest,
     state: State<'_, AppState>,
@@ -358,6 +375,7 @@ fn main() {
             get_activity,
             get_activity_samples,
             get_heatmap_data,
+            get_country_activity_data,
             run_advanced_analytics,
             export_analytics_json
         ])

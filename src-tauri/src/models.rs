@@ -183,6 +183,34 @@ pub struct HeatmapData {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct CountryActivitySummary {
+    pub country_code: String,
+    pub numeric_code: u32,
+    pub name: String,
+    pub duration_seconds: f64,
+    pub activity_count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CountryActivityBounds {
+    pub min_lat: f64,
+    pub min_lon: f64,
+    pub max_lat: f64,
+    pub max_lon: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CountryActivityData {
+    pub countries: Vec<CountryActivitySummary>,
+    pub activity_count: usize,
+    pub located_point_count: usize,
+    pub bounds: Option<CountryActivityBounds>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ScanProgressEvent {
     pub parsed: usize,
     pub total: usize,

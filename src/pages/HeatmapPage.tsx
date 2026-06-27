@@ -3,18 +3,22 @@ import { format, subDays } from 'date-fns';
 import type { FeatureCollection, LineString } from 'geojson';
 import maplibregl, { type GeoJSONSource } from 'maplibre-gl';
 
-import { getHeatmapData, listActivities } from '@/lib/tauri';
+import { CountryActivityMap } from '@/components/CountryActivityMap';
+import { MaximizableMapFrame } from '@/components/MaximizableMapFrame';
+import { formatDuration } from '@/lib/format';
+import { getCountryActivityData, getHeatmapData, listActivities } from '@/lib/tauri';
 import { US_DEFAULT_CENTER, US_DEFAULT_ZOOM } from '@/lib/mapStyles';
 import { type AccentThemePalette, getAccentThemePalette } from '@/lib/theme';
 import { useManagedMapLibre } from '@/lib/useManagedMapLibre';
-import { MaximizableMapFrame } from '@/components/MaximizableMapFrame';
 import { useAppStore } from '@/store/useAppStore';
 import { useUiStateStore } from '@/store/useUiStateStore';
 import type {
   ActivityFilters,
   ActivitySummary,
+  CountryActivityData,
   HeatmapData,
   HeatmapFilters,
+  HeatmapViewMode,
   TrackPoint
 } from '@/types';
 
@@ -38,6 +42,12 @@ const CATEGORY_OPTIONS = [
   'Rowing',
   'Mobility',
   'Other'
+];
+
+const VIEW_OPTIONS: Array<{ value: HeatmapViewMode; label: string; description: string }> = [
+  { value: 'routes', label: 'Routes', description: 'Show individual GPS tracks' },
+  { value: 'countries', label: 'Countries', description: 'Highlight every country with activity' },
+  { value: 'time', label: 'Time spent', description: 'Shade countries by activity time' }
 ];
 
 const HEATMAP_SOURCE_ID = 'heatmap-track-source';
@@ -320,11 +330,13 @@ function HeatmapMap({
 function HeatmapMapOverlayControls({
   reducedMapComplexity,
   onReducedMapComplexityChange,
-  accentPalette
+  accentPalette,
+  viewMode
 }: {
   reducedMapComplexity: boolean;
   onReducedMapComplexityChange: (checked: boolean) => void;
   accentPalette: AccentThemePalette;
+  viewMode: HeatmapViewMode;
 }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -349,16 +361,23 @@ function HeatmapMapOverlayControls({
         </span>
         Reduced complexity
       </button>
-      <div className="flex items-center gap-2 rounded-md border border-border bg-panel/80 px-2.5 py-1.5 text-xs text-muted backdrop-blur">
-        <span>Low</span>
-        <span
-          className="h-2 w-24 rounded-full"
-          style={{
-            backgroundImage: `linear-gradient(to right, ${accentPalette.accentTintHex}, ${accentPalette.accentSoftHex}, ${accentPalette.accentHex})`
-          }}
-        />
-        <span>High</span>
-      </div>
+      {viewMode === 'countries' ? (
+        <div className="flex items-center gap-2 rounded-md border border-border bg-panel/80 px-2.5 py-1.5 text-xs text-muted backdrop-blur">
+          <span className="h-2.5 w-2.5 rounded-sm" style={{ background: accentPalette.accentHex }} />
+          Activity recorded
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 rounded-md border border-border bg-panel/80 px-2.5 py-1.5 text-xs text-muted backdrop-blur">
+          <span>Low</span>
+          <span
+            className="h-2 w-24 rounded-full"
+            style={{
+              backgroundImage: `linear-gradient(to right, ${accentPalette.accentTintHex}, ${accentPalette.accentSoftHex}, ${accentPalette.accentHex})`
+            }}
+          />
+          <span>High</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -378,12 +397,17 @@ export function HeatmapPage() {
   const setSportType = useUiStateStore((state) => state.setHeatmapSportType);
   const reducedMapComplexity = useUiStateStore((state) => state.heatmapReducedMapComplexity);
   const setReducedMapComplexity = useUiStateStore((state) => state.setHeatmapReducedMapComplexity);
+  const viewMode = useUiStateStore((state) => state.heatmapViewMode);
+  const setViewMode = useUiStateStore((state) => state.setHeatmapViewMode);
   const [availableActivities, setAvailableActivities] = useState<ActivitySummary[]>([]);
   const [activityOptionsLoading, setActivityOptionsLoading] = useState(false);
   const [heatmapLoading, setHeatmapLoading] = useState(false);
+  const [countryDataLoading, setCountryDataLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [heatmapData, setHeatmapData] = useState<HeatmapData | null>(null);
+  const [countryData, setCountryData] = useState<CountryActivityData | null>(null);
   const accentPalette = useMemo(() => getAccentThemePalette(accentTheme), [accentTheme]);
+  const countryViewEnabled = viewMode !== 'routes';
 
   const resolvedRange = useMemo(
     () => resolveDateRange(timeSpan, customStartDate, customEndDate),
@@ -456,6 +480,10 @@ export function HeatmapPage() {
   );
 
   useEffect(() => {
+    if (viewMode !== 'routes') {
+      return undefined;
+    }
+
     let cancelled = false;
 
     const loadHeatmapData = async () => {
@@ -484,7 +512,42 @@ export function HeatmapPage() {
     return () => {
       cancelled = true;
     };
-  }, [heatmapFilters]);
+  }, [heatmapFilters, viewMode]);
+
+  useEffect(() => {
+    if (!countryViewEnabled) {
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    const loadCountryData = async () => {
+      setCountryDataLoading(true);
+      setError(null);
+
+      try {
+        const data = await getCountryActivityData(heatmapFilters);
+        if (!cancelled) {
+          setCountryData(data);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setCountryData(null);
+          setError(err instanceof Error ? err.message : String(err));
+        }
+      } finally {
+        if (!cancelled) {
+          setCountryDataLoading(false);
+        }
+      }
+    };
+
+    void loadCountryData();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [countryViewEnabled, heatmapFilters]);
 
   const trackCount = heatmapData?.tracks.length ?? 0;
   const heatStyle = useMemo(
@@ -496,7 +559,14 @@ export function HeatmapPage() {
     [heatmapData?.tracks]
   );
 
-  const loading = activityOptionsLoading || heatmapLoading;
+  const loading =
+    activityOptionsLoading || (viewMode === 'routes' ? heatmapLoading : countryDataLoading);
+  const countryCount = countryData?.countries.length ?? 0;
+  const totalCountryDuration = useMemo(
+    () => countryData?.countries.reduce((total, country) => total + country.durationSeconds, 0) ?? 0,
+    [countryData]
+  );
+  const activeView = VIEW_OPTIONS.find((option) => option.value === viewMode) ?? VIEW_OPTIONS[0];
 
   return (
     <div className="space-y-6">
@@ -504,11 +574,33 @@ export function HeatmapPage() {
         <p className="text-xs uppercase tracking-[0.2em] text-muted">Heatmap</p>
         <h2 className="mt-2 text-3xl font-semibold text-foreground">Global Activity Heatmap</h2>
         <p className="mt-2 text-sm text-muted">
-          Overlay all matching GPS tracks to find your most-traveled routes.
+          Explore matching activities as routes, visited countries, or time spent in each country.
         </p>
       </header>
 
       <section className="rounded-xl border border-border bg-panel p-4">
+        <div className="mb-4 border-b border-border pb-4">
+          <p className="mb-2 text-xs uppercase tracking-[0.14em] text-muted">Map view</p>
+          <div className="flex flex-wrap gap-2" role="group" aria-label="Map view">
+            {VIEW_OPTIONS.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => setViewMode(option.value)}
+                aria-pressed={viewMode === option.value}
+                title={option.description}
+                className={`rounded-md border px-3 py-2 text-sm transition-colors ${
+                  viewMode === option.value
+                    ? 'border-accent bg-accent text-white'
+                    : 'border-border bg-bg text-muted hover:text-foreground'
+                }`}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-muted">{activeView.description}</p>
+        </div>
         <div className="grid gap-4 xl:grid-cols-4">
           <div className="xl:col-span-2">
             <p className="mb-2 text-xs uppercase tracking-[0.14em] text-muted">Time span</p>
@@ -591,38 +683,52 @@ export function HeatmapPage() {
       <section className="overflow-hidden rounded-xl border border-border bg-panel">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-4 py-3">
           <div>
-            <h3 className="text-lg font-semibold text-foreground">Heatmap</h3>
-            <p className="text-sm text-muted">
-              Activities: {heatmapData?.activityCount ?? 0} · Tracks: {trackCount} · Points:{' '}
-              {heatmapData?.returnedPointCount ?? 0}
-              {heatmapData && heatmapData.returnedPointCount < heatmapData.originalPointCount
-                ? ` (downsampled from ${heatmapData.originalPointCount})`
-                : ''}
-            </p>
-            {heatmapFullOpacity ? (
+            <h3 className="text-lg font-semibold text-foreground">{activeView.label}</h3>
+            {viewMode === 'routes' ? (
+              <p className="text-sm text-muted">
+                Activities: {heatmapData?.activityCount ?? 0} · Tracks: {trackCount} · Points:{' '}
+                {heatmapData?.returnedPointCount ?? 0}
+                {heatmapData && heatmapData.returnedPointCount < heatmapData.originalPointCount
+                  ? ` (downsampled from ${heatmapData.originalPointCount})`
+                  : ''}
+              </p>
+            ) : (
+              <p className="text-sm text-muted">
+                Activities: {countryData?.activityCount ?? 0} · Countries: {countryCount} · Time in
+                countries: {formatDuration(totalCountryDuration)}
+              </p>
+            )}
+            {viewMode === 'routes' && heatmapFullOpacity ? (
               <p className="text-xs text-muted">Appearance: full-opacity heatmap enabled</p>
             ) : null}
           </div>
         </div>
 
         <MaximizableMapFrame
-          label="heatmap"
+          label={`${activeView.label.toLowerCase()} heatmap`}
           collapsedHeightClassName="h-[36rem]"
           topLeftActions={
             <HeatmapMapOverlayControls
               reducedMapComplexity={reducedMapComplexity}
               onReducedMapComplexityChange={setReducedMapComplexity}
               accentPalette={accentPalette}
+              viewMode={viewMode}
             />
           }
         >
           {loading ? (
-            <div className="flex h-full items-center justify-center text-sm text-muted">Loading heatmap...</div>
-          ) : !trackCount ? (
+            <div className="flex h-full items-center justify-center text-sm text-muted">
+              Loading {viewMode === 'routes' ? 'heatmap' : 'country totals'}...
+            </div>
+          ) : viewMode === 'routes' && !trackCount ? (
             <div className="flex h-full items-center justify-center text-sm text-muted">
               No GPS points for the selected filters.
             </div>
-          ) : (
+          ) : viewMode !== 'routes' && !countryCount ? (
+            <div className="flex h-full items-center justify-center text-sm text-muted">
+              No countries found for the selected filters.
+            </div>
+          ) : viewMode === 'routes' ? (
             <HeatmapMap
               tracks={heatmapData?.tracks ?? []}
               boundsPoints={heatBoundsPoints}
@@ -630,7 +736,14 @@ export function HeatmapPage() {
               reducedComplexity={reducedMapComplexity}
               accentPalette={accentPalette}
             />
-          )}
+          ) : countryData ? (
+            <CountryActivityMap
+              data={countryData}
+              viewMode={viewMode}
+              reducedComplexity={reducedMapComplexity}
+              accentPalette={accentPalette}
+            />
+          ) : null}
         </MaximizableMapFrame>
       </section>
     </div>

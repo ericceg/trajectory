@@ -10,6 +10,7 @@ import {
   type ActivitySummary,
   type AdvancedAnalyticsRunRequest,
   type AdvancedAnalyticsRunResponse,
+  type CountryActivityData,
   type HeatmapData,
   type HeatmapFilters,
   type ScanDoneEvent,
@@ -53,6 +54,9 @@ export const getActivitySamples = (id: number, query?: ActivitySampleQuery) =>
 
 export const getHeatmapData = (filters?: HeatmapFilters) =>
   invoke<HeatmapData>('get_heatmap_data', { filters });
+
+export const getCountryActivityData = (filters?: HeatmapFilters) =>
+  invoke<CountryActivityData>('get_country_activity_data', { filters });
 
 export const runAdvancedAnalytics = (request: AdvancedAnalyticsRunRequest) =>
   invoke<AdvancedAnalyticsRunResponse>('run_advanced_analytics', { request });
