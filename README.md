@@ -26,14 +26,21 @@ There is no single reason for why I built Trajectory, but rather a combination o
 
 ## Installation
 
-1. Open the [latest release](https://github.com/ericceg/trajectory/releases/latest)
-2. Download the `.dmg` asset
-3. Install and launch the app
+1. Open the [latest release](https://github.com/ericceg/trajectory/releases/latest).
+2. Download the `.dmg` for macOS, `.exe` or `.msi` for Windows, or `.deb` or `.AppImage` for Linux.
+3. Install and launch the app.
+
+Current builds support Apple Silicon on macOS and 64-bit systems on Windows and Linux.
 
 Notes:
-- Current release builds are ad-hoc signed, so macOS may show a security warning on first launch.
-- If you cannot open the app, follow the instructions on [Apple's support site](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unknown-developer-mh40616/mac).
-- Windows and Linux bundles can be built as preview artifacts from the `Preview Bundles` GitHub Actions workflow before publishing an official release.
+- Release builds are not yet production-signed, so your operating system may show a security warning on first launch.
+- If macOS reports that Trajectory is damaged or corrupted, remove the quarantine flag after installation:
+
+  ```bash
+  sudo xattr -dr com.apple.quarantine /Applications/Trajectory.app
+  ```
+
+- On macOS, if you still cannot open the app, follow the instructions on [Apple's support site](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unknown-developer-mh40616/mac).
 
 
 
@@ -207,9 +214,9 @@ can be useful to convince your loved ones that your hobby is not that dangerous 
 
 ## Platform Support
 
-- macOS release artifacts
-- Windows preview bundles via GitHub Actions
-- Linux preview bundles via GitHub Actions
+- macOS on Apple Silicon (`aarch64`)
+- Windows 64-bit (`x64`)
+- Linux 64-bit (`amd64`)
 
 ## Developer Setup (Build From Source)
 
@@ -262,7 +269,7 @@ Output artifacts are generated under:
 ## Roadmap
 
 - Route planner.
-- Code signing / hardening for Windows and Linux releases.
+- Production code signing and macOS notarization.
 
 
 
