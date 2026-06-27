@@ -1,6 +1,6 @@
 [package]
 name = "trajectory"
-version = "0.1.4"
+version = "0.1.5"
 description = "Trajectory local TCX activity analysis desktop app"
 authors = ["Trajectory"]
 edition = "2021"
