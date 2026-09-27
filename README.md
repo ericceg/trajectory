@@ -1,3 +1,17 @@
+# Trajectory2
+
+September 2026:
+
+1. Finalised functionalities for heart rate drift/aerobic decoupling metrics (derived from the work of Johnston et al).
+
+2. Fixed bugs:
+- Made workout metrics use consistent segment boundaries and explicit segment labels.
+- Updated Pace–HR decoupling and HR drift for selections, with clear unavailable states.
+- Fixed pause handling, missing-sample calculations, and HR-zone double counting.
+- Prevented stale values during zooming, resets, activity switches, and rescans.
+- Fixed analytics cache invalidation, stale heatmaps, and today’s missing dashboard totals.
+- Added regression coverage and Rust tests to CI. Typecheck, 23 frontend tests, 35 Rust tests, and production build passed.
+
 # Trajectory
 
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
@@ -13,6 +27,9 @@ A local-first desktop app for exploring `.tcx`/`.fit` activities with dashboard,
 No cloud sync, no account, no server. Just you and your training data.
 
 
+Originally created by [Eric Ceglie](https://github.com/ericceg/trajectory).
+The motivation and personal workflow below are the original author's account.
+
 ## Why I Built This
 
 There is no single reason for why I built Trajectory, but rather a combination of factors:
@@ -26,7 +43,7 @@ There is no single reason for why I built Trajectory, but rather a combination o
 
 ## Installation
 
-1. Open the [latest release](https://github.com/ericceg/trajectory/releases/latest).
+1. Open the original project's [latest release](https://github.com/ericceg/trajectory/releases/latest). For the source in this repository, follow [Developer Setup](#developer-setup-build-from-source).
 2. Download the `.dmg` for macOS, `.exe` or `.msi` for Windows, or `.deb` or `.AppImage` for Linux.
 3. Install and launch the app.
 
@@ -49,7 +66,7 @@ Notes:
 1. Launch Trajectory.
 2. Select your activity folder containing `.tcx` and/or `.fit` files.
 3. Start in **Dashboard** for a quick overview of training load and history.
-4. Use **Activities** to filter, sort, and inspect individual workouts.
+4. Use **Activities** to filter, sort, and inspect individual workouts. Select or zoom a chart range to see segment metrics; **Show Full Workout** restores the activity totals.
 5. Open **Heatmap** to spot route patterns across all GPS sessions.
 6. Use **Advanced Analytics** to define custom metrics, streaks, and charts. See [Advanced Analytics](#advanced-analytics) for more details and examples.
 7. Open **Settings** to customize appearance, configure heart-rate zones, and run rescans.
@@ -190,6 +207,7 @@ respects the selected time range.
 
 All the following examples can be imported using the file
 file [`assets/trajectory-advanced-analytics-examples.json`](assets/trajectory-advanced-analytics-examples.json).
+It contains example definitions, with synthetic IDs and dates, rather than recorded activity data.
 
 1. Let's start with my favorite metric **aerobic time fraction**. 
 It measures the fraction of time spent in aerobic heart rate zones during workouts.

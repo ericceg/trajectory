@@ -1,7 +1,5 @@
 # Trajectory Developer Guide
 
-> Last verified against the codebase: **August 7, 2026**
-
 This guide is for contributors working on Trajectory's desktop app codebase.
 It is intentionally practical: what exists today, how it fits together, and how to extend it safely.
 
@@ -30,8 +28,8 @@ npm run check
 This runs:
 
 - TypeScript typecheck (`npm run typecheck`)
-- activity-detail metric tests (`npm run test:activity-metrics`)
-- Rust check (`cargo check --manifest-path src-tauri/Cargo.toml`)
+- activity metrics, chart interaction, request-race, and analytics cache tests (`npm run test:activity-metrics`)
+- Rust check and regression tests (`npm run check:rust`, `npm run test:rust`)
 
 ### Build local production artifacts
 
@@ -146,7 +144,7 @@ flowchart LR
 - dark/light theme application
 - accent theme CSS variable application
 - automatic startup scan (once per selected import folder path)
-- startup advanced analytics cache warm-up after a completed scan
+- startup advanced analytics cache warm-up after a completed scan; cache keys include import folder, scan version, HR zones, and complete definitions
 - route rendering via `HashRouter`
 
 Current routes:
@@ -203,12 +201,16 @@ Current wrappers:
 - **Dashboard:** year/month calendar views with aggregate metrics and drilldowns.
 - **Activities:** filter + sort table, navigation into details.
 - **Activity Detail:**
-  - fetches summary/track via `getActivity`
-  - fetches chart samples via `getActivitySamples`
-  - re-queries samples when zoom window, pause visibility, or `chartMaxSamples` changes
-  - loads full-resolution activity records once and derives a memoized `selectedActivity` for summary metrics
-  - recalculates duration, moving/paused time, heart-rate statistics, and heart-rate zones from the current drag or zoom range
-  - GPS activities can switch between distance and time charts; time charts can collapse explicit paused segments into moving time
+  - loads detail and full-resolution samples together via `useActivityData`; activity changes and rescans discard stale requests
+  - resolves live drag/zoom boundaries once to elapsed time in `activityData.ts`; charts, cards, zones, and decoupling use those boundaries
+  - clips/interpolates chart endpoints before applying the display sample cap, so zooming restores detail on either axis
+  - marks selected metrics with `(Segment)`; reset restores authoritative workout summaries; missing segment data is shown as unavailable
+  - offers distance charts whenever cumulative distance is usable (including indoor activities); time charts can collapse recorded pauses
+  - computes segment distance from cumulative-distance endpoints and average speed/pace from distance and moving time; timer pauses are excluded without scaling by a whole-workout ratio
+  - weights HR, cadence, and power by adjacent active sample intervals; missing readings break the held value, gaps over 300 seconds are excluded, and averages require 80% coverage
+  - computes elevation changes from clipped adjacent altitude samples; incomplete altitude coverage is unavailable
+  - uses debounced, stale-response-safe decoupling requests over the same elapsed range; compares equal active-time halves, requiring at least 60 active seconds and 80% valid coverage per half (recording gaps over 30 seconds are unobserved)
+  - treats decoupling as a descriptive comparison: short, stopped, or incomplete ranges return typed unavailability reasons; interval workouts and changing terrain can affect interpretation
 - **Heatmap:** map rendering with date/category/sport filters.
   - Routes renders the GPS-track overlay.
   - Countries highlights every country containing matching GPS samples.
@@ -288,7 +290,7 @@ Notable behavior:
 
 Responsibilities:
 
-- schema creation and migrations (`DB_SCHEMA_VERSION = 2`)
+- schema creation and migrations (`DB_SCHEMA_VERSION = 3`)
 - upsert activity + sample rows
 - query list/detail/heatmap/sample windows
 - query-side downsampling
@@ -354,7 +356,7 @@ Design choices:
 
 - tracks are stored as JSON in `activities.track_json` (map-friendly payload)
 - detailed samples are stored in `activity_samples`
-- UI-heavy views fetch sampled windows rather than always loading all points
+- Maps use sampled tracks; Activity Detail retains full samples for metrics and caps chart rendering separately
 
 ## 9. Scan Lifecycle
 
@@ -394,6 +396,7 @@ Design choices:
 - rust quality job on Ubuntu, macOS, and Windows:
   - Linux runner installs Tauri system dependencies (`libwebkit2gtk-4.1-dev`, `libappindicator3-dev`, `librsvg2-dev`, `patchelf`)
   - `cargo check --manifest-path src-tauri/Cargo.toml`
+  - `cargo test --manifest-path src-tauri/Cargo.toml`
   - `cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check`
 
 ### Preview bundles (`.github/workflows/preview-bundles.yml`)
@@ -450,3 +453,15 @@ Then builds and publishes platform bundles via `tauri-apps/tauri-action`:
 2. Extend SQL predicates in `db::list_activities` and/or `db::get_heatmap_data`.
 3. Pass through bridge wrapper.
 4. Wire into UI state and page controls.
+
+## 12. Contributor Data Hygiene
+
+Keep activity imports, app databases/settings, local environment files, generated bundles,
+and development session files outside the source tree. Tests construct synthetic activity
+samples in code; the bundled analytics JSON contains example definitions only. Additional
+file fixtures belong under `tests/fixtures/synthetic/` and need an exact `.gitignore`
+exception after review for location, device, health, and timestamp data.
+
+Use this guide for architecture and maintenance notes. Describe current behavior and
+rationale here instead of storing personal task logs or agent session records. Preserve the
+original author credit and MIT license, map-provider attribution, and dependency notices.
