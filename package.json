@@ -6,11 +6,13 @@
   "scripts": {
     "dev": "vite",
     "typecheck": "tsc --noEmit",
+    "test:activity-metrics": "node --test scripts/activityMetrics.test.mjs",
     "check:rust": "cargo check --manifest-path src-tauri/Cargo.toml",
-    "check": "npm run typecheck && npm run check:rust",
+    "check": "npm run typecheck && npm run test:activity-metrics && npm run check:rust && npm run test:rust",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml"
   },
   "dependencies": {
     "@tanstack/react-table": "^8.21.2",
@@ -35,6 +37,7 @@
     "@vitejs/plugin-react": "^4.4.1",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.5.3",
+    "react-test-renderer": "18.3.1",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.8.2",
     "vite": "^7.3.1"
