@@ -238,7 +238,7 @@ can be useful to convince your loved ones that your hobby is not that dangerous 
 
 Any feedback and contributions are very welcome! Bug reports, ideas, documentation improvements, and code changes all help. Feel free to [open an issue](https://github.com/ericceg/trajectory/issues) or [submit a pull request](https://github.com/ericceg/trajectory/pulls).
 
-Thank you to everyone who has contributed so far and helped make Trajectory better.
+Thank you to Will ([@bitloop-dev](https://github.com/bitloop-dev)) and [@farrrunnner](https://github.com/farrrunnner) for their contributions and for helping make Trajectory better.
 
 ## Developer Setup (Build From Source)
 

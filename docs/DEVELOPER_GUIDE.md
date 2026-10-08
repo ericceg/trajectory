@@ -10,7 +10,7 @@ It is intentionally practical: what exists today, how it fits together, and how 
 ### Prerequisites
 
 - Node.js 22.12+
-- Rust stable toolchain (1.88+; `rust-toolchain.toml` includes `rustfmt`)
+- Rust stable toolchain (1.88+; `rust-toolchain.toml` includes `rustfmt` and `rust-analyzer`)
 - macOS (primary supported platform for local dev)
 - GitHub Actions for preview/release builds on macOS, Windows, and Linux
 
