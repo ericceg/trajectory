@@ -1,7 +1,7 @@
 {
   "format": "trajectory-advanced-analytics",
   "schemaVersion": 1,
-  "exportedAt": "2000-01-01T00:00:00Z",
+  "exportedAt": "2026-03-11T15:24:17.653Z",
   "summary": {
     "metrics": 7,
     "streaks": 3,
@@ -10,14 +10,14 @@
   "data": {
     "metrics": [
       {
-        "id": "example_metric_1",
+        "id": "metric_bbc88560",
         "name": "pull",
         "kind": "base",
         "showInView": false,
         "timeRange": {
           "preset": "all",
-          "customStartDate": "2000-01-01",
-          "customEndDate": "2000-01-31"
+          "customStartDate": "2026-02-02",
+          "customEndDate": "2026-03-04"
         },
         "base": {
           "measure": "activitiesCount",
@@ -25,10 +25,10 @@
           "sampleConditions": [],
           "activityConditionGroups": [
             {
-              "id": "example_ag_1",
+              "id": "ag_acb95cdb",
               "conditions": [
                 {
-                  "id": "example_ac_1",
+                  "id": "ac_3657e343",
                   "field": "title",
                   "operator": "contains",
                   "value": "pull"
@@ -45,14 +45,14 @@
         }
       },
       {
-        "id": "example_metric_2",
+        "id": "metric_8153a99b",
         "name": "push",
         "kind": "base",
         "showInView": false,
         "timeRange": {
           "preset": "all",
-          "customStartDate": "2000-01-01",
-          "customEndDate": "2000-01-31"
+          "customStartDate": "2026-02-02",
+          "customEndDate": "2026-03-04"
         },
         "base": {
           "measure": "activitiesCount",
@@ -60,10 +60,10 @@
           "sampleConditions": [],
           "activityConditionGroups": [
             {
-              "id": "example_ag_2",
+              "id": "ag_80c59a77",
               "conditions": [
                 {
-                  "id": "example_ac_2",
+                  "id": "ac_97d3fa3a",
                   "field": "title",
                   "operator": "contains",
                   "value": "push"
@@ -80,14 +80,14 @@
         }
       },
       {
-        "id": "example_metric_3",
+        "id": "metric_8c96a905",
         "name": "aerobic time",
         "kind": "base",
         "showInView": true,
         "timeRange": {
           "preset": "thisWeek",
-          "customStartDate": "2000-01-01",
-          "customEndDate": "2000-01-31"
+          "customStartDate": "2026-02-02",
+          "customEndDate": "2026-03-04"
         },
         "base": {
           "measure": "sampleTime",
@@ -96,10 +96,10 @@
           "activityConditionGroups": [],
           "sampleConditionGroups": [
             {
-              "id": "example_sg_1",
+              "id": "sg_82f93808",
               "conditions": [
                 {
-                  "id": "example_sc_1",
+                  "id": "sc_f1cac6e8",
                   "field": "heartRateZone",
                   "operator": "is",
                   "zone": 2
@@ -107,10 +107,10 @@
               ]
             },
             {
-              "id": "example_sg_2",
+              "id": "sg_c46394ee",
               "conditions": [
                 {
-                  "id": "example_sc_2",
+                  "id": "sc_9f5e73ed",
                   "field": "heartRateZone",
                   "operator": "is",
                   "zone": 3
@@ -126,14 +126,14 @@
         }
       },
       {
-        "id": "example_metric_4",
+        "id": "metric_193ea5c7",
         "name": "time",
         "kind": "base",
         "showInView": false,
         "timeRange": {
           "preset": "all",
-          "customStartDate": "2000-01-01",
-          "customEndDate": "2000-01-31"
+          "customStartDate": "2026-02-07",
+          "customEndDate": "2026-03-09"
         },
         "base": {
           "measure": "durationSum",
@@ -149,31 +149,31 @@
         }
       },
       {
-        "id": "example_metric_5",
+        "id": "metric_5a1c6cf7",
         "name": "aerobic time fraction",
         "kind": "formula",
         "showInView": true,
         "timeRange": {
           "preset": "thisWeek",
-          "customStartDate": "2000-01-01",
-          "customEndDate": "2000-01-31"
+          "customStartDate": "2026-02-02",
+          "customEndDate": "2026-03-04"
         },
         "formula": {
-          "leftMetricId": "example_metric_3",
+          "leftMetricId": "metric_8c96a905",
           "operator": "divide",
-          "rightMetricId": "example_metric_4",
+          "rightMetricId": "metric_193ea5c7",
           "displayUnit": "%"
         }
       },
       {
-        "id": "example_metric_6",
+        "id": "metric_078901f2",
         "name": "active day",
         "kind": "base",
         "showInView": false,
         "timeRange": {
           "preset": "all",
-          "customStartDate": "2000-01-01",
-          "customEndDate": "2000-01-31"
+          "customStartDate": "2026-02-02",
+          "customEndDate": "2026-03-04"
         },
         "base": {
           "measure": "activitiesCount",
@@ -189,14 +189,14 @@
         }
       },
       {
-        "id": "example_metric_7",
+        "id": "metric_4b937eec",
         "name": "risky ride",
         "kind": "base",
         "showInView": true,
         "timeRange": {
           "preset": "all",
-          "customStartDate": "2000-01-01",
-          "customEndDate": "2000-01-31"
+          "customStartDate": "2026-02-09",
+          "customEndDate": "2026-03-11"
         },
         "base": {
           "measure": "sampleTime",
@@ -205,10 +205,10 @@
           "activityConditionGroups": [],
           "sampleConditionGroups": [
             {
-              "id": "example_sg_3",
+              "id": "sg_bdc4ad62",
               "conditions": [
                 {
-                  "id": "example_sc_3",
+                  "id": "sc_477c6111",
                   "field": "speedMps",
                   "operator": "greaterThanOrEqual",
                   "numberValue": 13.88888888888889
@@ -226,44 +226,44 @@
     ],
     "streaks": [
       {
-        "id": "example_streak_1",
+        "id": "streak_c1e168e1",
         "name": "weekly pull/push streak",
         "timeRange": {
           "preset": "all",
-          "customStartDate": "2000-01-01",
-          "customEndDate": "2000-01-31"
+          "customStartDate": "2026-02-02",
+          "customEndDate": "2026-03-04"
         },
-        "metricId": "example_metric_1",
+        "metricId": "metric_bbc88560",
         "additionalMetricIds": [
-          "example_metric_2"
+          "metric_8153a99b"
         ],
         "period": "week",
         "thresholdOperator": "greaterThanOrEqual",
         "thresholdValue": 1
       },
       {
-        "id": "example_streak_2",
+        "id": "streak_afc11345",
         "name": "weekly aerobic time streak",
         "timeRange": {
           "preset": "90d",
-          "customStartDate": "2000-01-01",
-          "customEndDate": "2000-01-31"
+          "customStartDate": "2026-02-02",
+          "customEndDate": "2026-03-04"
         },
-        "metricId": "example_metric_3",
+        "metricId": "metric_8c96a905",
         "additionalMetricIds": [],
         "period": "week",
         "thresholdOperator": "greaterThanOrEqual",
         "thresholdValue": 1800
       },
       {
-        "id": "example_streak_3",
+        "id": "streak_a9e13c69",
         "name": "weekly activity streak",
         "timeRange": {
           "preset": "all",
-          "customStartDate": "2000-01-01",
-          "customEndDate": "2000-01-31"
+          "customStartDate": "2026-02-02",
+          "customEndDate": "2026-03-04"
         },
-        "metricId": "example_metric_6",
+        "metricId": "metric_078901f2",
         "additionalMetricIds": [],
         "period": "week",
         "thresholdOperator": "greaterThanOrEqual",
@@ -272,45 +272,45 @@
     ],
     "charts": [
       {
-        "id": "example_chart_1",
+        "id": "chart_e7c9d771",
         "name": "aerobic time fraction",
         "timeRange": {
           "preset": "365d",
-          "customStartDate": "2000-01-01",
-          "customEndDate": "2000-01-31"
+          "customStartDate": "2026-02-02",
+          "customEndDate": "2026-03-04"
         },
         "chartType": "line",
         "metricIds": [
-          "example_metric_5"
+          "metric_5a1c6cf7"
         ],
         "granularity": "week"
       },
       {
-        "id": "example_chart_2",
+        "id": "chart_229787aa",
         "name": "aerobic time",
         "timeRange": {
           "preset": "365d",
-          "customStartDate": "2000-01-01",
-          "customEndDate": "2000-01-31"
+          "customStartDate": "2026-02-08",
+          "customEndDate": "2026-03-10"
         },
         "chartType": "bar",
         "metricIds": [
-          "example_metric_3"
+          "metric_8c96a905"
         ],
         "granularity": "week"
       },
       {
-        "id": "example_chart_3",
+        "id": "chart_a33234a9",
         "name": "push vs. pull days",
         "timeRange": {
           "preset": "all",
-          "customStartDate": "2000-01-01",
-          "customEndDate": "2000-01-31"
+          "customStartDate": "2026-02-02",
+          "customEndDate": "2026-03-04"
         },
         "chartType": "stackedBar",
         "metricIds": [
-          "example_metric_2",
-          "example_metric_1"
+          "metric_8153a99b",
+          "metric_bbc88560"
         ],
         "granularity": "month"
       }

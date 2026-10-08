@@ -67,7 +67,7 @@ Recorded pauses are excluded. The metrics require at least one minute of active 
 decoupling also requires speed data. If a range has too little recorded data, its metrics are shown as unavailable.
 Selecting a chart range also updates the workout metrics and heart-rate zones.
 
-Thanks to [@farrrunnner](https://github.com/farrrunnner) for contributing these metrics in [#15](https://github.com/ericceg/trajectory/pull/15).
+Thanks to Will ([original fork](https://github.com/bitloop-dev/trajectory)) and [@farrrunnner](https://github.com/farrrunnner) for contributing these metrics in [#15](https://github.com/ericceg/trajectory/pull/15).
 
 
 ## Recommended Workflow for Apple Ecosystem Users
