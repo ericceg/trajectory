@@ -50,8 +50,10 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Setup Rust (stable)
+      - name: Setup Rust (stable + rustfmt)
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -61,17 +63,13 @@ jobs:
       - name: Install frontend deps
         run: npm ci
 
-      - name: Verify version alignment
-        shell: bash
-        run: |
-          expected_version="${{ inputs.version }}"
-          if [[ -z "$expected_version" ]]; then
-            expected_version="$(node -p "require('./package.json').version")"
-          fi
-          bash scripts/verify-version-alignment.sh "$expected_version"
+      - name: Verify version alignment and run quality checks
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
+        run: npm run check
 
       - name: Build desktop bundles
-        run: npm run tauri build -- --bundles ${{ matrix.bundles }}
+        run: npm run tauri build -- --ci --bundles ${{ matrix.bundles }} -- --locked
 
       - name: Upload preview artifacts
         uses: actions/upload-artifact@v4
@@ -95,8 +93,10 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Setup Rust (stable)
+      - name: Setup Rust (stable + rustfmt)
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -106,29 +106,31 @@ jobs:
       - name: Install frontend deps
         run: npm ci
 
-      - name: Verify version alignment
-        shell: bash
-        run: |
-          expected_version="${{ inputs.version }}"
-          if [[ -z "$expected_version" ]]; then
-            expected_version="$(node -p "require('./package.json').version")"
-          fi
-          bash scripts/verify-version-alignment.sh "$expected_version"
+      - name: Verify version alignment and run quality checks
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
+        run: npm run check
 
       - name: Build desktop bundles
         env:
           APPLE_SIGNING_IDENTITY: "-"
-        run: npm run tauri build -- --bundles app,dmg
+        run: npm run tauri build -- --ci --bundles app,dmg -- --locked
 
       - name: Verify macOS app signature
         run: codesign --verify --deep --strict src-tauri/target/release/bundle/macos/*.app
+
+      - name: Archive macOS app with executable permissions
+        run: |
+          for app in src-tauri/target/release/bundle/macos/*.app; do
+            tar -czf "${app}.tar.gz" -C "$(dirname "$app")" "$(basename "$app")"
+          done
 
       - name: Upload preview artifacts
         uses: actions/upload-artifact@v4
         with:
           name: trajectory-macos-bundles
           path: |
-            src-tauri/target/release/bundle/macos/*.app
+            src-tauri/target/release/bundle/macos/*.app.tar.gz
             src-tauri/target/release/bundle/dmg/*.dmg
           if-no-files-found: error
           retention-days: 14

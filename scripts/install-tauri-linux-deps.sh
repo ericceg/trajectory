@@ -3,7 +3,7 @@
 set -euo pipefail
 
 if [[ "$(uname -s)" != "Linux" ]] || ! command -v apt-get >/dev/null 2>&1; then
-  echo "This helper supports Ubuntu 22.04+ and Debian 12+ (apt). See README.md for other Linux distributions." >&2
+  echo "This helper requires Linux with apt-get (Ubuntu/Debian). See https://v2.tauri.app/start/prerequisites/#linux for other distributions." >&2
   exit 1
 fi
 

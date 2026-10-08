@@ -216,7 +216,7 @@ and the analytics page share these keys; startup and automatic runs discard stal
   - offers distance charts whenever cumulative distance is usable, including indoor activities; time charts can collapse explicit paused segments into moving time
   - resolves drag/zoom selections to shared elapsed-time boundaries for metric cards, HR zones, and decoupling (`src/lib/activityDetail/activityData.ts`)
   - labels selected metrics with `(Segment)`; reset restores workout summary values; missing segment data is shown as unavailable
-  - computes segment distance from cumulative-distance endpoints and average speed/pace from distance and moving time; recorded pauses are excluded from active time
+  - computes segment distance from cumulative-distance endpoints and average speed/pace from distance and moving time; distance/altitude interpolation allocates recorded changes across active time, excluding recorded pauses
   - offers pace-HR decoupling and heart-rate drift for the workout or selection; requests are debounced and stale responses are discarded
 - **Heatmap:** map rendering with date/category/sport filters.
   - Routes renders the GPS-track overlay.
@@ -420,11 +420,14 @@ uses ad-hoc signing. Linux CI installs prerequisites with
 
 - frontend quality job on Ubuntu:
   - `npm ci`
+  - `npm run check:versions`
   - `npm run typecheck`
   - `npm run test:activity-metrics`
+  - `npm run build`
 - rust quality job on Ubuntu, macOS, and Windows:
   - Linux runner installs Tauri system dependencies with `scripts/install-tauri-linux-deps.sh`
-  - `cargo check --manifest-path src-tauri/Cargo.toml`
+  - `cargo check --locked --manifest-path src-tauri/Cargo.toml`
+  - `cargo test --locked --manifest-path src-tauri/Cargo.toml`
   - `cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check`
 
 ### Preview bundles (`.github/workflows/preview-bundles.yml`)
@@ -436,6 +439,9 @@ Builds downloadable artifacts without creating a GitHub release:
 - macOS: `.app` + `.dmg` (optional)
 - Windows: `.exe` (NSIS) + `.msi`
 - Linux: `.deb` + `.AppImage`
+
+Each job runs `npm run check` before packaging with the locked Cargo dependencies.
+The macOS job verifies the signature and archives the `.app` as `.app.tar.gz` to preserve permissions and symlinks.
 
 Use this workflow to validate that a branch is release-ready and hand the generated bundles to testers before tagging a real release.
 
@@ -454,9 +460,10 @@ Pipeline verifies version alignment across:
 
 The portable validator is also available locally as `npm run check:versions`.
 
-Then builds and publishes platform bundles via `tauri-apps/tauri-action`:
+Each job runs `npm run check` with the tag as the expected version before building
+and publishing platform bundles via `tauri-apps/tauri-action`, using the locked Cargo dependencies:
 
-- macOS: `.app` + `.dmg` with ad-hoc signing
+- macOS: `.app` + `.dmg` with ad-hoc signing; headless packaging skips Finder window layout
 - Windows: `.exe` (NSIS) + `.msi`
 - Linux: `.deb` + `.AppImage`
 
