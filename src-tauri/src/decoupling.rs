@@ -260,7 +260,7 @@ fn build_interval_pieces(
                 current,
                 next,
                 start,
-                raw_duration,
+                active_duration,
                 pause_segments,
                 range,
             ) else {
@@ -312,7 +312,7 @@ fn clipped_segment_duration(
     current: &ActivitySample,
     next: &ActivitySample,
     interval_start: f64,
-    interval_duration: f64,
+    interval_active_duration: f64,
     pause_segments: &[PauseSegment],
     range: Option<&AerobicDecouplingRange>,
 ) -> Option<f64> {
@@ -332,8 +332,13 @@ fn clipped_segment_duration(
             if end_distance <= start_distance {
                 return None;
             }
-            let active_start_fraction = (active_start - interval_start) / interval_duration;
-            let active_end_fraction = (active_end - interval_start) / interval_duration;
+            let interval_moving_start = moving_time_at(interval_start, pause_segments);
+            let active_start_fraction = (moving_time_at(active_start, pause_segments)
+                - interval_moving_start)
+                / interval_active_duration;
+            let active_end_fraction = (moving_time_at(active_end, pause_segments)
+                - interval_moving_start)
+                / interval_active_duration;
             (
                 start_distance + (end_distance - start_distance) * active_start_fraction,
                 start_distance + (end_distance - start_distance) * active_end_fraction,
@@ -780,5 +785,58 @@ mod tests {
         }];
         let result = calculate_aerobic_decoupling(&request(None), &samples, &pauses).unwrap();
         assert_close(result.pace_hr_decoupling_pct, 0.0);
+    }
+
+    #[test]
+    fn distance_ranges_interpolate_across_active_time_and_match_elapsed_and_moving_ranges() {
+        let samples: Vec<_> = (0..=10)
+            .map(|index| {
+                let elapsed = f64::from(index) * 10.0;
+                let active = elapsed - (elapsed - 25.0).clamp(0.0, 10.0);
+                let hr = if elapsed < 60.0 { 140.0 } else { 150.0 };
+                sample(elapsed, Some(active * 3.0), None, Some(hr))
+            })
+            .collect();
+        let pauses = vec![PauseSegment {
+            start_elapsed_seconds: 25.0,
+            end_elapsed_seconds: 35.0,
+            duration_seconds: 10.0,
+            start_timestamp: None,
+            end_timestamp: None,
+        }];
+        let elapsed_result = calculate_aerobic_decoupling(
+            &request(Some(AerobicDecouplingRange {
+                axis: AerobicDecouplingRangeAxis::ElapsedTime,
+                min: 22.5,
+                max: 100.0,
+            })),
+            &samples,
+            &pauses,
+        )
+        .unwrap();
+        assert!(elapsed_result.heart_rate_drift_pct.is_some());
+        for range in [
+            AerobicDecouplingRange {
+                axis: AerobicDecouplingRangeAxis::MovingTime,
+                min: 22.5,
+                max: 90.0,
+            },
+            AerobicDecouplingRange {
+                axis: AerobicDecouplingRangeAxis::Distance,
+                min: 0.0675,
+                max: 0.27,
+            },
+        ] {
+            let result =
+                calculate_aerobic_decoupling(&request(Some(range)), &samples, &pauses).unwrap();
+            assert_close(
+                result.heart_rate_drift_pct,
+                elapsed_result.heart_rate_drift_pct.unwrap(),
+            );
+            assert_close(
+                result.pace_hr_decoupling_pct,
+                elapsed_result.pace_hr_decoupling_pct.unwrap(),
+            );
+        }
     }
 }

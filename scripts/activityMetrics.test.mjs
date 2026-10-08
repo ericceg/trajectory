@@ -196,6 +196,39 @@ test('a very short selection inside two samples stays selected and shares chart 
   assert.deepEqual(points.map(p => p.distanceM), [10.25, 11.75]);
 });
 
+test('pauses preserve recorded elevation changes and clipped cumulative values advance only while active', () => {
+  const f = fixture();
+  f.records = [0, 10, 20].map((elapsedSeconds, i) => ({ ...f.records[i], elapsedSeconds,
+    distanceM: i * 40, altitudeM: i === 0 ? 0 : 4 }));
+  f.detail.summary.durationSeconds = 20;
+  f.detail.summary.movingDurationSeconds = 14;
+  f.detail.pauseSegments = [{ ...f.detail.pauseSegments[0], startElapsedSeconds: 2, endElapsedSeconds: 8 }];
+  const wholeInterval = select(f, range(0, 10));
+  close(wholeInterval.metrics.elevationGainM, 4);
+  close(wholeInterval.metrics.distanceM, 40);
+  close(wholeInterval.metrics.avgSpeedMps, 10);
+  for (const selection of [range(1, 9), range(1, 3, 'movingTime'), range(0.01, 0.03, 'distance')]) {
+    const selected = select(f, selection);
+    assert.deepEqual(selected.elapsedRange, [1, 9]);
+    close(selected.metrics.distanceM, 20);
+    close(selected.metrics.elevationGainM, 2);
+    close(selected.metrics.movingDurationSeconds, 2);
+    const points = data.activityChartSamples(f.detail, f.records, selected.elapsedRange, false, 100);
+    assert.deepEqual(points.map(p => p.distanceM), [10, 30]);
+    assert.deepEqual(points.map(p => p.altitudeM), [1, 3]);
+  }
+  assert.deepEqual(select(f, range(0.02, 0.03, 'distance')).elapsedRange, [8, 9]);
+  assert.deepEqual(select(f, range(0.01, 0.02, 'distance')).elapsedRange, [1, 2]);
+  const paused = select(f, range(3, 7));
+  close(paused.metrics.distanceM, 0);
+  assert.equal(paused.metrics.avgSpeedMps, null);
+  assert.equal(paused.metrics.elevationGainM, null);
+  f.records[1].altitudeM = -4;
+  const descent = select(f, range(0, 10));
+  close(descent.metrics.elevationGainM, 0);
+  close(descent.metrics.elevationLossM, 4);
+});
+
 test('distance and moving-time boundaries exclude stationary plateaus at selection edges', () => {
   const f = fixture();
   f.records = f.records.filter(r => r.elapsedSeconds !== 360 && r.elapsedSeconds !== 420);

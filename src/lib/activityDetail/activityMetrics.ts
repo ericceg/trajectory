@@ -139,8 +139,8 @@ function sensorStats(records: ActivitySample[], range: ElapsedRange, pauses: Pau
   return { avg: sum / covered, min, max };
 }
 
-function selectedDistance(records: ActivitySample[], range: ElapsedRange): number | null {
-  const clipped = clipActivityRecords(records, range);
+function selectedDistance(records: ActivitySample[], range: ElapsedRange, pauses: PauseSegment[]): number | null {
+  const clipped = clipActivityRecords(records, range, pauses);
   const first = clipped[0];
   const last = clipped[clipped.length - 1];
   if (!first || !last || Math.abs(first.elapsedSeconds - range[0]) > RANGE_EPSILON ||
@@ -158,10 +158,11 @@ function elevationChange(records: ActivitySample[], range: ElapsedRange, pauses:
   let covered = 0;
   let gain = 0;
   let loss = 0;
-  forEachInterval(records, range, pauses, (previous, current, seconds, intervalSeconds) => {
+  forEachInterval(records, range, pauses, (previous, current, seconds) => {
     if (previous.altitudeM == null || current.altitudeM == null) return;
     covered += seconds;
-    const change = (current.altitudeM - previous.altitudeM) * seconds / intervalSeconds;
+    const intervalActiveSeconds = activeSeconds(previous.elapsedSeconds, current.elapsedSeconds, pauses);
+    const change = (current.altitudeM - previous.altitudeM) * seconds / intervalActiveSeconds;
     gain += Math.max(0, change);
     loss += Math.max(0, -change);
   });
@@ -201,12 +202,12 @@ export function deriveSelectedActivity(
   const durationSeconds = isSegment ? range[1] - range[0] : detail.summary.durationSeconds;
   const movingDurationSeconds = isSegment
     ? selectedMovingDuration(detail, records, range) : detail.summary.movingDurationSeconds;
-  const distanceM = isSegment ? selectedDistance(records, range) : detail.summary.distanceM;
+  const distanceM = isSegment ? selectedDistance(records, range, detail.pauseSegments) : detail.summary.distanceM;
   const hr = sensorStats(records, range, detail.pauseSegments, 'heartRate');
   const elevation = elevationChange(records, range, detail.pauseSegments);
   return {
     ...resolved,
-    records: clipActivityRecords(records, range),
+    records: clipActivityRecords(records, range, detail.pauseSegments),
     overlappingPauseCount: detail.pauseSegments.filter((pause) => pauseOverlapSeconds(range[0], range[1], [pause]) > 0).length,
     metrics: {
       durationSeconds, movingDurationSeconds, distanceM,

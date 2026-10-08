@@ -149,7 +149,12 @@ export function resolveActivityRange(
       .filter((elapsed) => elapsed >= 0 && elapsed <= duration)
       .sort((left, right) => left - right)
       .map((elapsed) => ({ elapsed, coordinate: movingTimeAt(elapsed, detail.pauseSegments) }))
-    : records.filter((record) => record.distanceM != null)
+    : [...records, ...detail.pauseSegments.flatMap((pause) =>
+      [pause.startElapsedSeconds, pause.endElapsedSeconds]
+        .map((elapsed) => sampleAtElapsed(records, elapsed, detail.pauseSegments))
+        .filter((record): record is ActivitySample => record != null))]
+      .filter((record) => record.distanceM != null)
+      .sort((left, right) => left.elapsedSeconds - right.elapsedSeconds)
       .map((record) => ({ elapsed: record.elapsedSeconds, coordinate: record.distanceM! / 1000 }));
   const gap = selection.axis === 'distance' ? MAX_SAMPLE_GAP_SECONDS : Infinity;
   const start = elapsedAtCoordinate(anchors, min, 'start', gap);
@@ -160,14 +165,19 @@ export function resolveActivityRange(
   };
 }
 
-export function sampleAtElapsed(records: ActivitySample[], elapsed: number): ActivitySample | null {
+export function sampleAtElapsed(
+  records: ActivitySample[], elapsed: number, pauses: PauseSegment[] = []
+): ActivitySample | null {
   for (let index = 0; index < records.length; index += 1) {
     const current = records[index];
     if (Math.abs(current.elapsedSeconds - elapsed) <= RANGE_EPSILON) return { ...current, elapsedSeconds: elapsed };
     if (current.elapsedSeconds < elapsed) continue;
     const previous = records[index - 1];
     if (!previous || current.elapsedSeconds - previous.elapsedSeconds > MAX_SAMPLE_GAP_SECONDS) return null;
-    const fraction = (elapsed - previous.elapsedSeconds) / (current.elapsedSeconds - previous.elapsedSeconds);
+    // Cumulative distance and position advance only during the interval's active time.
+    const intervalActiveSeconds = activeSeconds(previous.elapsedSeconds, current.elapsedSeconds, pauses);
+    const fraction = intervalActiveSeconds > 0
+      ? activeSeconds(previous.elapsedSeconds, elapsed, pauses) / intervalActiveSeconds : 0;
     const result = { ...previous, elapsedSeconds: elapsed, timestamp: null };
     for (const key of ['distanceM', 'altitudeM', 'lat', 'lon'] as const) {
       const left = previous[key];
@@ -179,10 +189,12 @@ export function sampleAtElapsed(records: ActivitySample[], elapsed: number): Act
   return null;
 }
 
-export function clipActivityRecords(records: ActivitySample[], range: ElapsedRange): ActivitySample[] {
+export function clipActivityRecords(
+  records: ActivitySample[], range: ElapsedRange, pauses: PauseSegment[] = []
+): ActivitySample[] {
   const result = records.filter((record) => record.elapsedSeconds > range[0] && record.elapsedSeconds < range[1]);
-  const first = sampleAtElapsed(records, range[0]);
-  const last = sampleAtElapsed(records, range[1]);
+  const first = sampleAtElapsed(records, range[0], pauses);
+  const last = sampleAtElapsed(records, range[1], pauses);
   if (first) result.unshift(first);
   if (last && range[1] > range[0]) result.push(last);
   return result;
@@ -192,7 +204,7 @@ export function activityChartSamples(
   detail: ActivityDetail, records: ActivitySample[], range: ElapsedRange | null,
   hidePauses: boolean, maxSamples: number
 ): ActivitySample[] {
-  const visible = range ? clipActivityRecords(records, range) : records;
+  const visible = range ? clipActivityRecords(records, range, detail.pauseSegments) : records;
   const points = hidePauses
     ? visible.filter((record) => !isInsidePause(record.elapsedSeconds, detail.pauseSegments))
       .map((record) => ({ ...record, elapsedSeconds: movingTimeAt(record.elapsedSeconds, detail.pauseSegments) }))
