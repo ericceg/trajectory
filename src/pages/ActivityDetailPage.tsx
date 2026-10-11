@@ -485,7 +485,7 @@ function SplitMetricChart({
                   fillOpacity={0.18}
                   strokeWidth={1.5}
                   dot={false}
-                  connectNulls={false}
+                  connectNulls
                   activeDot={CHART_LINE_ACTIVE_DOT}
                   isAnimationActive={CHART_IS_ANIMATION_ACTIVE}
                 />
@@ -496,7 +496,7 @@ function SplitMetricChart({
                   stroke={color}
                   strokeWidth={2}
                   dot={false}
-                  connectNulls={false}
+                  connectNulls
                   activeDot={CHART_LINE_ACTIVE_DOT}
                   isAnimationActive={CHART_IS_ANIMATION_ACTIVE}
                 />
@@ -1538,7 +1538,7 @@ function ActivityDetailContent({ activityId, dataVersion }: { activityId: number
                             strokeWidth={1}
                             dot={false}
                             activeDot={false}
-                            connectNulls={false}
+                            connectNulls
                             isAnimationActive={CHART_IS_ANIMATION_ACTIVE}
                           />
                         ) : null}
@@ -1550,7 +1550,7 @@ function ActivityDetailContent({ activityId, dataVersion }: { activityId: number
                             stroke={CHART_LINE_COLORS.pace}
                             strokeWidth={2}
                             dot={false}
-                            connectNulls={false}
+                            connectNulls
                             activeDot={CHART_LINE_ACTIVE_DOT}
                             isAnimationActive={CHART_IS_ANIMATION_ACTIVE}
                           />
@@ -1563,7 +1563,7 @@ function ActivityDetailContent({ activityId, dataVersion }: { activityId: number
                             stroke={CHART_LINE_COLORS.heartRate}
                             strokeWidth={2}
                             dot={false}
-                            connectNulls={false}
+                            connectNulls
                             activeDot={CHART_LINE_ACTIVE_DOT}
                             isAnimationActive={CHART_IS_ANIMATION_ACTIVE}
                           />
@@ -1576,7 +1576,7 @@ function ActivityDetailContent({ activityId, dataVersion }: { activityId: number
                             stroke={CHART_LINE_COLORS.cadence}
                             strokeWidth={2}
                             dot={false}
-                            connectNulls={false}
+                            connectNulls
                             activeDot={CHART_LINE_ACTIVE_DOT}
                             isAnimationActive={CHART_IS_ANIMATION_ACTIVE}
                           />
@@ -1589,7 +1589,7 @@ function ActivityDetailContent({ activityId, dataVersion }: { activityId: number
                             stroke={CHART_LINE_COLORS.power}
                             strokeWidth={2}
                             dot={false}
-                            connectNulls={false}
+                            connectNulls
                             activeDot={CHART_LINE_ACTIVE_DOT}
                             isAnimationActive={CHART_IS_ANIMATION_ACTIVE}
                           />
@@ -1602,7 +1602,7 @@ function ActivityDetailContent({ activityId, dataVersion }: { activityId: number
                             stroke={CHART_LINE_COLORS.speed}
                             strokeWidth={2}
                             dot={false}
-                            connectNulls={false}
+                            connectNulls
                             activeDot={CHART_LINE_ACTIVE_DOT}
                             isAnimationActive={CHART_IS_ANIMATION_ACTIVE}
                           />
