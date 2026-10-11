@@ -60,12 +60,16 @@ Notes:
 ## Heart Rate Drift and Aerobic Decoupling
 
 Activity details show **Heart Rate Drift** and **Pace–HR decoupling** for the full workout or a selected chart range.
-Heart Rate Drift compares average heart rate between the first and second halves of active time.
-Pace–HR decoupling compares speed relative to heart rate between those halves.
+Both compare time-weighted averages in two equal halves of active time, excluding recorded pauses:
 
-Recorded pauses are excluded. The metrics require at least one minute of active time and sufficient heart-rate data;
-decoupling also requires speed data. If a range has too little recorded data, its metrics are shown as unavailable.
-Selecting a chart range also updates the workout metrics and heart-rate zones.
+- **Heart Rate Drift:** the percentage increase in average HR. For example, 140 → 150 bpm gives **+7.1%**. During steady exercise, rising HR can indicate increasing cardiovascular strain.
+- **Pace–HR decoupling:** the percentage decline in average speed / average HR. Positive values mean less speed per heartbeat; negative values mean improved efficiency. It also detects slowing down at constant HR. At constant speed, the example above gives **+6.7%**: the percentages are not interchangeable.
+
+**How to use them:** select a steady aerobic section longer than 20 minutes, excluding warm-up and cool-down, and compare similar sessions over time. Lower decoupling can suggest better endurance at that workload. Roughly 5% is a [common coaching benchmark](https://help.trainingpeaks.com/hc/en-us/articles/204071724-Aerobic-Decoupling-Pw-Hr-and-Pa-HR-and-Efficiency-Factor-EF), not an automatic aerobic-threshold test.
+
+**Interpretation:** heat, terrain, and changing pace can affect the result. Trajectory uses speed without adjusting for hills or using cycling power. For a structured field-test protocol, see [Scott Johnston's guide to aerobic assessment](https://evokeendurance.com/resources/our-latest-thinking-on-aerobic-assessment-for-the-mountain-athlete/), which explains both constant-speed HR drift and outdoor pace–HR analysis.
+
+**Availability:** at least one minute of active time and valid HR for 80% of each half; decoupling requires paired positive speed and HR for 80% of each half. Insufficient coverage shows **Unavailable**. Selecting a range also updates workout metrics and HR zones.
 
 Thanks to Will ([@bitloop-dev](https://github.com/bitloop-dev)) and [@farrrunnner](https://github.com/farrrunnner) for adding these metrics and fixing various other bugs.
 
