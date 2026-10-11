@@ -413,6 +413,9 @@ Design choices:
 - `npm run check` for quality gate
 - `npm run tauri build` for local production bundles
 
+After editing the icon SVGs, run `npm run icons:macos` on macOS to regenerate
+the padded desktop icon, then rebuild. See `src-tauri/icons/README.md` for details.
+
 Per-platform `src-tauri/tauri.*.conf.json` files select installer formats; macOS
 uses ad-hoc signing. Linux CI installs prerequisites with
 `bash scripts/install-tauri-linux-deps.sh` (Ubuntu/Debian).
