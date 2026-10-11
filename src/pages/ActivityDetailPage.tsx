@@ -1443,7 +1443,7 @@ function ActivityDetailContent({ activityId, dataVersion }: { activityId: number
             </div>
 
             {showDecoupling ? (
-              <div className="space-y-2 border-t border-border/70 pt-3" aria-live="polite">
+              <div className="space-y-2 pt-6" aria-live="polite">
                 <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-1 text-sm font-medium text-foreground">
                   <span>{activityMetricLabel('Pace–HR decoupling', isSegment)}: {decoupling.loading ? 'Calculating…'
                     : decoupling.response?.paceHrDecouplingPct != null ? formatDriftPercentage(decoupling.response.paceHrDecouplingPct) : 'Unavailable'}</span>
