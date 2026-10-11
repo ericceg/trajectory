@@ -13,6 +13,7 @@ const FIT_SEMICIRCLES_TO_DEGREES: f64 = 180.0 / 2_147_483_648.0;
 const MOVING_SPEED_THRESHOLD_MPS: f64 = 0.5;
 const MOVING_MAX_SAMPLE_GAP_SECONDS: f64 = 300.0;
 const DISTANCE_TOTAL_RECONCILIATION_THRESHOLD_RATIO: f64 = 0.05;
+const MAX_DISTANCE_INTERPOLATION_GAP_SECONDS: f64 = 30.0;
 
 #[derive(Debug, Error)]
 enum ParseActivityError {
@@ -357,24 +358,27 @@ fn estimate_moving_duration_seconds(samples: &[ActivitySample]) -> f64 {
 }
 
 fn build_distance_series(points: &[RawTrackPoint]) -> Vec<Option<f64>> {
-    let first_reported_distance = points.iter().find_map(|point| point.distance);
+    let first_reported_distance = points
+        .iter()
+        .find_map(|point| point.distance.filter(|value| value.is_finite()));
 
     if let Some(first_distance) = first_reported_distance {
         let mut last_distance_m: f64 = 0.0;
         return points
             .iter()
             .map(|point| {
-                if let Some(distance) = point.distance {
+                if let Some(distance) = point.distance.filter(|value| value.is_finite()) {
                     last_distance_m = last_distance_m.max((distance - first_distance).max(0.0));
+                    Some(last_distance_m)
+                } else {
+                    None
                 }
-                Some(last_distance_m)
             })
             .collect();
     }
 
     let mut gps_distance_m = 0.0;
     let mut previous_gps: Option<(f64, f64)> = None;
-    let mut has_seen_gps = false;
 
     points
         .iter()
@@ -384,13 +388,59 @@ fn build_distance_series(points: &[RawTrackPoint]) -> Vec<Option<f64>> {
                     gps_distance_m += haversine_m(prev_lat, prev_lon, lat, lon);
                 }
                 previous_gps = Some((lat, lon));
-                has_seen_gps = true;
                 Some(gps_distance_m)
             }
-            _ if has_seen_gps => Some(gps_distance_m),
             _ => None,
         })
         .collect()
+}
+
+fn distance_interval_is_observed(start: f64, end: f64, pauses: &[PauseSegment]) -> bool {
+    end > start
+        && end - start <= MAX_DISTANCE_INTERPOLATION_GAP_SECONDS
+        && !pauses
+            .iter()
+            .any(|pause| pause.start_elapsed_seconds < end && pause.end_elapsed_seconds > start)
+}
+
+fn interpolate_missing_distances(
+    points: &[RawTrackPoint],
+    distances: &mut [Option<f64>],
+    start_time: DateTime<Utc>,
+    pauses: &[PauseSegment],
+) {
+    // Sensor-only records are not evidence of a stop. Reconstruct short interior
+    // gaps from actual distance updates, without extending readings past the ends
+    // or inferring movement across recorded pauses or long sensor outages.
+    let anchors: Vec<usize> = distances
+        .iter()
+        .enumerate()
+        .filter_map(|(index, distance)| distance.map(|_| index))
+        .collect();
+    let elapsed = |point: &RawTrackPoint| {
+        point
+            .time
+            .map(|time| (time - start_time).num_milliseconds() as f64 / 1000.0)
+    };
+    for pair in anchors.windows(2) {
+        let (left, right) = (pair[0], pair[1]);
+        if right == left + 1 {
+            continue;
+        }
+        let (Some(start), Some(end)) = (elapsed(&points[left]), elapsed(&points[right])) else {
+            continue;
+        };
+        if !distance_interval_is_observed(start, end, pauses) {
+            continue;
+        }
+        let (first, last) = (distances[left].unwrap(), distances[right].unwrap());
+        for index in left + 1..right {
+            if let Some(time) = elapsed(&points[index]).filter(|time| *time > start && *time < end)
+            {
+                distances[index] = Some(first + (last - first) * (time - start) / (end - start));
+            }
+        }
+    }
 }
 
 fn normalize_pause_segments(
@@ -498,7 +548,15 @@ fn build_parsed_activity(
             .max(0.0),
     };
 
-    let raw_distance_series = build_distance_series(&points);
+    let pause_segments =
+        normalize_pause_segments(start_time, duration_seconds.max(0.0), pause_spans);
+    let mut raw_distance_series = build_distance_series(&points);
+    interpolate_missing_distances(
+        &points,
+        &mut raw_distance_series,
+        start_time,
+        &pause_segments,
+    );
     let raw_selected_distance_m = raw_distance_series
         .iter()
         .rev()
@@ -570,7 +628,7 @@ fn build_parsed_activity(
             (previous_elapsed, previous_distance, distance_m)
         {
             let dt = elapsed - prev_elapsed;
-            if dt > 0.1 {
+            if dt > 0.1 && distance_interval_is_observed(prev_elapsed, elapsed, &pause_segments) {
                 Some(((distance_m - prev_distance) / dt).max(0.0))
             } else {
                 None
@@ -671,9 +729,6 @@ fn build_parsed_activity(
         explicit_title.as_deref(),
         notes.as_deref(),
     );
-    let pause_segments =
-        normalize_pause_segments(start_time, duration_seconds.max(0.0), pause_spans);
-
     Ok(ParsedActivity {
         start_time: start_time.to_rfc3339(),
         title,
@@ -1219,6 +1274,161 @@ mod tests {
     use chrono::TimeZone;
 
     use super::{build_parsed_activity, derive_activity_category, RawPauseSpan, RawTrackPoint};
+    use crate::{decoupling::calculate_aerobic_decoupling, models::AerobicDecouplingRequest};
+
+    fn parse_points(
+        points: Vec<RawTrackPoint>,
+        pauses: Vec<RawPauseSpan>,
+    ) -> crate::models::ParsedActivity {
+        build_parsed_activity(
+            std::path::Path::new("sample.fit"),
+            points,
+            "Running".to_string(),
+            None,
+            None,
+            None,
+            pauses,
+            0.0,
+            None,
+            None,
+            None,
+        )
+        .expect("activity should parse")
+    }
+
+    fn point(seconds: i64, distance: Option<f64>, speed: Option<f64>) -> RawTrackPoint {
+        let start = chrono::Utc.with_ymd_and_hms(2026, 4, 7, 8, 0, 0).unwrap();
+        RawTrackPoint {
+            time: Some(start + chrono::Duration::seconds(seconds)),
+            distance,
+            speed,
+            heart_rate: Some(if seconds < 50 { 140.0 } else { 150.0 }),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn asynchronous_sensor_records_do_not_create_false_stops_or_block_decoupling() {
+        let points = (0..=100)
+            .map(|seconds| {
+                let has_distance = seconds % 3 == 0 || seconds == 100;
+                point(
+                    seconds,
+                    has_distance.then_some(10.0 + seconds as f64 * 3.0),
+                    has_distance.then_some(3.0),
+                )
+            })
+            .collect();
+        let parsed = parse_points(points, vec![]);
+        assert_eq!(parsed.distance_m, 300.0);
+        assert_eq!(parsed.moving_duration_seconds, 100.0);
+        for sample in &parsed.samples {
+            assert!((sample.distance_m.unwrap() - sample.elapsed_seconds * 3.0).abs() < 1e-8);
+            assert_eq!(sample.speed_mps, Some(3.0));
+        }
+        let result = calculate_aerobic_decoupling(
+            &AerobicDecouplingRequest {
+                activity_id: 1,
+                range: None,
+            },
+            &parsed.samples,
+            &parsed.pause_segments,
+        )
+        .unwrap();
+        assert!((result.pace_hr_decoupling_pct.unwrap() - 6.666_666_7).abs() < 1e-4);
+        assert!((result.heart_rate_drift_pct.unwrap() - 7.142_857_1).abs() < 1e-4);
+    }
+
+    #[test]
+    fn sparse_distance_without_recorded_speed_is_reconstructed_from_timed_updates() {
+        let parsed = parse_points(
+            vec![
+                point(0, Some(10.0), None),
+                point(1, None, None),
+                point(4, Some(22.0), None),
+            ],
+            vec![],
+        );
+        assert_eq!(parsed.samples[0].speed_mps, None);
+        assert_eq!(parsed.samples[1].distance_m, Some(3.0));
+        assert_eq!(parsed.samples[1].speed_mps, Some(3.0));
+        assert_eq!(parsed.samples[2].speed_mps, Some(3.0));
+    }
+
+    #[test]
+    fn real_stationary_distance_updates_and_zero_speed_are_preserved() {
+        let parsed = parse_points(
+            vec![
+                point(0, Some(10.0), Some(0.0)),
+                point(1, None, None),
+                point(2, Some(10.0), Some(0.0)),
+                point(3, Some(16.0), Some(0.0)),
+            ],
+            vec![],
+        );
+        assert_eq!(parsed.samples[1].distance_m, Some(0.0));
+        assert!(parsed
+            .samples
+            .iter()
+            .all(|sample| sample.speed_mps == Some(0.0)));
+    }
+
+    #[test]
+    fn long_distance_outages_and_unbounded_edges_remain_missing() {
+        let parsed = parse_points(
+            vec![
+                point(0, None, None),
+                point(1, Some(10.0), None),
+                point(2, None, None),
+                point(40, Some(127.0), None),
+                point(41, None, None),
+            ],
+            vec![],
+        );
+        assert_eq!(parsed.distance_m, 117.0);
+        for index in [0, 2, 4] {
+            assert_eq!(parsed.samples[index].distance_m, None);
+            assert_eq!(parsed.samples[index].speed_mps, None);
+        }
+        assert_eq!(parsed.samples[3].speed_mps, None);
+        let parsed = parse_points(
+            vec![point(0, Some(0.0), None), point(40, Some(120.0), None)],
+            vec![],
+        );
+        assert_eq!(parsed.samples[1].speed_mps, None);
+    }
+
+    #[test]
+    fn distance_interpolation_does_not_cross_recorded_pauses() {
+        let start = point(0, None, None).time.unwrap();
+        let parsed = parse_points(
+            vec![
+                point(0, Some(10.0), None),
+                point(2, None, None),
+                point(4, Some(22.0), None),
+            ],
+            vec![RawPauseSpan {
+                start_time: start + chrono::Duration::seconds(1),
+                end_time: start + chrono::Duration::seconds(3),
+            }],
+        );
+        assert_eq!(parsed.samples[1].distance_m, None);
+        assert_eq!(parsed.samples[1].speed_mps, None);
+        assert_eq!(parsed.samples[2].speed_mps, None);
+    }
+
+    #[test]
+    fn gps_only_distance_handles_sensor_records_without_coordinates() {
+        let mut first = point(0, None, None);
+        first.lat = Some(46.0);
+        first.lon = Some(8.0);
+        let mut last = point(4, None, None);
+        last.lat = Some(46.0001);
+        last.lon = Some(8.0);
+        let parsed = parse_points(vec![first, point(2, None, None), last], vec![]);
+        assert!((parsed.samples[1].distance_m.unwrap() - parsed.distance_m / 2.0).abs() < 1e-8);
+        assert!((parsed.samples[1].speed_mps.unwrap() - parsed.distance_m / 4.0).abs() < 1e-8);
+    }
 
     #[test]
     fn hiking_generic_maps_to_hiking_category() {
@@ -1272,7 +1482,8 @@ mod tests {
         assert_eq!(parsed.distance_m, 10.0);
         assert_eq!(parsed.samples.len(), 3);
         assert_eq!(parsed.samples[1].distance_m, Some(10.0));
-        assert_eq!(parsed.samples[2].distance_m, Some(10.0));
+        assert_eq!(parsed.samples[2].distance_m, None);
+        assert_eq!(parsed.samples[2].speed_mps, None);
         assert_eq!(parsed.pause_segments.len(), 1);
         assert_eq!(parsed.pause_segments[0].start_elapsed_seconds, 12.0);
         assert_eq!(parsed.pause_segments[0].end_elapsed_seconds, 18.0);

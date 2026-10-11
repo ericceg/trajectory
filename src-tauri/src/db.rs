@@ -13,7 +13,7 @@ const DEFAULT_CHART_MAX_SAMPLES: usize = 2000;
 const MIN_CHART_MAX_SAMPLES: usize = 50;
 const MAX_CHART_MAX_SAMPLES: usize = 20_000;
 const DB_SCHEMA_VERSION: i64 = 3;
-pub const ACTIVITY_PARSER_VERSION: i64 = 3;
+pub const ACTIVITY_PARSER_VERSION: i64 = 4;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UpsertResult {

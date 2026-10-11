@@ -297,6 +297,7 @@ Notable behavior:
 - computes duration, moving time, distance, elevation, speed, HR stats
 - supports summary-only FIT import if no point records are present
 - parses cadence and power when available
+- reconstructs missing cumulative distance (including GPS-derived distance) only between updates at most 30 seconds apart, without crossing recorded pauses; leading, trailing, and longer gaps remain missing, and recorded zero speed is preserved
 - downsamples stored route track to `MAX_UI_POINTS = 2000`
 - preserves full sample rows for DB insert (sampling happens at query time)
 
