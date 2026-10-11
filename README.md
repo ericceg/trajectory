@@ -32,6 +32,8 @@ There is no single reason for why I built Trajectory, but rather a combination o
 
 Current builds support Apple Silicon on macOS and 64-bit systems on Windows and Linux.
 
+Heart-rate drift, aerobic decoupling, and segment metrics are currently available when [building from source](#developer-setup-build-from-source).
+
 Notes:
 - Release builds are not yet production-signed, so your operating system may show a security warning on first launch.
 - If macOS reports that Trajectory is damaged or corrupted, remove the quarantine flag after installation:
@@ -49,10 +51,27 @@ Notes:
 1. Launch Trajectory.
 2. Select your activity folder containing `.tcx` and/or `.fit` files.
 3. Start in **Dashboard** for a quick overview of training load and history.
-4. Use **Activities** to filter, sort, and inspect individual workouts.
+4. Use **Activities** to filter, sort, and inspect individual workouts. Select a chart range to see segment metrics; **Show Full Workout** restores the activity totals.
 5. Open **Heatmap** to spot route patterns across all GPS sessions.
 6. Use **Advanced Analytics** to define custom metrics, streaks, and charts. See [Advanced Analytics](#advanced-analytics) for more details and examples.
 7. Open **Settings** to customize appearance, configure heart-rate zones, and run rescans.
+
+
+## Heart Rate Drift and Aerobic Decoupling
+
+Activity details show **Heart Rate Drift** and **Pace–HR decoupling** for the full workout or a selected chart range.
+Both compare time-weighted averages in two equal halves of active time, excluding recorded pauses:
+
+- **Heart Rate Drift:** the percentage increase in average HR. For example, 140 → 150 bpm gives **+7.1%**. During steady exercise, rising HR can indicate increasing cardiovascular strain.
+- **Pace–HR decoupling:** the percentage decline in average speed / average HR. Positive values mean less speed per heartbeat; negative values mean improved efficiency. It also detects slowing down at constant HR. At constant speed, the example above gives **+6.7%**: the percentages are not interchangeable.
+
+**How to use them:** select a steady aerobic section longer than 20 minutes, excluding warm-up and cool-down, and compare similar sessions over time. Lower decoupling can suggest better endurance at that workload. Roughly 5% is a [common coaching benchmark](https://help.trainingpeaks.com/hc/en-us/articles/204071724-Aerobic-Decoupling-Pw-Hr-and-Pa-HR-and-Efficiency-Factor-EF), not an automatic aerobic-threshold test.
+
+**Interpretation:** heat, terrain, and changing pace can affect the result. Trajectory uses speed without adjusting for hills or using cycling power. For a structured field-test protocol, see [Scott Johnston's guide to aerobic assessment](https://evokeendurance.com/resources/our-latest-thinking-on-aerobic-assessment-for-the-mountain-athlete/), which explains both constant-speed HR drift and outdoor pace–HR analysis.
+
+**Availability:** at least one minute of active time and valid HR for 80% of each half; decoupling requires paired positive speed and HR for 80% of each half. Insufficient coverage shows **Unavailable**. Selecting a range also updates workout metrics and HR zones.
+
+Thanks to Will ([@bitloop-dev](https://github.com/bitloop-dev)) and [@farrrunnner](https://github.com/farrrunnner) for adding these metrics and fixing various other bugs.
 
 
 ## Recommended Workflow for Apple Ecosystem Users
@@ -211,6 +230,7 @@ can be useful to convince your loved ones that your hobby is not that dangerous 
 - Your activity files stay local
 - Data is processed on-device
 - No account or telemetry backend required
+- Map basemaps are fetched from OpenStreetMap/CARTO at runtime
 
 ## Platform Support
 
@@ -218,13 +238,19 @@ can be useful to convince your loved ones that your hobby is not that dangerous 
 - Windows 64-bit (`x64`)
 - Linux 64-bit (`amd64`)
 
+## Contributing
+
+Any feedback and contributions are very welcome! Bug reports, ideas, documentation improvements, and code changes all help. Feel free to [open an issue](https://github.com/ericceg/trajectory/issues) or [submit a pull request](https://github.com/ericceg/trajectory/pulls).
+
+Thank you to Will ([@bitloop-dev](https://github.com/bitloop-dev)) and [@farrrunnner](https://github.com/farrrunnner) for their contributions and for helping make Trajectory better.
+
 ## Developer Setup (Build From Source)
 
 This section is for contributors and developers.
 
 ### Prerequisites
 
-- Node.js 22+
+- Node.js 22.12+
 - Rust stable
 
 ### Run in development

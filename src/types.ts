@@ -86,6 +86,7 @@ export interface ActivitySampleQuery {
   distanceMaxKm?: number;
   maxSamples?: number;
   hidePauses?: boolean;
+  downsample?: boolean;
 }
 
 export interface ActivitySamplesResponse {
@@ -93,6 +94,35 @@ export interface ActivitySamplesResponse {
   originalSampleCount: number;
   matchingSampleCount: number;
   returnedSampleCount: number;
+}
+
+export type ActivityRangeAxis = 'elapsedTime' | 'movingTime' | 'distance';
+
+export interface ActivityRange {
+  axis: ActivityRangeAxis;
+  min: number;
+  max: number;
+}
+
+export type AerobicDecouplingRangeAxis = ActivityRangeAxis;
+export type AerobicDecouplingRange = ActivityRange;
+
+export interface AerobicDecouplingRequest {
+  activityId: number;
+  range?: AerobicDecouplingRange;
+}
+
+export type AerobicDecouplingUnavailableReason =
+  | 'insufficientSamples'
+  | 'insufficientDuration'
+  | 'insufficientHeartRate'
+  | 'insufficientSpeed';
+
+export interface AerobicDecouplingResponse {
+  paceHrDecouplingPct: number | null;
+  heartRateDriftPct: number | null;
+  paceHrDecouplingUnavailableReason?: AerobicDecouplingUnavailableReason;
+  heartRateDriftUnavailableReason?: AerobicDecouplingUnavailableReason;
 }
 
 export interface HeatmapData {

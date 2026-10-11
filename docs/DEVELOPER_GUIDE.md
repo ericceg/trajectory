@@ -1,6 +1,6 @@
 # Trajectory Developer Guide
 
-> Last verified against the codebase: **June 27, 2026**
+> Last verified against the codebase: **October 8, 2026**
 
 This guide is for contributors working on Trajectory's desktop app codebase.
 It is intentionally practical: what exists today, how it fits together, and how to extend it safely.
@@ -9,8 +9,8 @@ It is intentionally practical: what exists today, how it fits together, and how 
 
 ### Prerequisites
 
-- Node.js 22+
-- Rust stable toolchain
+- Node.js 22.12+
+- Rust stable toolchain (1.88+; `rust-toolchain.toml` includes `rustfmt` and `rust-analyzer`)
 - macOS (primary supported platform for local dev)
 - GitHub Actions for preview/release builds on macOS, Windows, and Linux
 
@@ -29,8 +29,11 @@ npm run check
 
 This runs:
 
+- App and lockfile version alignment (`npm run check:versions`)
 - TypeScript typecheck (`npm run typecheck`)
-- Rust check (`cargo check --manifest-path src-tauri/Cargo.toml`)
+- Activity metrics, chart interaction, request handling, and analytics cache tests (`npm run test:activity-metrics`)
+- Rust check and regression tests (`npm run check:rust`, `npm run test:rust`)
+- Rust formatting (`npm run check:rust-format`)
 
 ### Build local production artifacts
 
@@ -38,7 +41,8 @@ This runs:
 npm run tauri build
 ```
 
-Artifacts are created under:
+Tauri validates versions and builds the frontend before compiling the desktop app.
+Artifacts for the current platform are created under:
 
 - `src-tauri/target/release/bundle/macos/*.app`
 - `src-tauri/target/release/bundle/dmg/*.dmg`
@@ -78,7 +82,7 @@ Important behavior:
 | `src/` | React frontend |
 | `src-tauri/` | Tauri shell + Rust backend |
 | `docs/DEVELOPER_GUIDE.md` | This document |
-| `.github/workflows/ci.yml` | Typecheck + Rust quality gate |
+| `.github/workflows/ci.yml` | Frontend typecheck/tests + Rust check/formatting |
 | `.github/workflows/preview-bundles.yml` | Manual preview bundle pipeline for artifact testing |
 | `.github/workflows/release.yml` | Tag-based macOS/Windows/Linux release pipeline |
 
@@ -101,6 +105,7 @@ Important behavior:
 │   │   ├── parser.rs    # TCX/FIT parsing into normalized activities
 │   │   ├── db.rs        # SQLite schema, migrations, and query layer
 │   │   ├── analytics.rs # advanced analytics computation
+│   │   ├── decoupling.rs # pace-HR decoupling and heart-rate drift
 │   │   ├── countries.rs # offline country lookup and activity aggregation
 │   │   └── settings.rs  # settings load/save and defaults
 │   ├── Cargo.toml
@@ -124,6 +129,7 @@ flowchart LR
   Main --> Scanner[scanner.rs]
   Main --> DB[db.rs]
   Main --> Analytics[analytics.rs]
+  Main --> Decoupling[decoupling.rs]
   Main --> Countries[countries.rs]
   Main --> Settings[settings.rs]
   Scanner --> Parser[parser.rs]
@@ -176,6 +182,7 @@ Current wrappers:
 - `listActivities`
 - `getActivity`
 - `getActivitySamples`
+- `getAerobicDecoupling`
 - `getHeatmapData`
 - `getCountryActivityData`
 - `runAdvancedAnalytics`
@@ -190,6 +197,10 @@ Current wrappers:
 | Persisted UI state | `src/store/useUiStateStore.ts` | filters, tabs, navigation memory, dashboard mode, heatmap controls |
 | Persisted analytics definitions | `src/store/useAdvancedAnalyticsStore.ts` | metrics/streaks/charts definitions, selection, auto-run |
 
+Advanced analytics cache keys include the complete request plus the import folder,
+last scan timestamp, and HR zones (`src/lib/analytics/cacheKey.ts`). Startup warm-up
+and the analytics page share these keys; startup and automatic runs discard stale responses.
+
 ### Page behavior highlights
 
 - **Onboarding:** directory picker + recursive toggle.
@@ -200,10 +211,13 @@ Current wrappers:
 - **Dashboard:** year/month calendar views with aggregate metrics and drilldowns.
 - **Activities:** filter + sort table, navigation into details.
 - **Activity Detail:**
-  - fetches summary/track via `getActivity`
-  - fetches chart samples via `getActivitySamples`
-  - re-queries samples when zoom window, pause visibility, or `chartMaxSamples` changes
-  - GPS activities can switch between distance and time charts; time charts can collapse explicit paused segments into moving time
+  - loads summary/track and full-resolution samples together via `useActivityData`; activity changes and rescans discard stale requests
+  - derives zoomed chart samples in memory; `chartMaxSamples` caps rendering after clipping/interpolating the visible endpoints
+  - offers distance charts whenever cumulative distance is usable, including indoor activities; time charts can collapse explicit paused segments into moving time
+  - dragging updates the selection highlight; release commits the zoom, resamples the chart, and updates full-resolution segment metrics, HR zones, and decoupling using shared elapsed-time boundaries (`src/lib/activityDetail/useActivityChartData.ts`)
+  - labels selected metrics with `(Segment)`; reset restores workout summary values; missing segment data is shown as unavailable
+  - computes segment distance from cumulative-distance endpoints and average speed/pace from distance and moving time; distance/altitude interpolation allocates recorded changes across active time, excluding recorded pauses
+  - offers pace-HR decoupling and heart-rate drift for the workout or selection; requests are debounced and stale responses are discarded
 - **Heatmap:** map rendering with date/category/sport filters.
   - Routes renders the GPS-track overlay.
   - Countries highlights every country containing matching GPS samples.
@@ -244,12 +258,20 @@ Registered Tauri commands:
 | `list_activities` | Query activity list |
 | `get_activity` | Get activity summary + route track |
 | `get_activity_samples` | Query/downsample chart samples |
+| `get_aerobic_decoupling` | Calculate pace-HR decoupling and heart-rate drift from full-resolution samples |
 | `get_heatmap_data` | Return heatmap tracks |
 | `get_country_activity_data` | Aggregate GPS samples into country activity counts and elapsed time |
 | `run_advanced_analytics` | Compute analytics payload |
 | `export_analytics_json` | Write exported analytics JSON file |
 
 
+
+### Decoupling (`src-tauri/src/decoupling.rs`)
+
+- compares equal active-time halves after excluding recorded pauses
+- heart-rate drift measures the percentage rise in average HR; pace-HR decoupling measures the percentage decline in speed/HR efficiency
+- requires at least three samples, 60 active seconds, and 80% valid coverage per half; gaps over 30 seconds count as unobserved time
+- returns nullable values with typed unavailability reasons when HR or paired speed/HR coverage is insufficient
 
 ### Scanner (`src-tauri/src/scanner.rs`)
 
@@ -275,6 +297,7 @@ Notable behavior:
 - computes duration, moving time, distance, elevation, speed, HR stats
 - supports summary-only FIT import if no point records are present
 - parses cadence and power when available
+- reconstructs missing cumulative distance (including GPS-derived distance) only between updates at most 30 seconds apart, without crossing recorded pauses; leading, trailing, and longer gaps remain missing, and recorded zero speed is preserved
 - downsamples stored route track to `MAX_UI_POINTS = 2000`
 - preserves full sample rows for DB insert (sampling happens at query time)
 
@@ -282,7 +305,7 @@ Notable behavior:
 
 Responsibilities:
 
-- schema creation and migrations (`DB_SCHEMA_VERSION = 2`)
+- schema creation and migrations (`DB_SCHEMA_VERSION = 3`)
 - upsert activity + sample rows
 - query list/detail/heatmap/sample windows
 - query-side downsampling
@@ -296,11 +319,13 @@ Recent schema/migration coverage includes:
 
 - `category`, `title`, `min_hr`, `moving_duration_seconds`
 - sample-level `cadence`, `power_watts`
+- activity-level `pause_segments_json`, `parser_version`
 
 Sampling notes:
 
 - `get_activity` returns summary + track (no samples)
 - `get_activity_samples` returns filtered/downsampled sample windows
+- `downsample: false` returns full-resolution samples; Activity Detail uses these for metrics and applies its chart cap in memory
 - default chart sample cap is `2000`, clamped in Rust (`50..=20000`)
 - settings validation in `main.rs` accepts `100..=20000`
 
@@ -336,6 +361,16 @@ When changing any command payload or DTO:
 
 Serialization uses camelCase mapping (`serde(rename_all = "camelCase")`).
 
+The decoupling DTOs are `AerobicDecouplingRequest`, `AerobicDecouplingRange`,
+`AerobicDecouplingResponse`, and `AerobicDecouplingUnavailableReason`. Range axes
+are `elapsedTime`, `movingTime` (seconds), or `distance` (kilometers); Activity Detail
+converts its selection to elapsed time before invoking the command.
+
+Frontend segment metrics and HR zones use adjacent active sample intervals,
+excluding gaps over 300 seconds. Missing readings break the held sensor value;
+sensor averages/extrema require 80% coverage, while zones report tracked time.
+These rules are separate from decoupling's stricter 30-second gap limit.
+
 ## 8. Data Storage
 
 App-managed files are created using Tauri path APIs:
@@ -347,7 +382,7 @@ Design choices:
 
 - tracks are stored as JSON in `activities.track_json` (map-friendly payload)
 - detailed samples are stored in `activity_samples`
-- UI-heavy views fetch sampled windows rather than always loading all points
+- maps use sampled tracks; Activity Detail keeps full samples for metrics and caps chart rendering separately
 
 ## 9. Scan Lifecycle
 
@@ -378,14 +413,22 @@ Design choices:
 - `npm run check` for quality gate
 - `npm run tauri build` for local production bundles
 
+Per-platform `src-tauri/tauri.*.conf.json` files select installer formats; macOS
+uses ad-hoc signing. Linux CI installs prerequisites with
+`bash scripts/install-tauri-linux-deps.sh` (Ubuntu/Debian).
+
 ### CI (`.github/workflows/ci.yml`)
 
 - frontend quality job on Ubuntu:
   - `npm ci`
+  - `npm run check:versions`
   - `npm run typecheck`
+  - `npm run test:activity-metrics`
+  - `npm run build`
 - rust quality job on Ubuntu, macOS, and Windows:
-  - Linux runner installs Tauri system dependencies (`libwebkit2gtk-4.1-dev`, `libappindicator3-dev`, `librsvg2-dev`, `patchelf`)
-  - `cargo check --manifest-path src-tauri/Cargo.toml`
+  - Linux runner installs Tauri system dependencies with `scripts/install-tauri-linux-deps.sh`
+  - `cargo check --locked --manifest-path src-tauri/Cargo.toml`
+  - `cargo test --locked --manifest-path src-tauri/Cargo.toml`
   - `cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check`
 
 ### Preview bundles (`.github/workflows/preview-bundles.yml`)
@@ -398,6 +441,9 @@ Builds downloadable artifacts without creating a GitHub release:
 - Windows: `.exe` (NSIS) + `.msi`
 - Linux: `.deb` + `.AppImage`
 
+Each job runs `npm run check` before packaging with the locked Cargo dependencies.
+The macOS job verifies the signature and archives the `.app` as `.app.tar.gz` to preserve permissions and symlinks.
+
 Use this workflow to validate that a branch is release-ready and hand the generated bundles to testers before tagging a real release.
 
 ### Release (`.github/workflows/release.yml`)
@@ -408,12 +454,17 @@ Pipeline verifies version alignment across:
 
 - git tag (without `v` prefix)
 - `package.json`
+- `package-lock.json` (top level and root package)
 - `src-tauri/tauri.conf.json`
 - `src-tauri/Cargo.toml`
+- `src-tauri/Cargo.lock` (the `trajectory` package)
 
-Then builds and publishes platform bundles via `tauri-apps/tauri-action`:
+The portable validator is also available locally as `npm run check:versions`.
 
-- macOS: `.app` + `.dmg` with ad-hoc signing
+Each job runs `npm run check` with the tag as the expected version before building
+and publishing platform bundles via `tauri-apps/tauri-action`, using the locked Cargo dependencies:
+
+- macOS: `.app` + `.dmg` with ad-hoc signing; headless packaging skips Finder window layout
 - Windows: `.exe` (NSIS) + `.msi`
 - Linux: `.deb` + `.AppImage`
 

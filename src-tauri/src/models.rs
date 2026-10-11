@@ -126,6 +126,7 @@ pub struct ActivitySampleQuery {
     pub distance_max_km: Option<f64>,
     pub max_samples: Option<usize>,
     pub hide_pauses: Option<bool>,
+    pub downsample: Option<bool>,
 }
 
 impl Default for ActivitySampleQuery {
@@ -135,6 +136,7 @@ impl Default for ActivitySampleQuery {
             distance_max_km: None,
             max_samples: None,
             hide_pauses: None,
+            downsample: None,
         }
     }
 }
@@ -146,6 +148,50 @@ pub struct ActivitySamplesResponse {
     pub original_sample_count: usize,
     pub matching_sample_count: usize,
     pub returned_sample_count: usize,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum AerobicDecouplingRangeAxis {
+    ElapsedTime,
+    MovingTime,
+    Distance,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AerobicDecouplingRange {
+    pub axis: AerobicDecouplingRangeAxis,
+    pub min: f64,
+    pub max: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AerobicDecouplingRequest {
+    pub activity_id: i64,
+    #[serde(default)]
+    pub range: Option<AerobicDecouplingRange>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum AerobicDecouplingUnavailableReason {
+    InsufficientSamples,
+    InsufficientDuration,
+    InsufficientHeartRate,
+    InsufficientSpeed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AerobicDecouplingResponse {
+    pub pace_hr_decoupling_pct: Option<f64>,
+    pub heart_rate_drift_pct: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pace_hr_decoupling_unavailable_reason: Option<AerobicDecouplingUnavailableReason>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub heart_rate_drift_unavailable_reason: Option<AerobicDecouplingUnavailableReason>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

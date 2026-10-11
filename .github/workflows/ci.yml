@@ -23,8 +23,17 @@ jobs:
       - name: Install frontend deps
         run: npm ci
 
+      - name: Verify version alignment
+        run: npm run check:versions
+
       - name: Run frontend typecheck
         run: npm run typecheck
+
+      - name: Run activity metric tests
+        run: npm run test:activity-metrics
+
+      - name: Build frontend
+        run: npm run build
 
   rust-quality:
     strategy:
@@ -51,7 +60,10 @@ jobs:
           components: rustfmt
 
       - name: Run rust check
-        run: cargo check --manifest-path src-tauri/Cargo.toml
+        run: cargo check --locked --manifest-path src-tauri/Cargo.toml
+
+      - name: Run Rust regression tests
+        run: cargo test --locked --manifest-path src-tauri/Cargo.toml
 
       - name: Run rustfmt check
         run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
