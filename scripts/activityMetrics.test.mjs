@@ -9,7 +9,7 @@ import { mockIPC, clearMocks } from '@tauri-apps/api/mocks';
 
 let deriveSelectedActivity;
 let server;
-let data, ActivityMetricsPanel, useActivityData, useActivityDecoupling, plotting, cache;
+let data, ActivityMetricsPanel, useActivityData, useActivityChartData, useActivityDecoupling, plotting, cache;
 
 before(async () => {
   server = await createServer({
@@ -23,6 +23,7 @@ before(async () => {
   data = await server.ssrLoadModule('/src/lib/activityDetail/activityData.ts');
   ({ ActivityMetricsPanel } = await server.ssrLoadModule('/src/components/activityDetail/ActivityMetricsPanel.tsx'));
   ({ useActivityData } = await server.ssrLoadModule('/src/lib/activityDetail/useActivityData.ts'));
+  ({ useActivityChartData } = await server.ssrLoadModule('/src/lib/activityDetail/useActivityChartData.ts'));
   ({ useActivityDecoupling } = await server.ssrLoadModule('/src/lib/activityDetail/useActivityDecoupling.ts'));
   plotting = await server.ssrLoadModule('/src/lib/charts/plottingEngine.ts');
   cache = await server.ssrLoadModule('/src/lib/analytics/cacheKey.ts');
@@ -413,6 +414,53 @@ test('drag, reverse drag, click reset, cancellation, and sub-sample zoom keep a 
   assert.equal(h.current.zoomDomain, null);
   for (const value of [null, undefined, '', ' ', {}, NaN, Infinity]) assert.equal(plotting.parseNumberChartLabel(value), null);
   h.close();
+});
+
+test('drag highlights leave full-resolution metrics and capped samples unchanged until release', () => {
+  const f = sensorFixture();
+  // A sensor peak omitted from the plotted samples must still contribute to metrics.
+  f.records[5].heartRate = 220;
+  const event = (value, chartX) => ({ activeLabel: value, chartX });
+  for (const axis of ['elapsedTime', 'movingTime', 'distance']) {
+    const scale = axis === 'distance' ? 0.001 : 1;
+    const h = hookHarness(() => {
+      const zoom = plotting.usePlotDragZoom({ parseLabel: plotting.parseNumberChartLabel,
+        compareValues: (a, b) => a - b });
+      return { zoom, ...useActivityChartData(f.detail, f.records, axis, zoom.zoomDomain, false, 3, zoneBounds) };
+    }, {});
+    const whole = h.current.selectedActivity;
+    const samples = h.current.chartSamples;
+    assert.equal(samples.length, 3);
+    act(() => h.current.zoom.onMouseDown(event(90 * scale, 10)));
+    for (const end of [200, 400, 630]) {
+      act(() => h.current.zoom.onMouseMove(event(end * scale, end)));
+      assert.deepEqual(h.current.zoom.selectionDomain, [90 * scale, end * scale]);
+      assert.strictEqual(h.current.selectedActivity, whole);
+      assert.strictEqual(h.current.chartSamples, samples);
+    }
+    act(() => h.current.zoom.onMouseUp(event(630 * scale, 630)));
+    assert.equal(h.current.zoom.selectionDomain, null);
+    assert.notStrictEqual(h.current.selectedActivity, whole);
+    assert.notStrictEqual(h.current.chartSamples, samples);
+    assert.deepEqual(h.current.selectedActivity.elapsedRange, [90, 630]);
+    assert.deepEqual(h.current.chartSamples.map(s => s.elapsedSeconds), [90, 360, 630]);
+    assert.equal(h.current.selectedActivity.metrics.maxHr, 220);
+    assert.equal(h.current.selectedActivity.metrics.distanceM, 540);
+
+    const committed = h.current.selectedActivity;
+    const zoomedSamples = h.current.chartSamples;
+    act(() => h.current.zoom.onMouseDown(event(120 * scale, 30)));
+    act(() => h.current.zoom.onMouseMove(event(300 * scale, 90)));
+    act(() => h.current.zoom.onMouseLeave());
+    assert.strictEqual(h.current.selectedActivity, committed);
+    assert.strictEqual(h.current.chartSamples, zoomedSamples);
+    act(() => h.current.zoom.onMouseDown(event(120 * scale, 30)));
+    act(() => h.current.zoom.onMouseUp(event(120 * scale, 31)));
+    assert.equal(h.current.selectedActivity.selection, null);
+    assert.equal(h.current.selectedActivity.metrics.durationSeconds, f.detail.summary.durationSeconds);
+    assert.deepEqual(h.current.chartSamples, samples);
+    h.close();
+  }
 });
 
 test('switching activities or rescanning discards late data responses and publishes detail/samples atomically', async () => {

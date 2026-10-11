@@ -214,7 +214,7 @@ and the analytics page share these keys; startup and automatic runs discard stal
   - loads summary/track and full-resolution samples together via `useActivityData`; activity changes and rescans discard stale requests
   - derives zoomed chart samples in memory; `chartMaxSamples` caps rendering after clipping/interpolating the visible endpoints
   - offers distance charts whenever cumulative distance is usable, including indoor activities; time charts can collapse explicit paused segments into moving time
-  - resolves drag/zoom selections to shared elapsed-time boundaries for metric cards, HR zones, and decoupling (`src/lib/activityDetail/activityData.ts`)
+  - dragging updates the selection highlight; release commits the zoom, resamples the chart, and updates full-resolution segment metrics, HR zones, and decoupling using shared elapsed-time boundaries (`src/lib/activityDetail/useActivityChartData.ts`)
   - labels selected metrics with `(Segment)`; reset restores workout summary values; missing segment data is shown as unavailable
   - computes segment distance from cumulative-distance endpoints and average speed/pace from distance and moving time; distance/altitude interpolation allocates recorded changes across active time, excluding recorded pauses
   - offers pace-HR decoupling and heart-rate drift for the workout or selection; requests are debounced and stale responses are discarded

@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { forwardRef, memo, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import {
   Area,
@@ -39,7 +39,6 @@ import {
 } from '@/lib/charts/plottingEngine';
 import {
   activityMetricLabel,
-  deriveSelectedActivity,
   normalizeHeartRateZoneUpperBounds,
   type HeartRateZoneSlice
 } from '@/lib/activityDetail/activityMetrics';
@@ -78,7 +77,8 @@ import { getAccentThemePalette } from '@/lib/theme';
 import { useManagedMapLibre } from '@/lib/useManagedMapLibre';
 import { MaximizableMapFrame } from '@/components/MaximizableMapFrame';
 import { ActivityMetricsPanel } from '@/components/activityDetail/ActivityMetricsPanel';
-import { activityAxisDomain, activityChartSamples, hasDistanceData, RANGE_EPSILON, resolveActivityRange } from '@/lib/activityDetail/activityData';
+import { activityAxisDomain, hasDistanceData, RANGE_EPSILON } from '@/lib/activityDetail/activityData';
+import { useActivityChartData } from '@/lib/activityDetail/useActivityChartData';
 import { useActivityData } from '@/lib/activityDetail/useActivityData';
 import { useActivityDecoupling } from '@/lib/activityDetail/useActivityDecoupling';
 import { useAppStore } from '@/store/useAppStore';
@@ -95,6 +95,7 @@ const ACTIVITY_ROUTE_HOVER_SOURCE_ID = 'activity-route-hover-source';
 const ACTIVITY_ROUTE_HOVER_OUTER_LAYER_ID = 'activity-route-hover-outer-layer';
 const ACTIVITY_ROUTE_HOVER_INNER_LAYER_ID = 'activity-route-hover-inner-layer';
 const ROUTE_HOVER_MARKER_SMOOTHING_MS = 10;
+const MemoizedActivityMetricsPanel = memo(ActivityMetricsPanel);
 type ActivityRouteMapHandle = {
   setHoverTarget: (coordinate: RouteHoverCoordinate) => void;
   clearHoverTarget: () => void;
@@ -508,7 +509,7 @@ function SplitMetricChart({
   );
 }
 
-function HeartRateZonesCard({
+const HeartRateZonesCard = memo(function HeartRateZonesCard({
   slices,
   isSegment,
   trackedSeconds,
@@ -614,7 +615,7 @@ function HeartRateZonesCard({
       </div>
     </section>
   );
-}
+});
 
 function toRouteFeatureCollection(track: TrackPoint[]): FeatureCollection<LineString> {
   const coordinates = track.map((point) => [point.lon, point.lat] as [number, number]);
@@ -1048,22 +1049,11 @@ function ActivityDetailContent({ activityId, dataVersion }: { activityId: number
   const chartZoomDomain = chartZoom.zoomDomain;
   const chartSelectionDomain = chartZoom.selectionDomain;
   const activeChartXAxisDomain = chartZoomDomain ?? fullChartXAxisDomain;
-  const metricChartDomain = chartSelectionDomain && chartSelectionDomain[1] - chartSelectionDomain[0] > RANGE_EPSILON
-    ? chartSelectionDomain : chartZoomDomain;
-  const activityMetricSelection = useMemo<ActivityRange | null>(() => metricChartDomain
-    ? { axis: rangeAxis, min: metricChartDomain[0], max: metricChartDomain[1] } : null, [metricChartDomain, rangeAxis]);
-  const selectedActivity = useMemo(() => detail
-    ? deriveSelectedActivity(detail, activityRecords, activityMetricSelection, heartRateZoneUpperBoundsBpm) : null,
-    [activityMetricSelection, activityRecords, detail, heartRateZoneUpperBoundsBpm]);
+  const { selectedActivity, chartSamples } = useActivityChartData(
+    detail, activityRecords, rangeAxis, chartZoomDomain, shouldHidePausedTime, chartMaxSamples,
+    heartRateZoneUpperBoundsBpm
+  );
   const isSegment = selectedActivity?.selection != null;
-  const chartSamples = useMemo(() => {
-    if (!detail) return [];
-    const zoom = chartZoomDomain ? resolveActivityRange(detail, activityRecords,
-      { axis: rangeAxis, min: chartZoomDomain[0], max: chartZoomDomain[1] }) : null;
-    if (zoom && !zoom.elapsedRange) return [];
-    return activityChartSamples(detail, activityRecords, zoom?.elapsedRange ?? null, shouldHidePausedTime, chartMaxSamples)
-      .filter((record) => chartXAxisMode !== 'distance' || record.distanceM != null);
-  }, [activityRecords, chartMaxSamples, chartXAxisMode, chartZoomDomain, detail, rangeAxis, shouldHidePausedTime]);
   const decouplingRequest = useMemo<AerobicDecouplingRequest | null>(() => {
     const range = selectedActivity?.elapsedRange;
     if (!detail || !showDecoupling || !range || range[1] <= range[0]) return null;
@@ -1800,7 +1790,7 @@ function ActivityDetailContent({ activityId, dataVersion }: { activityId: number
         </div>
 
         <aside className="order-1 xl:order-2">
-          <ActivityMetricsPanel detail={detail} records={activityRecords} selected={selectedActivity} />
+          <MemoizedActivityMetricsPanel detail={detail} records={activityRecords} selected={selectedActivity} />
         </aside>
       </div>
     </div>
