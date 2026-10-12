@@ -233,7 +233,7 @@ can be useful to convince your loved ones that your hobby is not that dangerous 
 - Your activity files stay local
 - Data is processed on-device
 - No account or telemetry backend required
-- Map basemaps are fetched from OpenStreetMap/CARTO at runtime
+- Map basemaps are fetched from OpenStreetMap at runtime
 
 ## Platform Support
 

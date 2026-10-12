@@ -32,6 +32,7 @@ This runs:
 - App and lockfile version alignment (`npm run check:versions`)
 - TypeScript typecheck (`npm run typecheck`)
 - Activity metrics, chart interaction, request handling, and analytics cache tests (`npm run test:activity-metrics`)
+- Production map worker regression test (`npm run test:map-worker`)
 - Rust check and regression tests (`npm run check:rust`, `npm run test:rust`)
 - Rust formatting (`npm run check:rust-format`)
 
@@ -73,7 +74,7 @@ Important behavior:
 - The selected import folder is treated as read-only input.
 - App data is stored in app-owned directories (`activities.sqlite`, `settings.json`).
 - No cloud backend. No telemetry service.
-- Map views still fetch external map tiles (OSM/CARTO) at runtime.
+- Map views still fetch external map tiles (OpenStreetMap) at runtime.
 
 ## 3. Repository Map
 
@@ -200,6 +201,14 @@ Current wrappers:
 Advanced analytics cache keys include the complete request plus the import folder,
 last scan timestamp, and HR zones (`src/lib/analytics/cacheKey.ts`). Startup warm-up
 and the analytics page share these keys; startup and automatic runs discard stale responses.
+
+Maps initialize their standalone MapLibre worker through `src/lib/mapWorker.ts`.
+The worker is imported as raw source and served through a blob URL for Tauri.
+Keep it outside Vite's JavaScript transforms: the default `Function.toString()`
+worker loses access to generated helpers in production builds, breaking GPS overlays.
+The map worker regression test builds with the production settings and indexes a route
+in an isolated worker scope. Both map modes use OpenStreetMap tiles; reduced
+complexity applies a muted raster style so no API key is required.
 
 ### Page behavior highlights
 
@@ -427,6 +436,7 @@ uses ad-hoc signing. Linux CI installs prerequisites with
   - `npm run check:versions`
   - `npm run typecheck`
   - `npm run test:activity-metrics`
+  - `npm run test:map-worker`
   - `npm run build`
 - rust quality job on Ubuntu, macOS, and Windows:
   - Linux runner installs Tauri system dependencies with `scripts/install-tauri-linux-deps.sh`

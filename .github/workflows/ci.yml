@@ -32,6 +32,9 @@ jobs:
       - name: Run activity metric tests
         run: npm run test:activity-metrics
 
+      - name: Test production map worker
+        run: npm run test:map-worker
+
       - name: Build frontend
         run: npm run build
 

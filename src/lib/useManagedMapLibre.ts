@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import maplibregl from 'maplibre-gl';
+import '@/lib/mapWorker';
 
 import { getMapStyle } from '@/lib/mapStyles';
 

@@ -6,8 +6,11 @@ export const US_DEFAULT_ZOOM = 4;
 const OSM_ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
-const CARTO_ATTRIBUTION =
-  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>';
+const OSM_TILES = [
+  'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
+  'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
+  'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png'
+];
 
 function createRasterStyle(
   tiles: string[],
@@ -36,22 +39,13 @@ function createRasterStyle(
 }
 
 export const STANDARD_MAP_STYLE = createRasterStyle(
-  [
-    'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
-    'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
-    'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png'
-  ],
+  OSM_TILES,
   OSM_ATTRIBUTION
 );
 
 export const REDUCED_COMPLEXITY_MAP_STYLE = createRasterStyle(
-  [
-    'https://a.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}.png',
-    'https://b.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}.png',
-    'https://c.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}.png',
-    'https://d.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}.png'
-  ],
-  CARTO_ATTRIBUTION,
+  OSM_TILES,
+  OSM_ATTRIBUTION,
   {
     'raster-opacity': 0.72,
     'raster-saturation': -1,
