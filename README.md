@@ -1,11 +1,14 @@
 # Trajectory
 
+Download at **[https://trajectory.fitness](https://trajectory.fitness/)**.
+
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey)
 [![Framework](https://img.shields.io/badge/framework-Tauri%20v2-yellow)](https://tauri.app/)
 [![Backend](https://img.shields.io/badge/backend-Rust-orange)](https://www.rust-lang.org/)
 [![Frontend](https://img.shields.io/badge/frontend-React%20%2B%20TypeScript-3178c6)](https://reactjs.org/)
 [![Version](https://img.shields.io/badge/version-v0.1.5-green)](https://github.com/ericceg/trajectory/releases/latest)
+[![Website: https://trajectory.fitness](https://img.shields.io/badge/website-https%3A%2F%2Ftrajectory.fitness-blue)](https://trajectory.fitness)
 
 
 **Powerful local-first workout analyzer that keeps your data private.**
