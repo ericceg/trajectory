@@ -29,13 +29,9 @@ There is no single reason for why I built Trajectory, but rather a combination o
 
 ## Installation
 
-1. Open the [latest release](https://github.com/ericceg/trajectory/releases/latest).
-2. Download the `.dmg` for macOS, `.exe` or `.msi` for Windows, or `.deb` or `.AppImage` for Linux.
-3. Install and launch the app.
+You can install Trajectory by following the instructions on [https://trajectory.fitness](https://trajectory.fitness/) or [build from source](#developer-setup-build-from-source) using the instructions below.
 
 Current builds support Apple Silicon on macOS and 64-bit systems on Windows and Linux.
-
-Heart-rate drift, aerobic decoupling, and segment metrics are currently available when [building from source](#developer-setup-build-from-source).
 
 Notes:
 - Release builds are not yet production-signed, so your operating system may show a security warning on first launch.
